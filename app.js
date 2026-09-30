@@ -2,9 +2,29 @@
   const cfg = window.BI_CONFIG || {};
   const dashboards = window.BI_DASHBOARDS || {};
   const bethaApp = document.getElementById("bethaApp");
+  const authGate = document.getElementById("authGate");
+
+  if (!window.BIAuth || !BIAuth.isAuthenticated()) {
+    bethaApp.style.display = "none";
+    authGate.hidden = false;
+    document.getElementById("loginButton").addEventListener("click", async () => {
+      const message = document.getElementById("authMessage");
+      message.textContent = "";
+      try {
+        await BIAuth.login(location.href);
+      } catch (error) {
+        message.textContent = "Não foi possível iniciar o login: " + error.message;
+      }
+    });
+    return;
+  }
+
+  authGate.hidden = true;
+  bethaApp.style.display = "";
   const query = Object.fromEntries(new URLSearchParams(location.search).entries());
   const chartInstances = new Map();
-  let currentView = query.view && dashboards[query.view] ? query.view : "visao-geral";
+  let currentView = query.view === "usuarios-admin" ? "usuarios-admin" :
+    (query.view && dashboards[query.view] ? query.view : "visao-geral");
   let currentPayload = null;
 
   const tenantId = query.tenant || query.entidadeId || query.entityId || "";
@@ -27,17 +47,21 @@
   bethaApp.addEventListener("opcaoMenuSelecionada", (event) => {
     const detail = event.detail || {};
     const view = detail.rota || detail.id;
-    if (!dashboards[view]) return;
+    if (!dashboards[view] && view !== "usuarios-admin") return;
     if (detail.id) bethaApp.setMenuAtivo(detail.id);
     navigate(view);
   });
 
   function navigate(view) {
-    if (!dashboards[view]) return;
+    if (!dashboards[view] && view !== "usuarios-admin") return;
     currentView = view;
     const url = new URL(location.href);
     url.searchParams.set("view", view);
     history.replaceState({}, "", url);
+    if (view === "usuarios-admin") {
+      renderUsersAdmin();
+      return;
+    }
     renderDashboard(view);
     loadDashboardData(view);
   }
@@ -69,6 +93,8 @@
   }
 
   function renderDashboard(view) {
+    document.getElementById("dashboardView").hidden = false;
+    document.getElementById("usersAdminView").hidden = true;
     destroyCharts();
     currentPayload = null;
     const def = dashboards[view];
@@ -215,12 +241,15 @@
     }
   }
 
-  async function api(path) {
+  async function api(path, options = {}) {
     const base = String(cfg.BACKEND_URL || "").replace(/\/$/, "");
     if (!base) throw new Error("BACKEND_NOT_CONFIGURED");
-    const headers = {Accept:"application/json"};
+    const headers = {...(options.headers || {}), Accept:"application/json"};
+    const token = BIAuth.getToken();
+    if (token) headers.Authorization = "Bearer " + token;
     if (tenantId) headers["X-Tenant-Id"] = tenantId;
-    const response = await fetch(base + path, {headers, credentials:"include"});
+    const fetchOptions = {...options, headers, credentials:"include"};
+    const response = await fetch(base + path, fetchOptions);
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
       const error = new Error(body.error || ("HTTP " + response.status));
@@ -368,9 +397,12 @@
 
   document.getElementById("closeDrawer").addEventListener("click", () => closeDrawer("detailDrawer"));
   document.getElementById("closeIntegration").addEventListener("click", () => closeDrawer("integrationDrawer"));
+  document.getElementById("closeUserDrawer").addEventListener("click", () => closeDrawer("userDrawer"));
+  document.getElementById("logoutButton").addEventListener("click", () => BIAuth.logout());
   document.getElementById("drawerBackdrop").addEventListener("click", () => {
     closeDrawer("detailDrawer");
     closeDrawer("integrationDrawer");
+    closeDrawer("userDrawer");
   });
 
   const context = {
@@ -422,6 +454,184 @@
     if (!event.target.closest(".entity-control")) entityMenu.hidden = true;
   });
 
+  let selectedCentralUser = null;
+  let wizardStep = 1;
+
+  function renderUsersAdmin() {
+    document.getElementById("dashboardView").hidden = true;
+    document.getElementById("usersAdminView").hidden = false;
+    document.getElementById("pageContext").textContent = "USUÁRIOS";
+    loadUsers();
+  }
+
+  function normalizeAccessList(payload) {
+    if (Array.isArray(payload)) return payload;
+    if (payload && Array.isArray(payload.content)) return payload.content;
+    if (payload && payload.data && Array.isArray(payload.data.content)) return payload.data.content;
+    return [];
+  }
+
+  function renderUsersTable(payload) {
+    const tbody = document.getElementById("usersTableBody");
+    const rows = normalizeAccessList(payload);
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="table-empty">Nenhum usuário encontrado para esta entidade.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = rows.map((item) => {
+      const name = item.userName || item.name || item.nome || item.user || "Usuário";
+      const login = item.user || item.login || item.idUsuario || "";
+      const authorized = item.createAt || item.authorizedAt || item.autorizadoEm || "";
+      const expires = item.expiresIn || item.expires || "";
+      const groups = item.totalGroups ?? item.groups?.length ?? 0;
+      const restrictions = item.totalRestrictions ?? item.restrictions?.length ?? 0;
+      const connected = Boolean(item.connected);
+      const blocked = Boolean(item.blocked);
+      return `
+        <tr data-user-row data-search="${escapeHtml((name + " " + login).toLowerCase())}">
+          <td><div class="user-name">${escapeHtml(name)}</div><div class="user-login">@${escapeHtml(login)}</div></td>
+          <td>${escapeHtml(formatDateTime(authorized))}</td>
+          <td>${escapeHtml(formatDate(expires))}</td>
+          <td>${escapeHtml(String(groups))}</td>
+          <td><span class="user-badge ${restrictions ? "info" : "muted"}">${restrictions ? restrictions + " restrição(ões)" : "Sem restrições"}</span></td>
+          <td><span class="user-badge ${blocked ? "muted" : connected ? "ok" : "muted"}">${blocked ? "Bloqueado" : connected ? "Conectado" : "Desconectado"}</span></td>
+          <td><button class="row-action" type="button" title="Detalhes"><i class="mdi mdi-cog-outline"></i></button></td>
+        </tr>
+      `;
+    }).join("");
+    applyUsersSearch();
+  }
+
+  async function loadUsers() {
+    const tbody = document.getElementById("usersTableBody");
+    if (!tenantId) {
+      tbody.innerHTML = '<tr><td colspan="7" class="table-empty">Selecione uma entidade autorizada para gerenciar usuários.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = '<tr><td colspan="7" class="table-empty">Consultando autorizações da entidade…</td></tr>';
+    try {
+      const payload = await api("/api/admin/users?limit=100&offset=0");
+      renderUsersTable(payload);
+    } catch (error) {
+      tbody.innerHTML = '<tr><td colspan="7" class="table-empty">Não foi possível consultar os usuários: ' + escapeHtml(error.message) + '</td></tr>';
+    }
+  }
+
+  function formatDate(value) {
+    if (!value) return "—";
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString("pt-BR");
+  }
+
+  function formatDateTime(value) {
+    if (!value) return "—";
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString("pt-BR");
+  }
+
+  function applyUsersSearch() {
+    const term = (document.getElementById("usersSearchInput").value || "").trim().toLowerCase();
+    document.querySelectorAll("[data-user-row]").forEach(row => {
+      row.hidden = Boolean(term) && !String(row.dataset.search || "").includes(term);
+    });
+  }
+
+  function openUserDrawer() {
+    selectedCentralUser = null;
+    wizardStep = 1;
+    document.getElementById("centralUserSearch").value = "";
+    document.getElementById("centralUserResult").textContent = "Informe o login exato do usuário para consultar a Central de Usuários.";
+    setWizardStep(1);
+    document.getElementById("userDrawer").classList.add("open");
+    document.getElementById("userDrawer").setAttribute("aria-hidden","false");
+    document.getElementById("drawerBackdrop").hidden = false;
+    document.body.classList.add("drawer-open");
+  }
+
+  function setWizardStep(step) {
+    wizardStep = Math.min(4, Math.max(1, step));
+    document.querySelectorAll(".wizard-step").forEach(el => el.classList.toggle("is-active", Number(el.dataset.step) === wizardStep));
+    document.querySelectorAll(".wizard-panel").forEach(el => el.hidden = Number(el.dataset.panel) !== wizardStep);
+    document.getElementById("wizardBack").disabled = wizardStep === 1;
+    document.getElementById("wizardNext").hidden = wizardStep === 4;
+    const save = document.getElementById("wizardSave");
+    save.hidden = wizardStep !== 4;
+    save.disabled = true;
+    save.title = "A publicação do Page Mapping será concluída antes de habilitar a gravação.";
+    if (wizardStep === 2) renderPermissionOptions();
+  }
+
+  function renderPermissionOptions() {
+    const container = document.getElementById("permissionsList");
+    const items = Object.entries(dashboards).map(([id, def]) => ({id, label:def.title}));
+    items.push({id:"usuarios-admin",label:"Administrando / Usuários"});
+    container.innerHTML = items.map(item =>
+      '<label class="permission-item"><input type="checkbox" value="' + escapeHtml(item.id) + '" checked> ' + escapeHtml(item.label) + '</label>'
+    ).join("");
+  }
+
+  async function searchCentralUser() {
+    const value = document.getElementById("centralUserSearch").value.trim();
+    const result = document.getElementById("centralUserResult");
+    selectedCentralUser = null;
+    if (!value) {
+      result.textContent = "Informe o login do usuário.";
+      return;
+    }
+    result.textContent = "Consultando a Central de Usuários Betha…";
+    try {
+      const payload = await api("/api/admin/user-search?user=" + encodeURIComponent(value));
+      const list = Array.isArray(payload) ? payload : (payload.content || payload.data?.content || []);
+      const user = Array.isArray(list) ? list[0] : payload;
+      if (!user || (!user.id && !user.user && !user.login)) {
+        result.textContent = "Usuário não encontrado na Central de Usuários.";
+        return;
+      }
+      selectedCentralUser = user;
+      const id = user.id || user.user || user.login;
+      const name = user.name || user.nome || user.fullName || user.userName || id;
+      const email = user.email || user.mail || "";
+      result.innerHTML = `
+        <div class="lookup-user-card">
+          <div class="lookup-avatar"><i class="mdi mdi-account"></i></div>
+          <div><strong>${escapeHtml(name)}</strong><span>@${escapeHtml(id)}${email ? " · " + escapeHtml(email) : ""}</span></div>
+        </div>
+      `;
+    } catch (error) {
+      result.textContent = "Falha na consulta: " + error.message;
+    }
+  }
+
+  document.getElementById("addUserButton").addEventListener("click", openUserDrawer);
+  document.getElementById("centralUserSearchButton").addEventListener("click", searchCentralUser);
+  document.getElementById("centralUserSearch").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") searchCentralUser();
+  });
+  document.getElementById("usersSearchInput").addEventListener("input", applyUsersSearch);
+  document.getElementById("wizardBack").addEventListener("click", () => setWizardStep(wizardStep - 1));
+  document.getElementById("wizardNext").addEventListener("click", () => {
+    if (wizardStep === 1 && !selectedCentralUser) {
+      document.getElementById("centralUserResult").textContent = "Localize e selecione um usuário válido antes de continuar.";
+      return;
+    }
+    setWizardStep(wizardStep + 1);
+  });
+
+  document.querySelectorAll("[data-user-filter]").forEach(button => {
+    button.addEventListener("click", () => {
+      document.querySelectorAll("[data-user-filter]").forEach(x => x.classList.remove("is-active"));
+      button.classList.add("is-active");
+      const filter = button.dataset.userFilter;
+      document.querySelectorAll("[data-user-row]").forEach(row => {
+        const txt = row.textContent.toLowerCase();
+        row.hidden = filter === "connected" ? !txt.includes("conectado") :
+                     filter === "blocked" ? !txt.includes("bloqueado") : false;
+      });
+      applyUsersSearch();
+    });
+  });
+
   async function loadTenants() {
     if (!cfg.BACKEND_URL) return;
     try {
@@ -464,7 +674,11 @@
     return String(value).replace(/["\\]/g,"\\$&");
   }
 
-  renderDashboard(currentView);
+  if (currentView === "usuarios-admin") {
+    renderUsersAdmin();
+  } else {
+    renderDashboard(currentView);
+    loadDashboardData(currentView);
+  }
   loadTenants();
-  loadDashboardData(currentView);
 })();
