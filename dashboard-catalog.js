@@ -298,5 +298,8 @@ window.BI_MENU = [
     {id:"obras",descricao:"Obras",rota:"obras",possuiPermissao:true}
   ]},
   { id:"itbi", descricao:"Transferências e ITBI", icone:"home-switch", rota:"itbi", possuiPermissao:true },
-  { id:"qualidade", descricao:"Qualidade e auditoria", icone:"shield-check", rota:"qualidade", possuiPermissao:true }
+  { id:"qualidade", descricao:"Qualidade e auditoria", icone:"shield-check", rota:"qualidade", possuiPermissao:true },
+  { id:"administrando", descricao:"Administrando", icone:"cog", possuiPermissao:true, submenus:[
+    {id:"usuarios-admin",descricao:"Usuários",rota:"usuarios-admin",possuiPermissao:true}
+  ]}
 ];
