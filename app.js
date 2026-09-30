@@ -129,10 +129,14 @@
     }
   }
 
+  const tenantId = query.tenant || query.entidadeId || query.entityId || "";
+
   async function api(path) {
     const base = String(cfg.BACKEND_URL || "").replace(/\/$/, "");
     if (!base) throw new Error("BACKEND_NOT_CONFIGURED");
-    const response = await fetch(base + path, { headers: { Accept: "application/json" } });
+    const headers = { Accept: "application/json" };
+    if (tenantId) headers["X-Tenant-Id"] = tenantId;
+    const response = await fetch(base + path, { headers });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body.error || ("HTTP " + response.status));
     return body;
