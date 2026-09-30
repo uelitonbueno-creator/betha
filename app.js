@@ -11,7 +11,8 @@
       const message = document.getElementById("authMessage");
       message.textContent = "";
       try {
-        await BIAuth.login(location.href);
+        await BIAuth.login();
+        location.reload();
       } catch (error) {
         message.textContent = "Não foi possível iniciar o login: " + error.message;
       }
