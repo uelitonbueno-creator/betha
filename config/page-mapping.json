@@ -1,0 +1,158 @@
+[
+  {
+    "contexts": ["database", "entity"],
+    "constraints": [
+      {
+        "id": "BiVisaoGeral",
+        "description": "BI Tributos - Visão geral",
+        "resources": [
+          {"accessControll": null, "urlPattern": "/api/dashboard/visao-geral.*", "methods": ["GET"]},
+          {"accessControll": null, "urlPattern": "/api/drill/visao-geral.*", "methods": ["GET"]}
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BiArrecadacao",
+        "description": "BI Tributos - Arrecadação",
+        "resources": [
+          {"accessControll": null, "urlPattern": "/api/dashboard/arrecadacao.*", "methods": ["GET"]},
+          {"accessControll": null, "urlPattern": "/api/drill/arrecadacao.*", "methods": ["GET"]}
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BiDebitos",
+        "description": "BI Tributos - Lançamentos e débitos",
+        "resources": [
+          {"accessControll": null, "urlPattern": "/api/dashboard/debitos.*", "methods": ["GET"]},
+          {"accessControll": null, "urlPattern": "/api/drill/debitos.*", "methods": ["GET"]}
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BiDividaAtiva",
+        "description": "BI Tributos - Dívida ativa",
+        "resources": [
+          {"accessControll": null, "urlPattern": "/api/dashboard/divida.*", "methods": ["GET"]},
+          {"accessControll": null, "urlPattern": "/api/drill/divida.*", "methods": ["GET"]}
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BiParcelamentos",
+        "description": "BI Tributos - Parcelamentos",
+        "resources": [
+          {"accessControll": null, "urlPattern": "/api/dashboard/parcelamentos.*", "methods": ["GET"]},
+          {"accessControll": null, "urlPattern": "/api/drill/parcelamentos.*", "methods": ["GET"]}
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BiEconomicosIss",
+        "description": "BI Tributos - Econômicos e ISS",
+        "resources": [
+          {"accessControll": null, "urlPattern": "/api/dashboard/economicos.*", "methods": ["GET"]},
+          {"accessControll": null, "urlPattern": "/api/drill/economicos.*", "methods": ["GET"]}
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BiImobiliarioIptu",
+        "description": "BI Tributos - Imobiliário e IPTU",
+        "resources": [
+          {"accessControll": null, "urlPattern": "/api/dashboard/imobiliario.*", "methods": ["GET"]},
+          {"accessControll": null, "urlPattern": "/api/drill/imobiliario.*", "methods": ["GET"]}
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BiTransferenciasItbi",
+        "description": "BI Tributos - Transferências e ITBI",
+        "resources": [
+          {"accessControll": null, "urlPattern": "/api/dashboard/itbi.*", "methods": ["GET"]},
+          {"accessControll": null, "urlPattern": "/api/drill/itbi.*", "methods": ["GET"]}
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BiContribuintes",
+        "description": "BI Tributos - Contribuintes",
+        "resources": [
+          {"accessControll": null, "urlPattern": "/api/dashboard/contribuintes.*", "methods": ["GET"]},
+          {"accessControll": null, "urlPattern": "/api/drill/contribuintes.*", "methods": ["GET"]}
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BiEncerramento",
+        "description": "BI Tributos - Encerramento mensal",
+        "resources": [
+          {"accessControll": null, "urlPattern": "/api/dashboard/encerramento.*", "methods": ["GET"]},
+          {"accessControll": null, "urlPattern": "/api/drill/encerramento.*", "methods": ["GET"]}
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BiObras",
+        "description": "BI Tributos - Obras",
+        "resources": [
+          {"accessControll": null, "urlPattern": "/api/dashboard/obras.*", "methods": ["GET"]},
+          {"accessControll": null, "urlPattern": "/api/drill/obras.*", "methods": ["GET"]}
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BiQualidadeAuditoria",
+        "description": "BI Tributos - Qualidade e auditoria",
+        "resources": [
+          {"accessControll": null, "urlPattern": "/api/dashboard/qualidade.*", "methods": ["GET"]},
+          {"accessControll": null, "urlPattern": "/api/drill/qualidade.*", "methods": ["GET"]}
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BiAdministracaoUsuarios",
+        "description": "BI Tributos - Administração de usuários",
+        "resources": [
+          {"accessControll": "view", "urlPattern": "/api/admin/users.*", "methods": ["GET"]},
+          {"accessControll": "create", "urlPattern": "/api/admin/users", "methods": ["POST"]},
+          {"accessControll": "delete", "urlPattern": "/api/admin/users/.*", "methods": ["DELETE"]},
+          {"accessControll": "view", "urlPattern": "/api/admin/user-search.*", "methods": ["GET"]}
+        ],
+        "accessControll": [
+          {"id": "view", "description": "Consultar usuários"},
+          {"id": "create", "description": "Autorizar usuário"},
+          {"id": "delete", "description": "Remover usuário"}
+        ]
+      }
+    ],
+    "resources": [],
+    "groups": [
+      {
+        "id": "bi-executivo",
+        "description": "BI Executivo",
+        "constraints": ["BiVisaoGeral", "BiArrecadacao", "BiDividaAtiva", "BiParcelamentos"]
+      },
+      {
+        "id": "bi-financeiro",
+        "description": "BI Financeiro",
+        "constraints": ["BiVisaoGeral", "BiArrecadacao", "BiDebitos", "BiDividaAtiva", "BiParcelamentos", "BiEncerramento"]
+      },
+      {
+        "id": "bi-cadastros",
+        "description": "BI Cadastros",
+        "constraints": ["BiEconomicosIss", "BiImobiliarioIptu", "BiContribuintes", "BiObras", "BiTransferenciasItbi"]
+      },
+      {
+        "id": "bi-auditoria",
+        "description": "BI Auditoria",
+        "constraints": ["BiVisaoGeral", "BiQualidadeAuditoria", "BiEncerramento"]
+      },
+      {
+        "id": "bi-administrador",
+        "description": "BI Administrador",
+        "constraints": ["BiVisaoGeral", "BiArrecadacao", "BiDebitos", "BiDividaAtiva", "BiParcelamentos", "BiEconomicosIss", "BiImobiliarioIptu", "BiTransferenciasItbi", "BiContribuintes", "BiEncerramento", "BiObras", "BiQualidadeAuditoria", "BiAdministracaoUsuarios"]
+      }
+    ]
+  }
+]
