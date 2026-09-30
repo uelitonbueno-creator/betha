@@ -1,58 +1,52 @@
 # Segurança das credenciais Betha
 
-## Regra principal
+Este repositório é público. Nunca gravar aqui chave privada, Access Token, User-Access, client_secret, cookies/sessões ou respostas fiscais.
 
-Este repositório é público. Nunca gravar aqui:
+## Autenticação da Integrações BI
 
-- chave privada;
-- Access Token;
-- User-Access;
-- client_secret;
-- cookies/sessões;
-- respostas da API que contenham dados pessoais ou fiscais.
+O backend envia:
 
-## Arquitetura adotada
+```http
+Authorization: Bearer <ACCESS_TOKEN>
+User-Access: <USER_ACCESS>
+```
+
+O navegador nunca recebe esses valores.
+
+## Multi-entidade
 
 ```text
-GitHub Pages (front-end público)
-        |
-        | HTTPS sem credenciais Betha
-        v
-Backend serverless / API própria
-        |
-        | Authorization: Bearer <token>
-        | User-Access: <user-access>
-        v
+GitHub Pages
+   |
+   | tenant lógico + filtros
+   v
+Backend BI Tributos
+   |
+   +-- valida sessão/autorização
+   +-- resolve tenant
+   +-- recupera User-Access secreto
+   +-- escolhe fonte BI ou fonte base
+   v
 API Betha
 ```
 
-O navegador conhece apenas a URL do nosso backend. As credenciais Betha permanecem no cofre de segredos do provedor do backend.
+Na fase inicial, os tenants ficam em `BETHA_TENANTS_JSON`, cadastrado como secret. Cada prefeitura tem seu próprio `User-Access`. Um `accessToken` específico por tenant também é suportado; na ausência dele, o backend usa `BETHA_ACCESS_TOKEN`.
 
-## Credencial de Serviço
+## Fonte base
 
-Para BI, a documentação do Studio indica a credencial de Serviço, usando Client Credentials.
+A fonte base é complementar e usa apenas endpoints explicitamente cadastrados em `BETHA_BASE_RESOURCE_MAP_JSON`. Não há proxy livre de URLs.
 
-No nosso caso inicial:
+## Trava antes do SSO
 
-- **Chave pública:** pode ser usada no fluxo de autorização da entidade, mas não precisa ficar no front.
-- **Chave privada:** manter fora do GitHub e fora do navegador.
-- **Access Token:** guardar como secret do backend.
-- **User-Access:** guardar como secret do backend; é específico por contexto/entidade.
-- **Client secret:** se for usado para renovar/obter token, somente no backend.
+Por padrão, `/api/data/*` fica bloqueado enquanto a autenticação da aplicação não estiver integrada. `ALLOW_UNAUTHENTICATED_DEV=true` serve apenas para teste controlado.
 
-Se o token for gerado manualmente no Studio e for de longa duração, não há necessidade de guardar a chave privada no ambiente de execução.
+## Secrets
 
-## GitHub Secrets
-
-GitHub Actions Secrets são adequados para CI/CD, mas **não são um cofre de runtime para GitHub Pages**. Uma página estática não consegue usar um secret sem que ele acabe exposto no navegador.
-
-## Provedor sugerido para o backend
-
-O projeto contém `backend/worker.js`, preparado para um serviço serverless com secrets. Uma opção simples é Cloudflare Workers:
+GitHub Pages não é cofre de runtime. Para um Worker, configure por exemplo:
 
 ```bash
 wrangler secret put BETHA_ACCESS_TOKEN
-wrangler secret put BETHA_USER_ACCESS
+wrangler secret put BETHA_TENANTS_JSON
 ```
 
-Os valores não entram no Git nem no JavaScript entregue ao usuário.
+Para dezenas/centenas de prefeituras, o registry poderá ser migrado para armazenamento persistente criptografado, mantendo apenas uma chave mestra no cofre do backend.
