@@ -2,13 +2,18 @@ name = "betha-bi-api"
 main = "worker.js"
 compatibility_date = "2026-09-30"
 
-# Variáveis SEM segredo:
 [vars]
 ALLOWED_ORIGINS = "https://uelitonbueno-creator.github.io"
-BETHA_API_BASE = "PREENCHER_COM_HOST_DA_API_TRIBUTOS_BI"
-BETHA_OVERVIEW_PATH = ""
+BETHA_BI_API_BASE = "https://tributos.suite.betha.cloud"
 
-# NÃO coloque os valores abaixo neste arquivo.
-# Grave-os no ambiente de execução como secrets:
-# wrangler secret put BETHA_ACCESS_TOKEN
-# wrangler secret put BETHA_USER_ACCESS
+# Fonte base do Tributos: preencher quando a API oficial correspondente for mapeada.
+BETHA_BASE_API_BASE = ""
+BETHA_BASE_RESOURCE_MAP_JSON = "{}"
+
+# Segurança: manter false em produção.
+ALLOW_UNAUTHENTICATED_DEV = "false"
+
+# NÃO colocar valores secretos neste arquivo.
+# Configurar como secrets:
+#   wrangler secret put BETHA_ACCESS_TOKEN
+#   wrangler secret put BETHA_TENANTS_JSON
