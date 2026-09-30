@@ -12,6 +12,9 @@ const BI_BASE_DEFAULT = "https://tributos.suite.betha.cloud";
 const AUTH_BASE = "https://plataforma-autorizacoes.betha.cloud";
 const USERS_BASE = "https://plataforma-usuarios.betha.cloud";
 const LICENSES_BASE = "https://plataforma-licencas.betha.cloud";
+const OAUTH_TOKEN_URL = "https://plataforma-oauth.betha.cloud/auth/oauth2/token";
+const BROWSER_CLIENT_ID = "9296eb53-4d03-495b-96e6-a3ed3a7d14e3";
+const BROWSER_REDIRECT_URI = "https://uelitonbueno-creator.github.io/betha/auth/callback.html";
 
 const BI_RESOURCES = Object.freeze({
   contribuintes: "/integracoes-bi/v1/contribuintes",
@@ -383,6 +386,62 @@ export default {
         tenantsConfigured:Boolean(env.BETHA_TENANTS_JSON),
         userAuthorizationRequired:String(env.ALLOW_UNAUTHENTICATED_DEV || "").toLowerCase()!=="true"
       });
+    }
+
+    if (url.pathname==="/api/auth/exchange" && request.method==="POST") {
+      try {
+        const body=await request.json();
+        const code=String(body.code||"").trim();
+        const verifier=String(body.codeVerifier||"").trim();
+        const state=String(body.state||"").trim();
+
+        if (!code || !verifier) {
+          return json(request,env,400,{error:"AUTH_EXCHANGE_MISSING_DATA"});
+        }
+        if (verifier.length < 43 || verifier.length > 128) {
+          return json(request,env,400,{error:"PKCE_VERIFIER_INVALID"});
+        }
+
+        const form=new URLSearchParams();
+        form.set("grant_type","authorization_code");
+        form.set("client_id",BROWSER_CLIENT_ID);
+        form.set("code_verifier",verifier);
+        form.set("code",code);
+        form.set("redirect_uri",BROWSER_REDIRECT_URI);
+
+        const oauthResponse=await fetch(OAUTH_TOKEN_URL,{
+          method:"POST",
+          headers:{"Content-Type":"application/x-www-form-urlencoded","Accept":"application/json"},
+          body:form
+        });
+
+        const parsed=await readJsonResponse(oauthResponse);
+        if (!oauthResponse.ok) {
+          console.error("oauth exchange",oauthResponse.status,parsed.body);
+          return json(request,env,oauthResponse.status,{
+            error:"OAUTH_TOKEN_EXCHANGE_FAILED",
+            status:oauthResponse.status,
+            detail:parsed.body && typeof parsed.body==="object"
+              ? (parsed.body.error_description || parsed.body.error || null)
+              : null
+          });
+        }
+
+        if (!parsed.body || !parsed.body.access_token) {
+          return json(request,env,502,{error:"OAUTH_TOKEN_MISSING"});
+        }
+
+        return json(request,env,200,{
+          access_token:parsed.body.access_token,
+          token_type:parsed.body.token_type || "bearer",
+          expires_in:parsed.body.expires_in ?? parsed.body.expires ?? 0,
+          scope:parsed.body.scope || "",
+          state
+        });
+      } catch(error) {
+        console.error("auth exchange",error);
+        return json(request,env,500,{error:"AUTH_EXCHANGE_INTERNAL_ERROR"});
+      }
     }
 
     if (url.pathname==="/api/catalog" && request.method==="GET") {
