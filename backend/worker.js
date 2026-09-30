@@ -38,6 +38,27 @@ const BI_RESOURCES = Object.freeze({
   "transferencias-imoveis-compra": "/integracoes-bi/v1/transferencias-imoveis/compra"
 });
 
+const BASE_RESOURCES = Object.freeze({
+  imoveis: "/dados/v1/imoveis",
+  bairros: "/dados/v1/bairros",
+  distritos: "/dados/v1/distritos",
+  logradouros: "/dados/v1/logradouros",
+  loteamentos: "/dados/v1/loteamentos",
+  contribuintes: "/dados/v1/contribuintes",
+  "planta-valores": "/dados/v1/planta-valores",
+  obras: "/dados/v1/obras",
+  "obras-responsaveis": "/dados/v1/obras/responsaveis-execucao",
+  "creditos-tributarios": "/dados/v1/creditos-tributarios",
+  "creditos-tributarios-receitas": "/dados/v1/creditos-tributarios/receitas",
+  "guias-unificadas": "/dados/v1/guias-unificadas",
+  parcelamentos: "/dados/v1/parcelamentos",
+  "parcelamentos-parcelas": "/dados/v1/parcelamentos/parcelas",
+  "encerramento-dividas": "/dados/v1/encerramento-mensal/movimentacoes-dividas",
+  "encerramento-lancamentos": "/dados/v1/encerramento-mensal/movimentacoes-lanctos",
+  dividas: "/dados/v1/dividas",
+  "imoveis-transferencias": "/dados/v1/imoveis/transferencias"
+});
+
 const FORWARDED_QUERY_PARAMS = new Set(["offset","limit","filter","fields","cpaFields","sort"]);
 
 function corsHeaders(request, env) {
@@ -104,7 +125,7 @@ function buildForwardedQuery(url) {
 }
 
 function baseResourceMap(env) {
-  return parseJsonObject(env.BETHA_BASE_RESOURCE_MAP_JSON,{});
+  return {...BASE_RESOURCES, ...parseJsonObject(env.BETHA_BASE_RESOURCE_MAP_JSON,{})};
 }
 
 function resolveResource(env,source,resource) {
@@ -117,8 +138,7 @@ function resolveResource(env,source,resource) {
     const map=baseResourceMap(env);
     const path=map[resource];
     if (!path || typeof path!=="string" || !path.startsWith("/")) throw new Error("BASE_RESOURCE_NOT_CONFIGURED");
-    if (!env.BETHA_BASE_API_BASE) throw new Error("BETHA_BASE_API_BASE_NOT_CONFIGURED");
-    return {base:env.BETHA_BASE_API_BASE,path};
+    return {base:env.BETHA_BASE_API_BASE || BI_BASE_DEFAULT,path};
   }
   throw new Error("INVALID_SOURCE");
 }
