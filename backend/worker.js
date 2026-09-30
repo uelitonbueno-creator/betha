@@ -1,13 +1,17 @@
 /**
  * BI Tributos - backend multi-entidade.
  *
- * Segurança por padrão:
- * - nenhuma credencial vai para o front-end;
- * - User-Access é resolvido no servidor por tenant;
- * - rotas de dados ficam BLOQUEADAS até a autenticação/SSO ser integrada;
- * - somente endpoints previamente autorizados podem ser chamados.
+ * Segurança:
+ * - Token de serviço e User-Access nunca saem do backend.
+ * - O token do usuário autenticado é usado apenas para validar identidade/acessos
+ *   e para operações de administração permitidas pela Betha.
+ * - Todo acesso a dados valida se o usuário possui vínculo com o database+entity
+ *   do tenant solicitado.
  */
 const BI_BASE_DEFAULT = "https://tributos.suite.betha.cloud";
+const AUTH_BASE = "https://plataforma-autorizacoes.betha.cloud";
+const USERS_BASE = "https://plataforma-usuarios.betha.cloud";
+const LICENSES_BASE = "https://plataforma-licencas.betha.cloud";
 
 const BI_RESOURCES = Object.freeze({
   contribuintes: "/integracoes-bi/v1/contribuintes",
@@ -63,12 +67,13 @@ const FORWARDED_QUERY_PARAMS = new Set(["offset","limit","filter","fields","cpaF
 
 function corsHeaders(request, env) {
   const origin = request.headers.get("Origin") || "";
-  const allowed = String(env.ALLOWED_ORIGINS || "").split(",").map(v => v.trim()).filter(Boolean);
+  const raw = env.ALLOWED_ORIGINS || "https://uelitonbueno-creator.github.io";
+  const allowed = String(raw).split(",").map(v => v.trim()).filter(Boolean);
   const allowOrigin = allowed.includes(origin) ? origin : "";
   return {
     ...(allowOrigin ? {"Access-Control-Allow-Origin": allowOrigin} : {}),
-    "Access-Control-Allow-Methods": "GET,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Accept,X-Tenant-Id",
+    "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type,Accept,Authorization,X-Tenant-Id",
     "Vary": "Origin",
     "Cache-Control": "no-store"
   };
@@ -102,18 +107,139 @@ function resolveTenant(env, tenantId) {
   return {
     id:tenantId,
     name:tenant.name || tenantId,
-    entityId:tenant.entityId || null,
-    databaseId:tenant.databaseId || null,
+    entityId:tenant.entityId ? String(tenant.entityId) : null,
+    databaseId:tenant.databaseId ? String(tenant.databaseId) : null,
     userAccess:tenant.userAccess,
     accessToken:tenant.accessToken || env.BETHA_ACCESS_TOKEN || ""
   };
 }
 
-function requireApplicationSession(request, env) {
-  if (String(env.ALLOW_UNAUTHENTICATED_DEV || "").toLowerCase()==="true") return;
-  // TODO: trocar por validação da sessão/identidade Betha.
-  // O tenant solicitado deverá ser conferido contra as entidades autorizadas ao usuário.
-  throw new Error("APPLICATION_SESSION_NOT_CONFIGURED");
+function getUserToken(request) {
+  const header=request.headers.get("Authorization") || "";
+  const match=header.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : "";
+}
+
+async function readJsonResponse(response) {
+  const text=await response.text();
+  let body=null;
+  try { body=text ? JSON.parse(text) : null; } catch { body=text; }
+  return {body,text};
+}
+
+async function platformRequest(url, options={}) {
+  const response=await fetch(url,options);
+  const parsed=await readJsonResponse(response);
+  if (!response.ok) {
+    const error=new Error("PLATFORM_HTTP_"+response.status);
+    error.status=response.status;
+    error.remoteBody=typeof parsed.body==="string" ? parsed.body.slice(0,500) : parsed.body;
+    throw error;
+  }
+  return parsed.body;
+}
+
+async function getUserAccesses(userToken) {
+  if (!userToken) throw new Error("USER_TOKEN_REQUIRED");
+  const payload=await platformRequest(
+    AUTH_BASE+"/user-accounts/v0.1/api/suite/users/@me/access",
+    {headers:{"Accept":"application/json","Authorization":"Bearer "+userToken}}
+  );
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.content)) return payload.content;
+  return [];
+}
+
+function parseContextString(context) {
+  if (!context || typeof context!=="string") return {};
+  try {
+    let normalized=context.replace(/-/g,"+").replace(/_/g,"/");
+    while(normalized.length%4) normalized+="=";
+    const decoded=atob(normalized);
+    const out={};
+    decoded.split(",").forEach(part=>{
+      const idx=part.indexOf(":");
+      if(idx>0) out[part.slice(0,idx).trim()]=part.slice(idx+1).trim();
+    });
+    return out;
+  } catch { return {}; }
+}
+
+function accessValues(access) {
+  const values=(access && access.values && typeof access.values==="object") ? access.values : {};
+  const decoded=parseContextString(access && access.context);
+  return {
+    database:String(values.database ?? decoded.database ?? ""),
+    entity:String(values.entity ?? decoded.entity ?? "")
+  };
+}
+
+function unwrapEntity(payload) {
+  if (!payload) return null;
+  if (Array.isArray(payload)) return payload[0] || null;
+  if (payload.content && Array.isArray(payload.content)) return payload.content[0] || null;
+  if (payload.data && typeof payload.data==="object") return unwrapEntity(payload.data);
+  return payload;
+}
+
+function scalar(value) {
+  if (value===null || value===undefined) return "";
+  if (typeof value==="object") return String(value.id ?? value.codigo ?? value.value ?? "");
+  return String(value);
+}
+
+function extractTenantContext(payload, tenant) {
+  const obj=unwrapEntity(payload) || {};
+  const entity=tenant.entityId || scalar(obj.entityId) || scalar(obj.entidadeId) ||
+    scalar(obj.entity) || scalar(obj.entidade) || scalar(obj.id);
+  const database=tenant.databaseId || scalar(obj.databaseId) || scalar(obj.database) ||
+    scalar(obj.banco) || scalar(obj.database?.id);
+  return {entity:String(entity||""),database:String(database||""),raw:obj};
+}
+
+async function getTenantContext(userToken, tenant) {
+  if (tenant.entityId && tenant.databaseId) {
+    return {entity:tenant.entityId,database:tenant.databaseId};
+  }
+  try {
+    const payload=await platformRequest(
+      LICENSES_BASE+"/licenses/v0.1/api/entidades/atual/",
+      {headers:{
+        "Accept":"application/json",
+        "Authorization":"Bearer "+userToken,
+        "User-Access":tenant.userAccess
+      }}
+    );
+    const ctx=extractTenantContext(payload,tenant);
+    if (ctx.entity && ctx.database) return ctx;
+  } catch(error) {
+    console.warn("tenant context via licensing failed",tenant.id,error.message);
+  }
+  throw new Error("TENANT_CONTEXT_UNRESOLVED");
+}
+
+function matchAccess(accesses, context) {
+  return accesses.find(access=>{
+    const values=accessValues(access);
+    return values.entity===String(context.entity) && values.database===String(context.database);
+  }) || null;
+}
+
+async function authorizeTenant(request, env, tenant) {
+  if (String(env.ALLOW_UNAUTHENTICATED_DEV || "").toLowerCase()==="true") {
+    return {dev:true,access:null,context:{entity:tenant.entityId||"",database:tenant.databaseId||""},userToken:""};
+  }
+  const userToken=getUserToken(request);
+  if (!userToken) throw new Error("USER_TOKEN_REQUIRED");
+  const [accesses,context]=await Promise.all([
+    getUserAccesses(userToken),
+    getTenantContext(userToken,tenant)
+  ]);
+  const access=matchAccess(accesses,context);
+  if (!access) throw new Error("TENANT_ACCESS_DENIED");
+  if (access.accepted===false) throw new Error("TENANT_ACCESS_NOT_ACCEPTED");
+  if (access.expiresIn && new Date(access.expiresIn).getTime() < Date.now()) throw new Error("TENANT_ACCESS_EXPIRED");
+  return {userToken,access,context};
 }
 
 function buildForwardedQuery(url) {
@@ -155,16 +281,63 @@ async function bethaGet(env,tenant,source,resource,query="") {
       "User-Access":tenant.userAccess
     }
   });
-  const text=await response.text();
-  let body=null;
-  try { body=text?JSON.parse(text):null; } catch { body=text; }
+  const parsed=await readJsonResponse(response);
   if (!response.ok) {
     const error=new Error("BETHA_HTTP_"+response.status);
     error.status=response.status;
-    error.remoteBody=typeof body==="string"?body.slice(0,300):body;
+    error.remoteBody=typeof parsed.body==="string"?parsed.body.slice(0,300):parsed.body;
     throw error;
   }
-  return body;
+  return parsed.body;
+}
+
+async function listContextUsers(userToken, tenant, url) {
+  const params=new URLSearchParams();
+  params.set("limit",url.searchParams.get("limit") || "100");
+  params.set("offset",url.searchParams.get("offset") || "0");
+  const target=AUTH_BASE+"/user-accounts/v0.1/api/management/access?"+params.toString();
+  return platformRequest(target,{headers:{
+    "Accept":"application/json",
+    "Authorization":"Bearer "+userToken,
+    "User-Access":tenant.userAccess
+  }});
+}
+
+function escapeFilterValue(value) {
+  return String(value||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+}
+
+async function searchCentralUser(userToken, user) {
+  const filter="id='"+escapeFilterValue(user)+"'";
+  const target=USERS_BASE+"/usuarios/v0.1/api/usuarios/?filter="+encodeURIComponent(filter);
+  return platformRequest(target,{headers:{
+    "Accept":"application/json",
+    "Authorization":"Bearer "+userToken
+  }});
+}
+
+async function createContextUser(userToken, tenant, body) {
+  return platformRequest(AUTH_BASE+"/user-accounts/v0.1/api/management/access",{
+    method:"POST",
+    headers:{
+      "Accept":"application/json",
+      "Content-Type":"application/json",
+      "Authorization":"Bearer "+userToken,
+      "User-Access":tenant.userAccess
+    },
+    body:JSON.stringify(body)
+  });
+}
+
+async function deleteContextUser(userToken, tenant, accessId) {
+  return platformRequest(AUTH_BASE+"/user-accounts/v0.1/api/management/access/"+encodeURIComponent(accessId),{
+    method:"DELETE",
+    headers:{
+      "Accept":"application/json",
+      "Authorization":"Bearer "+userToken,
+      "User-Access":tenant.userAccess
+    }
+  });
 }
 
 function publicCatalog(env) {
@@ -181,14 +354,19 @@ function errorResponse(request,env,error) {
     TENANT_REQUIRED:400,
     TENANT_NOT_FOUND:403,
     TENANT_USER_ACCESS_NOT_CONFIGURED:503,
-    APPLICATION_SESSION_NOT_CONFIGURED:401,
+    USER_TOKEN_REQUIRED:401,
+    TENANT_CONTEXT_UNRESOLVED:503,
+    TENANT_ACCESS_DENIED:403,
+    TENANT_ACCESS_NOT_ACCEPTED:403,
+    TENANT_ACCESS_EXPIRED:403,
     BI_RESOURCE_NOT_ALLOWED:404,
     BASE_RESOURCE_NOT_CONFIGURED:501,
-    BETHA_BASE_API_BASE_NOT_CONFIGURED:501,
     BETHA_ACCESS_TOKEN_NOT_CONFIGURED:503,
     INVALID_SOURCE:400
   };
-  if (code.startsWith("BETHA_HTTP_")) return json(request,env,502,{error:"Falha ao consultar a Betha",code});
+  if (code.startsWith("BETHA_HTTP_") || code.startsWith("PLATFORM_HTTP_")) {
+    return json(request,env,error.status===401?401:error.status===403?403:502,{error:code});
+  }
   return json(request,env,statusByCode[code]||500,{error:code});
 }
 
@@ -196,41 +374,148 @@ export default {
   async fetch(request,env) {
     const url=new URL(request.url);
     if (request.method==="OPTIONS") return new Response(null,{status:204,headers:corsHeaders(request,env)});
-    if (request.method!=="GET") return json(request,env,405,{error:"METHOD_NOT_ALLOWED"});
 
-    if (url.pathname==="/api/health") {
+    if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
-        baseApiConfigured:Boolean(env.BETHA_BASE_API_BASE),
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
         tenantsConfigured:Boolean(env.BETHA_TENANTS_JSON),
-        dataRoutesLocked:String(env.ALLOW_UNAUTHENTICATED_DEV || "").toLowerCase()!=="true"
+        userAuthorizationRequired:String(env.ALLOW_UNAUTHENTICATED_DEV || "").toLowerCase()!=="true"
       });
     }
 
-    if (url.pathname==="/api/catalog") return json(request,env,200,publicCatalog(env));
+    if (url.pathname==="/api/catalog" && request.method==="GET") {
+      return json(request,env,200,publicCatalog(env));
+    }
+
+    // Teste de credencial de serviço: consulta mínima e não devolve dados cadastrais.
+    if (url.pathname==="/api/connection-test" && request.method==="GET") {
+      try {
+        const tenant=resolveTenant(env,getTenantId(request,url));
+        const body=await bethaGet(env,tenant,"bi","contribuintes","limit=1&fields=id");
+        return json(request,env,200,{
+          ok:true,
+          bethaAuthenticated:true,
+          tenant:tenant.id,
+          sampleReturned:body && Array.isArray(body.content) ? body.content.length : 0
+        });
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
+    if (url.pathname==="/api/me/access" && request.method==="GET") {
+      try {
+        const accesses=await getUserAccesses(getUserToken(request));
+        return json(request,env,200,{accesses});
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
+    if (url.pathname==="/api/me/tenants" && request.method==="GET") {
+      try {
+        const userToken=getUserToken(request);
+        if (!userToken) throw new Error("USER_TOKEN_REQUIRED");
+        const registry=parseJsonObject(env.BETHA_TENANTS_JSON,{});
+        const tenants=[];
+        for (const id of Object.keys(registry)) {
+          try {
+            const tenant=resolveTenant(env,id);
+            const auth=await authorizeTenant(request,env,tenant);
+            tenants.push({
+              id:tenant.id,
+              name:tenant.name,
+              entityId:auth.context.entity,
+              databaseId:auth.context.database,
+              admin:Boolean(auth.access && auth.access.admin),
+              technical:Boolean(auth.access && auth.access.technical)
+            });
+          } catch(error) {
+            if (!["TENANT_ACCESS_DENIED","TENANT_ACCESS_NOT_ACCEPTED","TENANT_ACCESS_EXPIRED"].includes(error.message)) {
+              console.warn("tenant validation",id,error.message);
+            }
+          }
+        }
+        return json(request,env,200,{tenants});
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
+    if (url.pathname==="/api/admin/users" && request.method==="GET") {
+      try {
+        const tenant=resolveTenant(env,getTenantId(request,url));
+        const auth=await authorizeTenant(request,env,tenant);
+        const body=await listContextUsers(auth.userToken,tenant,url);
+        return json(request,env,200,body);
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
+    if (url.pathname==="/api/admin/user-search" && request.method==="GET") {
+      try {
+        const tenant=resolveTenant(env,getTenantId(request,url));
+        const auth=await authorizeTenant(request,env,tenant);
+        const user=url.searchParams.get("user") || "";
+        if (!user.trim()) return json(request,env,400,{error:"USER_REQUIRED"});
+        const body=await searchCentralUser(auth.userToken,user.trim());
+        return json(request,env,200,body);
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
+    if (url.pathname==="/api/admin/users" && request.method==="POST") {
+      try {
+        const tenant=resolveTenant(env,getTenantId(request,url));
+        const auth=await authorizeTenant(request,env,tenant);
+        if (!auth.access || (!auth.access.admin && !auth.access.technical)) throw new Error("ADMIN_REQUIRED");
+        const body=await request.json();
+        const created=await createContextUser(auth.userToken,tenant,body);
+        return json(request,env,201,created);
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
+    const deleteUserMatch=url.pathname.match(/^\/api\/admin\/users\/([^/]+)$/);
+    if (deleteUserMatch && request.method==="DELETE") {
+      try {
+        const tenant=resolveTenant(env,getTenantId(request,url));
+        const auth=await authorizeTenant(request,env,tenant);
+        if (!auth.access || (!auth.access.admin && !auth.access.technical)) throw new Error("ADMIN_REQUIRED");
+        const body=await deleteContextUser(auth.userToken,tenant,deleteUserMatch[1]);
+        return json(request,env,200,body || {ok:true});
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
 
     const dataMatch=url.pathname.match(/^\/api\/data\/([a-z0-9-]+)$/);
-    if (dataMatch) {
+    if (dataMatch && request.method==="GET") {
       try {
-        requireApplicationSession(request,env);
-        const tenantId=getTenantId(request,url);
-        const tenant=resolveTenant(env,tenantId);
+        const tenant=resolveTenant(env,getTenantId(request,url));
+        const auth=await authorizeTenant(request,env,tenant);
         const resource=dataMatch[1];
         const source=(url.searchParams.get("source") || "bi").toLowerCase();
         const query=buildForwardedQuery(url);
         const body=await bethaGet(env,tenant,source,resource,query);
         return json(request,env,200,{
           source,
-          tenant:{id:tenant.id,name:tenant.name,entityId:tenant.entityId,databaseId:tenant.databaseId},
+          tenant:{id:tenant.id,name:tenant.name,entityId:auth.context.entity,databaseId:auth.context.database},
           resource,
           data:body
         });
       } catch(error) {
-        console.error("data route",error);
         return errorResponse(request,env,error);
       }
+    }
+
+    if (!["GET","POST","DELETE"].includes(request.method)) {
+      return json(request,env,405,{error:"METHOD_NOT_ALLOWED"});
     }
 
     return json(request,env,404,{error:"ROUTE_NOT_FOUND"});
