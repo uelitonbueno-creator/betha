@@ -11,10 +11,12 @@
       const message = document.getElementById("authMessage");
       message.textContent = "";
       try {
+        message.textContent = "Aguardando autenticação na Betha…";
         await BIAuth.login();
-        location.reload();
+        message.textContent = "Autenticação concluída. Carregando BI…";
+        setTimeout(() => location.reload(), 150);
       } catch (error) {
-        message.textContent = "Não foi possível iniciar o login: " + error.message;
+        message.textContent = "Falha no login: " + error.message;
       }
     });
     return;
