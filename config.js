@@ -5,5 +5,5 @@ window.BI_CONFIG = {
 
   // URL do backend seguro. Exemplo futuro:
   // BACKEND_URL: "https://betha-bi-api.seudominio.workers.dev"
-  BACKEND_URL: ""
+  BACKEND_URL: "https://betha-bi-api.ueliton-bueno.workers.dev"
 };
