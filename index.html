@@ -19,20 +19,33 @@
 </head>
 <body>
   <bth-app id="bethaApp" menu-bg-color="#202027">
+
     <bth-marca-produto
       slot="menu_marca_produto"
       produto="BI Tributos">
     </bth-marca-produto>
 
     <div slot="menu_ferramentas" class="menu-tools" aria-label="Ferramentas">
-      <button class="tool-button" type="button" title="Pesquisar" aria-label="Pesquisar"><i class="mdi mdi-magnify"></i></button>
-      <button class="tool-button" type="button" title="Aplicações" aria-label="Aplicações"><i class="mdi mdi-view-grid"></i></button>
-      <button class="tool-button" type="button" title="Configurações" aria-label="Configurações"><i class="mdi mdi-cog"></i></button>
-      <button class="tool-button" type="button" title="Ajuda" aria-label="Ajuda"><i class="mdi mdi-help-circle"></i></button>
+      <button class="tool-button" type="button" title="Pesquisar"><i class="mdi mdi-magnify"></i></button>
+      <button class="tool-button" type="button" title="Aplicações"><i class="mdi mdi-view-grid"></i></button>
+      <button class="tool-button" id="integrationButton" type="button" title="Integração"><i class="mdi mdi-connection"></i></button>
+      <button class="tool-button" type="button" title="Ajuda"><i class="mdi mdi-help-circle"></i></button>
     </div>
 
     <div slot="container_contexto" class="context-bar">
-      <span><i class="mdi mdi-office-building"></i> <strong id="entityContext">ENTIDADE NÃO IDENTIFICADA</strong></span>
+      <div class="entity-control">
+        <button id="entityButton" class="context-entity-button" type="button">
+          <i class="mdi mdi-office-building"></i>
+          <strong id="entityContext">ENTIDADE NÃO IDENTIFICADA</strong>
+          <i class="mdi mdi-chevron-down"></i>
+        </button>
+        <div id="entityMenu" class="entity-menu" hidden>
+          <div class="entity-menu-title">Entidades autorizadas</div>
+          <div id="entityList" class="entity-list">
+            <button type="button" class="entity-option is-current">Entidade atual</button>
+          </div>
+        </div>
+      </div>
       <span class="context-divider">›</span>
       <span>BI TRIBUTOS</span>
       <span class="context-divider">›</span>
@@ -43,12 +56,13 @@
       <section class="surface">
         <header class="page-heading">
           <div>
+            <div class="level-label" id="levelLabel">MACRO</div>
             <h1 id="pageTitle">Visão geral</h1>
-            <p>Indicadores tributários obtidos das integrações BI da Betha.</p>
+            <p id="pageDescription">Visão executiva da arrecadação e da carteira tributária.</p>
           </div>
           <div id="apiStatus" class="api-status api-status-waiting">
             <span class="status-dot"></span>
-            <span>API não configurada</span>
+            <span>Estrutura pronta · dados aguardando integração</span>
           </div>
         </header>
 
@@ -57,117 +71,92 @@
             <label for="periodo">Período</label>
             <select id="periodo">
               <option value="mes">Mês atual</option>
-              <option value="ano">Ano atual</option>
+              <option value="ano" selected>Ano atual</option>
               <option value="12m">Últimos 12 meses</option>
+              <option value="todos">Todo o histórico</option>
             </select>
           </div>
           <div class="field">
             <label for="exercicio">Exercício</label>
             <select id="exercicio"></select>
           </div>
+          <div class="field">
+            <label for="fontePreferencial">Fonte</label>
+            <select id="fontePreferencial">
+              <option value="auto">Automática (BI → Base)</option>
+              <option value="bi">Integrações BI</option>
+              <option value="base">Dados Tributos</option>
+            </select>
+          </div>
           <button id="refreshButton" class="btn-primary-betha" type="button">
             <i class="mdi mdi-refresh"></i> ATUALIZAR
           </button>
         </section>
 
-        <section class="module-grid" aria-label="Módulos">
-          <button class="module-tile" data-view="arrecadacao">
-            <span>Arrecadação</span><i class="mdi mdi-cash-multiple"></i>
-          </button>
-          <button class="module-tile" data-view="divida">
-            <span>Dívida ativa</span><i class="mdi mdi-file-document-alert"></i>
-          </button>
-          <button class="module-tile" data-view="issqn">
-            <span>ISSQN</span><i class="mdi mdi-domain"></i>
-          </button>
-          <button class="module-tile" data-view="iptu">
-            <span>IPTU / Imobiliário</span><i class="mdi mdi-home-city"></i>
-          </button>
-          <button class="module-tile" data-view="contribuintes">
-            <span>Contribuintes</span><i class="mdi mdi-account-group"></i>
-          </button>
-          <button class="module-tile" data-view="imoveis">
-            <span>Imóveis</span><i class="mdi mdi-home-map-marker"></i>
-          </button>
+        <section id="kpiGrid" class="kpi-grid" aria-label="Indicadores"></section>
+
+        <section class="drill-hint">
+          <i class="mdi mdi-arrow-expand-down"></i>
+          <div>
+            <strong>Do macro para o micro</strong>
+            <span>Cada indicador e gráfico poderá abrir a composição, depois o cadastro/origem e, por fim, o registro individual.</span>
+          </div>
         </section>
 
-        <section class="kpi-grid" aria-label="Indicadores">
-          <article class="kpi-card">
-            <div class="kpi-icon"><i class="mdi mdi-cash-check"></i></div>
-            <div><small>Arrecadado no período</small><strong id="kpiArrecadado">—</strong><span id="kpiArrecadadoMeta">aguardando API</span></div>
-          </article>
-          <article class="kpi-card">
-            <div class="kpi-icon"><i class="mdi mdi-cash-clock"></i></div>
-            <div><small>Em aberto</small><strong id="kpiAberto">—</strong><span id="kpiAbertoMeta">aguardando API</span></div>
-          </article>
-          <article class="kpi-card">
-            <div class="kpi-icon"><i class="mdi mdi-account-cash"></i></div>
-            <div><small>Contribuintes</small><strong id="kpiContribuintes">—</strong><span id="kpiContribuintesMeta">aguardando API</span></div>
-          </article>
-          <article class="kpi-card">
-            <div class="kpi-icon"><i class="mdi mdi-home-city-outline"></i></div>
-            <div><small>Imóveis</small><strong id="kpiImoveis">—</strong><span id="kpiImoveisMeta">aguardando API</span></div>
-          </article>
-        </section>
+        <section id="chartGrid" class="chart-grid" aria-label="Gráficos"></section>
 
-        <section class="dashboard-grid">
-          <article class="panel">
-            <div class="panel-header">
-              <div>
-                <h2>Evolução da arrecadação</h2>
-                <p>Valores consolidados por competência.</p>
-              </div>
-            </div>
-            <div class="chart-wrap"><canvas id="revenueChart"></canvas></div>
-          </article>
-
-          <article class="panel">
-            <div class="panel-header">
-              <div>
-                <h2>Composição dos créditos</h2>
-                <p>Distribuição conforme retorno da API.</p>
-              </div>
-            </div>
-            <div class="chart-wrap chart-wrap-small"><canvas id="creditsChart"></canvas></div>
-          </article>
-        </section>
-
-        <section class="panel">
+        <section class="panel source-panel">
           <div class="panel-header">
             <div>
-              <h2>Integração</h2>
-              <p>Estado das camadas necessárias para o BI.</p>
+              <h2>Fontes utilizadas nesta visão</h2>
+              <p>O sistema prioriza a Integrações BI e usa a API base do Tributos para complementar histórico e cadastros.</p>
             </div>
           </div>
-          <div class="table-responsive">
-            <table class="status-table">
-              <thead>
-                <tr><th>Camada</th><th>Status</th><th>Observação</th></tr>
-              </thead>
-              <tbody>
-                <tr><td>Interface Betha</td><td><span class="badge-ok">PRONTA</span></td><td>Estrutura de aplicação e layout no padrão visual Betha.</td></tr>
-                <tr><td>Backend seguro</td><td id="backendCell"><span class="badge-warn">AGUARDANDO</span></td><td>Responsável por proteger token e User-Access.</td></tr>
-                <tr><td>Tributos integrações BI</td><td id="apiCell"><span class="badge-warn">AGUARDANDO</span></td><td>Endpoints serão mapeados a partir do Swagger do Studio.</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section class="panel context-panel">
-          <div class="panel-header">
-            <div>
-              <h2>Contexto de abertura</h2>
-              <p>Parâmetros recebidos quando o produto for aberto pela Suíte Betha.</p>
-            </div>
-            <button id="copyContext" class="btn-link-betha" type="button">COPIAR</button>
-          </div>
-          <pre id="contextOutput">Carregando...</pre>
+          <div id="sourceSummary" class="source-summary"></div>
         </section>
       </section>
     </main>
   </bth-app>
 
+  <aside id="detailDrawer" class="detail-drawer" aria-hidden="true">
+    <div class="drawer-header">
+      <div>
+        <small>DETALHAMENTO</small>
+        <h2 id="drawerTitle">Detalhamento</h2>
+      </div>
+      <button id="closeDrawer" class="drawer-close" type="button" aria-label="Fechar"><i class="mdi mdi-close"></i></button>
+    </div>
+    <div id="drawerBody" class="drawer-body"></div>
+  </aside>
+  <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
+
+  <aside id="integrationDrawer" class="detail-drawer" aria-hidden="true">
+    <div class="drawer-header">
+      <div>
+        <small>INTEGRAÇÃO</small>
+        <h2>Contexto e segurança</h2>
+      </div>
+      <button id="closeIntegration" class="drawer-close" type="button" aria-label="Fechar"><i class="mdi mdi-close"></i></button>
+    </div>
+    <div class="drawer-body">
+      <div class="integration-box">
+        <h3>Estado</h3>
+        <div id="integrationState">Aguardando backend.</div>
+      </div>
+      <div class="integration-box">
+        <h3>Contexto recebido</h3>
+        <pre id="contextOutput">Carregando...</pre>
+        <button id="copyContext" class="btn-link-betha" type="button">COPIAR CONTEXTO</button>
+      </div>
+      <div class="integration-box">
+        <h3>Regra de segurança</h3>
+        <p>Access Token e User-Access permanecem somente no backend. O navegador trabalha apenas com o tenant lógico e os dados autorizados.</p>
+      </div>
+    </div>
+  </aside>
+
   <script src="config.js"></script>
+  <script src="dashboard-catalog.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
