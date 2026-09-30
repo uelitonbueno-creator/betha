@@ -11,10 +11,8 @@
       const message = document.getElementById("authMessage");
       message.textContent = "";
       try {
-        message.textContent = "Aguardando autenticação na Betha…";
-        await BIAuth.login();
-        message.textContent = "Autenticação concluída. Carregando BI…";
-        setTimeout(() => location.reload(), 150);
+        message.textContent = "Redirecionando para a Betha…";
+        BIAuth.login(location.href);
       } catch (error) {
         message.textContent = "Falha no login: " + error.message;
       }
