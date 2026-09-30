@@ -1,26 +1,75 @@
-# BI Vella — teste Betha
+# BI Tributos — integração Betha
 
-Protótipo de front-end para uso como **URL do produto** no Betha Studio Aplicações.
+Protótipo de BI tributário com interface inspirada nos produtos Betha e preparado para consumir a API **Tributos integrações BI**.
+
+## Estado atual
+
+- Layout inicial no padrão visual Betha.
+- Uso dos Web Components oficiais `@betha-plataforma/estrutura-componentes`.
+- Material Design Icons.
+- Dashboard responsivo com módulos e indicadores.
+- Front-end sem credenciais.
+- Contrato preparado para backend seguro.
+- Exibição do contexto recebido ao abrir o produto pela Suíte.
+- Esqueleto de backend em `backend/`.
 
 ## Arquitetura
 
-- **GitHub Pages:** hospeda apenas arquivos públicos do front-end (HTML/CSS/JS).
-- **Betha:** permanece como fonte dos dados consumidos pelas APIs autorizadas.
-- **Segredos:** nunca devem ser gravados no front-end ou neste repositório público.
-- Se uma integração exigir `client_secret` ou processamento protegido, deve existir um backend seguro.
+```text
+Betha Suíte / Studio
+        |
+        v
+GitHub Pages
+(front-end)
+        |
+        v
+Backend seguro
+(secrets)
+        |
+        v
+Tributos integrações BI
+        |
+        v
+Dados da entidade Betha
+```
 
-## URL esperada do GitHub Pages
+## Publicação do front-end
 
+GitHub Pages:
+
+```text
 https://uelitonbueno-creator.github.io/betha/
+```
 
-Depois de habilitar o GitHub Pages na branch `main`, use essa URL no campo **URL do produto** do Studio Aplicações.
+No Studio Aplicações, esta é a URL a utilizar no campo **URL do produto** depois que o Pages estiver habilitado.
 
-## Primeiro teste
+## Credenciais
 
-Ao abrir a aplicação, o painel mostra:
-- URL atual;
-- referrer;
-- parâmetros de query recebidos;
-- data/hora local.
+**Não colocar chave privada, Access Token ou User-Access neste repositório.**
 
-Isso serve para identificar qual contexto o Studio/Suíte Betha envia ao produto antes de conectarmos APIs reais.
+A documentação Betha usa os cabeçalhos:
+
+```http
+Authorization: Bearer <ACCESS_TOKEN>
+User-Access: <USER_ACCESS>
+```
+
+Esses valores ficam apenas no backend.
+
+Veja [SECURITY.md](SECURITY.md).
+
+## Próxima etapa técnica
+
+1. Mapear os endpoints do Swagger **Tributos integrações BI**.
+2. Preencher o host e paths no backend.
+3. Configurar `BETHA_ACCESS_TOKEN` e `BETHA_USER_ACCESS` como secrets.
+4. Publicar o backend.
+5. Informar a URL do backend em `config.js`.
+6. Ligar os indicadores e gráficos aos retornos reais.
+
+## Referências oficiais
+
+- Design System Betha: https://docs.plataforma.betha.cloud/
+- Estrutura Componentes: https://github.com/betha-plataforma/estrutura-componentes
+- Tema Bootstrap 5: https://github.com/betha-plataforma/theme-bootstrap5
+- Studio Aplicações: https://studio.ajuda.betha.cloud/aplicacoes/studio/
