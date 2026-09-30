@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BI Vella | Betha</title>
+  <meta name="description" content="Protótipo de front-end para integração com Betha Studio Aplicações">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="logo">B</div>
+    <div>
+      <strong>BI Vella</strong>
+      <span>Aplicação integrada à Betha</span>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">AMBIENTE DE TESTE</p>
+        <h1>Painel Fiscal</h1>
+        <p class="subtitle">Front-end hospedado no GitHub Pages. Os dados reais serão obtidos das APIs Betha conforme as permissões da aplicação.</p>
+      </div>
+      <div class="status"><span></span> Front-end online</div>
+    </section>
+
+    <section class="cards">
+      <article class="card"><small>Contribuintes</small><strong>—</strong><em>aguardando API</em></article>
+      <article class="card"><small>Econômicos ativos</small><strong>—</strong><em>aguardando API</em></article>
+      <article class="card"><small>Dívidas em aberto</small><strong>—</strong><em>aguardando API</em></article>
+      <article class="card"><small>Pagamentos hoje</small><strong>—</strong><em>aguardando API</em></article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title">
+        <div>
+          <h2>Contexto recebido da Betha</h2>
+          <p>Esta tela registra somente no navegador os parâmetros enviados ao abrir o produto.</p>
+        </div>
+        <button id="copyBtn" type="button">Copiar contexto</button>
+      </div>
+      <pre id="context">Carregando...</pre>
+    </section>
+
+    <section class="panel">
+      <h2>Teste dos módulos</h2>
+      <div class="modules">
+        <button data-module="Contribuintes">Contribuintes</button>
+        <button data-module="Econômicos">Econômicos</button>
+        <button data-module="Dívidas">Dívidas</button>
+        <button data-module="Pagamentos">Pagamentos</button>
+        <button data-module="Notas fiscais">Notas fiscais</button>
+        <button data-module="Relatórios">Relatórios</button>
+      </div>
+      <div id="moduleResult" class="message">
+        Protótipo sem dados fictícios: os valores serão preenchidos apenas quando conectarmos uma API Betha real.
+      </div>
+    </section>
+
+    <section class="panel security">
+      <h2>Arquitetura do teste</h2>
+      <div class="flow">
+        <div>Suíte / Studio Betha</div><b>→</b>
+        <div>GitHub Pages<br><small>front-end</small></div><b>→</b>
+        <div>APIs Betha<br><small>dados</small></div>
+      </div>
+      <p><strong>Importante:</strong> nenhuma credencial secreta será colocada no GitHub. Se alguma API exigir <code>client_secret</code>, usaremos uma camada de backend protegida.</p>
+    </section>
+  </main>
+
+  <footer>BI Vella · protótipo técnico</footer>
+  <script src="app.js"></script>
+</body>
+</html>
