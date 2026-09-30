@@ -1,0 +1,14 @@
+name = "betha-bi-api"
+main = "worker.js"
+compatibility_date = "2026-09-30"
+
+# Variáveis SEM segredo:
+[vars]
+ALLOWED_ORIGINS = "https://uelitonbueno-creator.github.io"
+BETHA_API_BASE = "PREENCHER_COM_HOST_DA_API_TRIBUTOS_BI"
+BETHA_OVERVIEW_PATH = ""
+
+# NÃO coloque os valores abaixo neste arquivo.
+# Grave-os no ambiente de execução como secrets:
+# wrangler secret put BETHA_ACCESS_TOKEN
+# wrangler secret put BETHA_USER_ACCESS
