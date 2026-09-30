@@ -37,8 +37,9 @@
   function clear() {
     sessionStorage.removeItem(KEY_TOKEN);
     sessionStorage.removeItem(KEY_EXPIRES);
-    sessionStorage.removeItem(KEY_VERIFIER);
-    sessionStorage.removeItem(KEY_STATE);
+    localStorage.removeItem(KEY_VERIFIER);
+    localStorage.removeItem(KEY_STATE);
+    localStorage.removeItem(KEY_RETURN);
   }
 
   async function login(returnUrl = location.href) {
@@ -51,9 +52,9 @@
     const challenge = base64url(await sha256(verifier));
     const state = randomUrlSafe(24);
 
-    sessionStorage.setItem(KEY_VERIFIER, verifier);
-    sessionStorage.setItem(KEY_STATE, state);
-    sessionStorage.setItem(KEY_RETURN, returnUrl);
+    localStorage.setItem(KEY_VERIFIER, verifier);
+    localStorage.setItem(KEY_STATE, state);
+    localStorage.setItem(KEY_RETURN, returnUrl);
 
     const url = new URL(auth.AUTHORIZE_URL);
     url.searchParams.set("response_type", "code");
@@ -81,16 +82,51 @@
 
   async function handleCallback() {
     const auth = cfg();
-    const params = new URLSearchParams(location.search);
-    const error = params.get("error");
-    if (error) throw new Error(error + (params.get("error_description") ? ": " + params.get("error_description") : ""));
+    const query = new URLSearchParams(location.search);
+    const fragment = new URLSearchParams((location.hash || "").replace(/^#/, ""));
 
-    const code = params.get("code");
-    const state = params.get("state");
-    const expectedState = sessionStorage.getItem(KEY_STATE);
-    const verifier = sessionStorage.getItem(KEY_VERIFIER);
+    const error = query.get("error") || fragment.get("error");
+    if (error) {
+      const description = query.get("error_description") || fragment.get("error_description") || "";
+      throw new Error(error + (description ? ": " + description : ""));
+    }
 
-    if (!code) throw new Error("AUTHORIZATION_CODE_MISSING");
+    // Compatibilidade com o fluxo implicit que algumas credenciais Browser
+    // ainda podem retornar: #access_token=...
+    const fragmentToken = fragment.get("access_token");
+    if (fragmentToken) {
+      sessionStorage.setItem(KEY_TOKEN, fragmentToken);
+      const seconds = Number(fragment.get("expires_in") || fragment.get("expires") || 0);
+      if (seconds > 0) {
+        sessionStorage.setItem(KEY_EXPIRES, String(Date.now() + Math.max(0, seconds - 30) * 1000));
+      } else {
+        sessionStorage.removeItem(KEY_EXPIRES);
+      }
+
+      const state = fragment.get("state");
+      const expectedState = localStorage.getItem(KEY_STATE);
+      if (state && expectedState && state !== expectedState) throw new Error("OAUTH_STATE_INVALID");
+
+      localStorage.removeItem(KEY_VERIFIER);
+      localStorage.removeItem(KEY_STATE);
+
+      const returnUrl = localStorage.getItem(KEY_RETURN) || "../";
+      localStorage.removeItem(KEY_RETURN);
+      location.replace(returnUrl);
+      return;
+    }
+
+    // Fluxo recomendado: Authorization Code + PKCE.
+    const code = query.get("code");
+    const state = query.get("state");
+    const expectedState = localStorage.getItem(KEY_STATE);
+    const verifier = localStorage.getItem(KEY_VERIFIER);
+
+    if (!code) {
+      throw new Error(
+        "AUTHORIZATION_CODE_MISSING | query=" + location.search + " | hash=" + location.hash
+      );
+    }
     if (!state || !expectedState || state !== expectedState) throw new Error("OAUTH_STATE_INVALID");
     if (!verifier) throw new Error("PKCE_VERIFIER_MISSING");
 
@@ -120,11 +156,11 @@
       sessionStorage.removeItem(KEY_EXPIRES);
     }
 
-    sessionStorage.removeItem(KEY_VERIFIER);
-    sessionStorage.removeItem(KEY_STATE);
+    localStorage.removeItem(KEY_VERIFIER);
+    localStorage.removeItem(KEY_STATE);
 
-    const returnUrl = sessionStorage.getItem(KEY_RETURN) || "../";
-    sessionStorage.removeItem(KEY_RETURN);
+    const returnUrl = localStorage.getItem(KEY_RETURN) || "../";
+    localStorage.removeItem(KEY_RETURN);
     location.replace(returnUrl);
   }
 
