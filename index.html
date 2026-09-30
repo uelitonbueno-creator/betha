@@ -3,74 +3,171 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>BI Vella | Betha</title>
-  <meta name="description" content="Protótipo de front-end para integração com Betha Studio Aplicações">
+  <meta name="color-scheme" content="light">
+  <title>BI Tributos</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
+  <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
   <link rel="stylesheet" href="style.css">
+
+  <script type="module">
+    import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
+    defineCustomElements();
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="logo">B</div>
-    <div>
-      <strong>BI Vella</strong>
-      <span>Aplicação integrada à Betha</span>
+  <bth-app id="bethaApp" menu-bg-color="#202027">
+    <bth-marca-produto
+      slot="menu_marca_produto"
+      produto="BI Tributos">
+    </bth-marca-produto>
+
+    <div slot="menu_ferramentas" class="menu-tools" aria-label="Ferramentas">
+      <button class="tool-button" type="button" title="Pesquisar" aria-label="Pesquisar"><i class="mdi mdi-magnify"></i></button>
+      <button class="tool-button" type="button" title="Aplicações" aria-label="Aplicações"><i class="mdi mdi-view-grid"></i></button>
+      <button class="tool-button" type="button" title="Configurações" aria-label="Configurações"><i class="mdi mdi-cog"></i></button>
+      <button class="tool-button" type="button" title="Ajuda" aria-label="Ajuda"><i class="mdi mdi-help-circle"></i></button>
     </div>
-  </header>
 
-  <main class="container">
-    <section class="hero">
-      <div>
-        <p class="eyebrow">AMBIENTE DE TESTE</p>
-        <h1>Painel Fiscal</h1>
-        <p class="subtitle">Front-end hospedado no GitHub Pages. Os dados reais serão obtidos das APIs Betha conforme as permissões da aplicação.</p>
-      </div>
-      <div class="status"><span></span> Front-end online</div>
-    </section>
+    <div slot="container_contexto" class="context-bar">
+      <span><i class="mdi mdi-office-building"></i> <strong id="entityContext">ENTIDADE NÃO IDENTIFICADA</strong></span>
+      <span class="context-divider">›</span>
+      <span>BI TRIBUTOS</span>
+      <span class="context-divider">›</span>
+      <span id="pageContext">VISÃO GERAL</span>
+    </div>
 
-    <section class="cards">
-      <article class="card"><small>Contribuintes</small><strong>—</strong><em>aguardando API</em></article>
-      <article class="card"><small>Econômicos ativos</small><strong>—</strong><em>aguardando API</em></article>
-      <article class="card"><small>Dívidas em aberto</small><strong>—</strong><em>aguardando API</em></article>
-      <article class="card"><small>Pagamentos hoje</small><strong>—</strong><em>aguardando API</em></article>
-    </section>
+    <main slot="container_aplicacao" class="workspace">
+      <section class="surface">
+        <header class="page-heading">
+          <div>
+            <h1 id="pageTitle">Visão geral</h1>
+            <p>Indicadores tributários obtidos das integrações BI da Betha.</p>
+          </div>
+          <div id="apiStatus" class="api-status api-status-waiting">
+            <span class="status-dot"></span>
+            <span>API não configurada</span>
+          </div>
+        </header>
 
-    <section class="panel">
-      <div class="panel-title">
-        <div>
-          <h2>Contexto recebido da Betha</h2>
-          <p>Esta tela registra somente no navegador os parâmetros enviados ao abrir o produto.</p>
-        </div>
-        <button id="copyBtn" type="button">Copiar contexto</button>
-      </div>
-      <pre id="context">Carregando...</pre>
-    </section>
+        <section class="filter-row" aria-label="Filtros">
+          <div class="field">
+            <label for="periodo">Período</label>
+            <select id="periodo">
+              <option value="mes">Mês atual</option>
+              <option value="ano">Ano atual</option>
+              <option value="12m">Últimos 12 meses</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="exercicio">Exercício</label>
+            <select id="exercicio"></select>
+          </div>
+          <button id="refreshButton" class="btn-primary-betha" type="button">
+            <i class="mdi mdi-refresh"></i> ATUALIZAR
+          </button>
+        </section>
 
-    <section class="panel">
-      <h2>Teste dos módulos</h2>
-      <div class="modules">
-        <button data-module="Contribuintes">Contribuintes</button>
-        <button data-module="Econômicos">Econômicos</button>
-        <button data-module="Dívidas">Dívidas</button>
-        <button data-module="Pagamentos">Pagamentos</button>
-        <button data-module="Notas fiscais">Notas fiscais</button>
-        <button data-module="Relatórios">Relatórios</button>
-      </div>
-      <div id="moduleResult" class="message">
-        Protótipo sem dados fictícios: os valores serão preenchidos apenas quando conectarmos uma API Betha real.
-      </div>
-    </section>
+        <section class="module-grid" aria-label="Módulos">
+          <button class="module-tile" data-view="arrecadacao">
+            <span>Arrecadação</span><i class="mdi mdi-cash-multiple"></i>
+          </button>
+          <button class="module-tile" data-view="divida">
+            <span>Dívida ativa</span><i class="mdi mdi-file-document-alert"></i>
+          </button>
+          <button class="module-tile" data-view="issqn">
+            <span>ISSQN</span><i class="mdi mdi-domain"></i>
+          </button>
+          <button class="module-tile" data-view="iptu">
+            <span>IPTU / Imobiliário</span><i class="mdi mdi-home-city"></i>
+          </button>
+          <button class="module-tile" data-view="contribuintes">
+            <span>Contribuintes</span><i class="mdi mdi-account-group"></i>
+          </button>
+          <button class="module-tile" data-view="imoveis">
+            <span>Imóveis</span><i class="mdi mdi-home-map-marker"></i>
+          </button>
+        </section>
 
-    <section class="panel security">
-      <h2>Arquitetura do teste</h2>
-      <div class="flow">
-        <div>Suíte / Studio Betha</div><b>→</b>
-        <div>GitHub Pages<br><small>front-end</small></div><b>→</b>
-        <div>APIs Betha<br><small>dados</small></div>
-      </div>
-      <p><strong>Importante:</strong> nenhuma credencial secreta será colocada no GitHub. Se alguma API exigir <code>client_secret</code>, usaremos uma camada de backend protegida.</p>
-    </section>
-  </main>
+        <section class="kpi-grid" aria-label="Indicadores">
+          <article class="kpi-card">
+            <div class="kpi-icon"><i class="mdi mdi-cash-check"></i></div>
+            <div><small>Arrecadado no período</small><strong id="kpiArrecadado">—</strong><span id="kpiArrecadadoMeta">aguardando API</span></div>
+          </article>
+          <article class="kpi-card">
+            <div class="kpi-icon"><i class="mdi mdi-cash-clock"></i></div>
+            <div><small>Em aberto</small><strong id="kpiAberto">—</strong><span id="kpiAbertoMeta">aguardando API</span></div>
+          </article>
+          <article class="kpi-card">
+            <div class="kpi-icon"><i class="mdi mdi-account-cash"></i></div>
+            <div><small>Contribuintes</small><strong id="kpiContribuintes">—</strong><span id="kpiContribuintesMeta">aguardando API</span></div>
+          </article>
+          <article class="kpi-card">
+            <div class="kpi-icon"><i class="mdi mdi-home-city-outline"></i></div>
+            <div><small>Imóveis</small><strong id="kpiImoveis">—</strong><span id="kpiImoveisMeta">aguardando API</span></div>
+          </article>
+        </section>
 
-  <footer>BI Vella · protótipo técnico</footer>
+        <section class="dashboard-grid">
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Evolução da arrecadação</h2>
+                <p>Valores consolidados por competência.</p>
+              </div>
+            </div>
+            <div class="chart-wrap"><canvas id="revenueChart"></canvas></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Composição dos créditos</h2>
+                <p>Distribuição conforme retorno da API.</p>
+              </div>
+            </div>
+            <div class="chart-wrap chart-wrap-small"><canvas id="creditsChart"></canvas></div>
+          </article>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Integração</h2>
+              <p>Estado das camadas necessárias para o BI.</p>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="status-table">
+              <thead>
+                <tr><th>Camada</th><th>Status</th><th>Observação</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Interface Betha</td><td><span class="badge-ok">PRONTA</span></td><td>Estrutura de aplicação e layout no padrão visual Betha.</td></tr>
+                <tr><td>Backend seguro</td><td id="backendCell"><span class="badge-warn">AGUARDANDO</span></td><td>Responsável por proteger token e User-Access.</td></tr>
+                <tr><td>Tributos integrações BI</td><td id="apiCell"><span class="badge-warn">AGUARDANDO</span></td><td>Endpoints serão mapeados a partir do Swagger do Studio.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel context-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Contexto de abertura</h2>
+              <p>Parâmetros recebidos quando o produto for aberto pela Suíte Betha.</p>
+            </div>
+            <button id="copyContext" class="btn-link-betha" type="button">COPIAR</button>
+          </div>
+          <pre id="contextOutput">Carregando...</pre>
+        </section>
+      </section>
+    </main>
+  </bth-app>
+
+  <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
