@@ -18,6 +18,16 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 </head>
 <body>
+  <div id="authGate" class="auth-gate" hidden>
+    <div class="auth-card">
+      <div class="auth-brand">B</div>
+      <h1>BI Tributos</h1>
+      <p>Entre com sua conta da Central de Usuários Betha. O acesso aos dados será limitado às entidades às quais seu usuário está vinculado.</p>
+      <button id="loginButton" class="btn-primary-betha auth-login" type="button">ENTRAR COM A BETHA</button>
+      <div id="authMessage" class="auth-message"></div>
+    </div>
+  </div>
+
   <bth-app id="bethaApp" menu-bg-color="#202027">
 
     <bth-marca-produto
@@ -29,6 +39,7 @@
       <button class="tool-button" type="button" title="Pesquisar"><i class="mdi mdi-magnify"></i></button>
       <button class="tool-button" type="button" title="Aplicações"><i class="mdi mdi-view-grid"></i></button>
       <button class="tool-button" id="integrationButton" type="button" title="Integração"><i class="mdi mdi-connection"></i></button>
+      <button class="tool-button" id="logoutButton" type="button" title="Sair"><i class="mdi mdi-logout"></i></button>
       <button class="tool-button" type="button" title="Ajuda"><i class="mdi mdi-help-circle"></i></button>
     </div>
 
@@ -54,6 +65,7 @@
 
     <main slot="container_aplicacao" class="workspace">
       <section class="surface">
+        <div id="dashboardView">
         <header class="page-heading">
           <div>
             <div class="level-label" id="levelLabel">MACRO</div>
@@ -114,6 +126,50 @@
           </div>
           <div id="sourceSummary" class="source-summary"></div>
         </section>
+        </div>
+
+        <section id="usersAdminView" class="users-admin-view" hidden>
+          <header class="page-heading users-heading">
+            <div>
+              <div class="level-label">ADMINISTRAÇÃO</div>
+              <h1>Usuários</h1>
+              <p>Somente usuários cadastrados na Central de Usuários Betha e autorizados no contexto desta entidade.</p>
+            </div>
+            <button id="addUserButton" class="btn-success-betha" type="button"><i class="mdi mdi-account-plus"></i> + USUÁRIO</button>
+          </header>
+
+          <section class="panel">
+            <div class="users-toolbar">
+              <div class="users-filters">
+                <button type="button" class="filter-pill is-active" data-user-filter="all">Todos</button>
+                <button type="button" class="filter-pill" data-user-filter="connected">Conectados</button>
+                <button type="button" class="filter-pill" data-user-filter="blocked">Bloqueados</button>
+              </div>
+              <div class="users-search">
+                <i class="mdi mdi-magnify"></i>
+                <input id="usersSearchInput" type="search" placeholder="Pesquisar">
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="users-table">
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>Autorizado em</th>
+                    <th>Válido até</th>
+                    <th>Grupos</th>
+                    <th>Restrições</th>
+                    <th>Situação</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="usersTableBody">
+                  <tr><td colspan="7" class="table-empty">Carregando usuários do contexto…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
       </section>
     </main>
   </bth-app>
@@ -129,6 +185,62 @@
     <div id="drawerBody" class="drawer-body"></div>
   </aside>
   <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
+
+  <aside id="userDrawer" class="detail-drawer user-drawer" aria-hidden="true">
+    <div class="drawer-header">
+      <div>
+        <small>AUTORIZANDO USUÁRIO</small>
+        <h2>Adicionar usuário</h2>
+      </div>
+      <button id="closeUserDrawer" class="drawer-close" type="button" aria-label="Fechar"><i class="mdi mdi-close"></i></button>
+    </div>
+    <div class="user-wizard">
+      <div class="wizard-steps">
+        <button type="button" class="wizard-step is-active" data-step="1"><span>1</span> Localizar usuário</button>
+        <button type="button" class="wizard-step" data-step="2"><span>2</span> Gerenciar permissão</button>
+        <button type="button" class="wizard-step" data-step="3"><span>3</span> Definir grupos</button>
+        <button type="button" class="wizard-step" data-step="4"><span>4</span> Restrições de acesso</button>
+      </div>
+      <div class="drawer-body">
+        <section class="wizard-panel" data-panel="1">
+          <label class="form-label" for="centralUserSearch">Usuário da Central Betha</label>
+          <div class="lookup-row">
+            <input id="centralUserSearch" class="form-input" type="text" placeholder="Ex.: joao.silva">
+            <button id="centralUserSearchButton" class="btn-square" type="button"><i class="mdi mdi-magnify"></i></button>
+          </div>
+          <div id="centralUserResult" class="lookup-result">Informe o login exato do usuário para consultar a Central de Usuários.</div>
+        </section>
+
+        <section class="wizard-panel" data-panel="2" hidden>
+          <h3>Permissões do BI Tributos</h3>
+          <p class="form-help">As permissões serão integradas ao Page Mapping da Betha. Até o Page Mapping ser publicado, esta etapa fica em modo de configuração.</p>
+          <div id="permissionsList" class="permission-list"></div>
+        </section>
+
+        <section class="wizard-panel" data-panel="3" hidden>
+          <h3>Grupos</h3>
+          <div class="group-options">
+            <label><input type="radio" name="biGroup" value="consulta" checked> Consulta</label>
+            <label><input type="radio" name="biGroup" value="gestor"> Gestor</label>
+            <label><input type="radio" name="biGroup" value="administrador"> Administrador</label>
+          </div>
+        </section>
+
+        <section class="wizard-panel" data-panel="4" hidden>
+          <h3>Restrições</h3>
+          <label class="form-label" for="accessExpires">Válido até</label>
+          <input id="accessExpires" class="form-input" type="date">
+          <label class="check-row"><input id="accessAdmin" type="checkbox"> Administrador</label>
+          <label class="check-row"><input id="accessTechnical" type="checkbox"> Acesso técnico</label>
+        </section>
+      </div>
+      <div class="wizard-footer">
+        <button id="wizardBack" class="btn-secondary-betha" type="button" disabled>VOLTAR</button>
+        <button id="wizardNext" class="btn-primary-betha" type="button">SALVAR E CONTINUAR</button>
+        <button id="wizardSave" class="btn-primary-betha" type="button" hidden disabled>SALVAR</button>
+      </div>
+    </div>
+  </aside>
 
   <aside id="integrationDrawer" class="detail-drawer" aria-hidden="true">
     <div class="drawer-header">
@@ -156,6 +268,7 @@
   </aside>
 
   <script src="config.js"></script>
+  <script src="auth/auth.js"></script>
   <script src="dashboard-catalog.js"></script>
   <script src="app.js"></script>
 </body>
