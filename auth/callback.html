@@ -19,19 +19,15 @@
   <script src="../config.js"></script>
   <script src="auth.js"></script>
   <script>
-    (async () => {
+    try {
+      document.getElementById("status").textContent = "Login concluído. Abrindo o BI Tributos…";
+      BIAuth.handleCallback();
+    } catch (error) {
       const el = document.getElementById("status");
-      try {
-        if (BIAuth.relayCallbackToOpener()) {
-          el.textContent = "Autenticação concluída. Esta janela será fechada.";
-          return;
-        }
-        await BIAuth.handleStandaloneCallback();
-      } catch (error) {
-        el.className = "error";
-        el.textContent = "Não foi possível concluir a autenticação.\n\n" + error.message;
-      }
-    })();
+      el.className = "error";
+      el.textContent = "Não foi possível concluir a autenticação.\n\n" + error.message +
+        "\n\nURL recebida: " + location.href;
+    }
   </script>
 </body>
 </html>
