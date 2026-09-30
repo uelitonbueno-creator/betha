@@ -60,7 +60,6 @@
   }
 
   async function exchangeCode(code, state) {
-    const auth = cfg();
     const expectedState = sessionStorage.getItem(KEY_STATE);
     const verifier = sessionStorage.getItem(KEY_VERIFIER);
 
@@ -68,26 +67,27 @@
     if (!state || !expectedState || state !== expectedState) throw new Error("OAUTH_STATE_INVALID");
     if (!verifier) throw new Error("PKCE_VERIFIER_MISSING");
 
-    const body = new URLSearchParams();
-    body.set("grant_type", "authorization_code");
-    body.set("client_id", auth.CLIENT_ID);
-    body.set("code_verifier", verifier);
-    body.set("code", code);
-    body.set("redirect_uri", auth.REDIRECT_URI);
+    const backend = String((window.BI_CONFIG && window.BI_CONFIG.BACKEND_URL) || "").replace(/\/$/, "");
+    if (!backend) throw new Error("BACKEND_NOT_CONFIGURED");
 
-    const response = await fetch(auth.TOKEN_URL, {
+    const response = await fetch(backend + "/api/auth/exchange", {
       method: "POST",
-      headers: {"Content-Type":"application/x-www-form-urlencoded"},
-      body
+      headers: {"Content-Type":"application/json","Accept":"application/json"},
+      body: JSON.stringify({
+        code,
+        codeVerifier: verifier,
+        state
+      })
     });
 
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.access_token) {
-      throw new Error(payload.error_description || payload.error || ("TOKEN_HTTP_" + response.status));
+      const detail = payload.detail ? " | " + payload.detail : "";
+      throw new Error((payload.error || ("TOKEN_HTTP_" + response.status)) + detail);
     }
 
     sessionStorage.setItem(KEY_TOKEN, payload.access_token);
-    const seconds = Number(payload.expires_in || payload.expires || 0);
+    const seconds = Number(payload.expires_in || 0);
     if (seconds > 0) {
       sessionStorage.setItem(KEY_EXPIRES, String(Date.now() + Math.max(0, seconds - 30) * 1000));
     } else {
@@ -158,6 +158,23 @@
           if (error) {
             const description = params.get("error_description") || fragment.get("error_description") || "";
             throw new Error(error + (description ? ": " + description : ""));
+          }
+
+          const fragmentToken = fragment.get("access_token");
+          if (fragmentToken) {
+            const stateValue = fragment.get("state");
+            const expectedState = sessionStorage.getItem(KEY_STATE);
+            if (stateValue && expectedState && stateValue !== expectedState) throw new Error("OAUTH_STATE_INVALID");
+
+            sessionStorage.setItem(KEY_TOKEN, fragmentToken);
+            const seconds = Number(fragment.get("expires_in") || fragment.get("expires") || 0);
+            if (seconds > 0) {
+              sessionStorage.setItem(KEY_EXPIRES, String(Date.now() + Math.max(0, seconds - 30) * 1000));
+            }
+            sessionStorage.removeItem(KEY_VERIFIER);
+            sessionStorage.removeItem(KEY_STATE);
+            finish(resolve, {access_token:fragmentToken, implicit:true});
+            return;
           }
 
           const code = params.get("code");
