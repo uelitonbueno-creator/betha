@@ -67,7 +67,16 @@
     if (scopes.length) url.searchParams.set("scope", scopes.join(","));
     if (auth.AUDIENCE) url.searchParams.set("audience", auth.AUDIENCE);
 
-    location.assign(url.toString());
+    // Aplicações Betha podem ser abertas dentro de um container/iframe.
+    // O login da Betha deve assumir a janela principal para não ser bloqueado por frame.
+    url.searchParams.set("bth_ignore_origin", "true");
+
+    const target = url.toString();
+    try {
+      window.top.location.href = target;
+    } catch {
+      window.location.href = target;
+    }
   }
 
   async function handleCallback() {
