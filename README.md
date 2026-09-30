@@ -1,17 +1,6 @@
 # BI Tributos — integração Betha
 
-Protótipo de BI tributário com interface inspirada nos produtos Betha e preparado para consumir a API **Tributos integrações BI**.
-
-## Estado atual
-
-- Layout inicial no padrão visual Betha.
-- Uso dos Web Components oficiais `@betha-plataforma/estrutura-componentes`.
-- Material Design Icons.
-- Dashboard responsivo com módulos e indicadores.
-- Front-end sem credenciais.
-- Contrato preparado para backend seguro.
-- Exibição do contexto recebido ao abrir o produto pela Suíte.
-- Esqueleto de backend em `backend/`.
+Front-end de BI tributário no padrão visual Betha, preparado para operar de forma **multi-entidade**.
 
 ## Arquitetura
 
@@ -19,57 +8,59 @@ Protótipo de BI tributário com interface inspirada nos produtos Betha e prepar
 Betha Suíte / Studio
         |
         v
-GitHub Pages
-(front-end)
+GitHub Pages (front único)
         |
         v
-Backend seguro
-(secrets)
+Backend multi-tenant
         |
-        v
-Tributos integrações BI
-        |
-        v
-Dados da entidade Betha
+        +---------------------+
+        |                     |
+        v                     v
+Tributos Integrações BI   Fonte base Tributos
+(preferencial)            (complementar)
 ```
 
-## Publicação do front-end
+## Estado atual
 
-GitHub Pages:
+- Interface no padrão visual Betha.
+- Front sem credenciais.
+- Backend multi-entidade preparado.
+- 26 endpoints do OpenAPI **Tributos - Integrações BI** cadastrados em allowlist.
+- `User-Access` resolvido por tenant somente no backend.
+- Camada `base` pronta para APIs oficiais do Tributos que precisarmos adicionar futuramente.
+- Rotas de dados bloqueadas por padrão até a integração de autenticação/SSO.
+
+## Endpoints internos
+
+```text
+/api/catalog
+/api/data/pagamentos?source=bi
+/api/data/dividas?source=bi
+/api/data/economicos?source=bi
+/api/data/{recurso}?source=base
+```
+
+Veja [docs/api-integracoes-bi.md](docs/api-integracoes-bi.md) e [backend/SOURCES.md](backend/SOURCES.md).
+
+## Multi-entidade
+
+O mesmo front atende várias prefeituras. O front envia um identificador lógico do tenant; o backend recupera o `User-Access` correto de um secret e nunca o devolve ao navegador.
+
+## Publicação
 
 ```text
 https://uelitonbueno-creator.github.io/betha/
 ```
 
-No Studio Aplicações, esta é a URL a utilizar no campo **URL do produto** depois que o Pages estiver habilitado.
-
-## Credenciais
-
-**Não colocar chave privada, Access Token ou User-Access neste repositório.**
-
-A documentação Betha usa os cabeçalhos:
-
-```http
-Authorization: Bearer <ACCESS_TOKEN>
-User-Access: <USER_ACCESS>
-```
-
-Esses valores ficam apenas no backend.
+## Segurança
 
 Veja [SECURITY.md](SECURITY.md).
 
-## Próxima etapa técnica
+## Próximas etapas
 
-1. Mapear os endpoints do Swagger **Tributos integrações BI**.
-2. Preencher o host e paths no backend.
-3. Configurar `BETHA_ACCESS_TOKEN` e `BETHA_USER_ACCESS` como secrets.
-4. Publicar o backend.
-5. Informar a URL do backend em `config.js`.
-6. Ligar os indicadores e gráficos aos retornos reais.
-
-## Referências oficiais
-
-- Design System Betha: https://docs.plataforma.betha.cloud/
-- Estrutura Componentes: https://github.com/betha-plataforma/estrutura-componentes
-- Tema Bootstrap 5: https://github.com/betha-plataforma/theme-bootstrap5
-- Studio Aplicações: https://studio.ajuda.betha.cloud/aplicacoes/studio/
+1. Integrar autenticação/contexto do usuário vindo da Betha.
+2. Cadastrar a primeira prefeitura no registry secreto.
+3. Publicar o backend.
+4. Testar chamadas reais da Integrações BI.
+5. Definir agregações/cache dos indicadores.
+6. Mapear a API base apenas quando um dado necessário não existir na Integrações BI.
