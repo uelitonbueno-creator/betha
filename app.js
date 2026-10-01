@@ -459,7 +459,45 @@
     return target;
   }
 
-  async function loadOverviewPartFully(part, params) {
+  function overviewProfile(part) {
+    const heavy = {
+      pagamentos:{pages:3,limit:250},
+      debitos:{pages:3,limit:250},
+      dividas:{pages:3,limit:250},
+      "pagamentos-detalhados":{pages:2,limit:150}
+    };
+    return heavy[part] || {pages:8,limit:1000};
+  }
+
+  async function requestOverviewChunk(part, params, offset, profile) {
+    let pages=profile.pages;
+    let limit=profile.limit;
+    let lastError=null;
+
+    for (let attempt=0;attempt<4;attempt++) {
+      const chunkParams=new URLSearchParams(params);
+      chunkParams.set("chunked","1");
+      chunkParams.set("chunkOffset",String(offset));
+      chunkParams.set("chunkPages",String(pages));
+      chunkParams.set("chunkLimit",String(limit));
+
+      try {
+        return await api(
+          "/api/dashboard/visao-geral/part/" + encodeURIComponent(part) + "?" + chunkParams.toString()
+        );
+      } catch(error) {
+        lastError=error;
+        // Falha de rede/limite: diminui o lote e tenta novamente.
+        pages=Math.max(1,Math.floor(pages/2));
+        limit=Math.max(50,Math.floor(limit/2));
+        await new Promise(resolve=>setTimeout(resolve,350*(attempt+1)));
+      }
+    }
+
+    throw lastError || new Error("CHUNK_REQUEST_FAILED");
+  }
+
+  async function loadOverviewPartFully(part, params, onProgress) {
     const aggregate={
       part,
       kpis:{},
@@ -467,22 +505,17 @@
       meta:{auditMode:"FULL",warnings:[],sourceRows:{},sourceTotals:{},sourceAudit:{}}
     };
 
+    const profile=overviewProfile(part);
     let offset=0;
     let iterations=0;
 
-    while(iterations<100){
+    while(iterations<500){
       iterations++;
-      const chunkParams=new URLSearchParams(params);
-      chunkParams.set("chunked","1");
-      chunkParams.set("chunkOffset",String(offset));
-      chunkParams.set("chunkPages","20");
-      chunkParams.set("chunkLimit","1000");
 
-      const payload=await api(
-        "/api/dashboard/visao-geral/part/" + encodeURIComponent(part) + "?" + chunkParams.toString()
-      );
-
+      const payload=await requestOverviewChunk(part,params,offset,profile);
       mergeDashboardPart(aggregate,payload);
+
+      if (typeof onProgress==="function") onProgress(aggregate,iterations);
 
       const audits=Object.values(payload?.meta?.sourceAudit||{});
       const audit=audits[0]||null;
@@ -495,6 +528,9 @@
       const next=Number(audit.nextOffset);
       if (!Number.isFinite(next) || next<=offset) break;
       offset=next;
+
+      // Pequena pausa evita saturar Betha/Cloudflare em fontes muito extensas.
+      await new Promise(resolve=>setTimeout(resolve,80));
     }
 
     return aggregate;
@@ -502,19 +538,15 @@
 
   async function loadOverviewSharded(params) {
     const parts = [
-      "pagamentos",
-      "debitos",
-      "dividas",
       "parcelamentos",
       "contribuintes",
       "imoveis",
       "economicos",
+      "pagamentos",
+      "debitos",
+      "dividas",
       "pagamentos-detalhados"
     ];
-
-    const settled = await Promise.allSettled(
-      parts.map(part => loadOverviewPartFully(part,params))
-    );
 
     const merged = {
       view:"visao-geral",
@@ -523,19 +555,27 @@
       meta:{auditMode:"FULL",warnings:[],sourceRows:{},sourceTotals:{},sourceAudit:{}}
     };
 
-    settled.forEach((result,index) => {
-      const partName = parts[index];
-      if (result.status === "fulfilled") {
-        mergeDashboardPart(merged,result.value);
-      } else {
-        const error = result.reason || {};
+    // Executa uma fonte por vez para não saturar nem a Betha nem o Worker.
+    for (let index=0; index<parts.length; index++) {
+      const partName=parts[index];
+      setStatus("waiting","Carregando " + (index+1) + "/" + parts.length + " · " + partName);
+
+      try {
+        const result=await loadOverviewPartFully(partName,params,(partial)=>{
+          // Atualiza a tela enquanto a própria fonte ainda está sendo percorrida.
+          const preview=JSON.parse(JSON.stringify(merged));
+          mergeDashboardPart(preview,partial);
+          renderPayload(preview);
+        });
+        mergeDashboardPart(merged,result);
+      } catch(error) {
         merged.meta.warnings.push({
           source:partName,
           error:error.message || "PART_REQUEST_FAILED",
           errorStatus:error.status || null
         });
-        merged.meta.sourceRows[partName] = 0;
-        merged.meta.sourceAudit[partName] = {
+        merged.meta.sourceRows[partName]=0;
+        merged.meta.sourceAudit[partName]={
           loaded:0,
           pages:0,
           complete:false,
@@ -543,7 +583,9 @@
           errorStatus:error.status || null
         };
       }
-    });
+
+      renderPayload(merged);
+    }
 
     return merged;
   }
