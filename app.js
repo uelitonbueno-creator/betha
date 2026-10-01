@@ -304,26 +304,33 @@
     }
 
     const sourceRows = payload && payload.meta && payload.meta.sourceRows ? payload.meta.sourceRows : {};
-    const labels = {
-      pagamentos:"Pagamentos",
-      debitos:"Débitos",
-      dividas:"Dívidas",
-      parcelamentos:"Parcelamentos",
-      contribuintes:"Contribuintes",
-      imoveis:"Imóveis",
-      economicos:"Econômicos",
-      pagamentosDetalhados:"Pagamentos detalhados"
+    const warnings = payload && payload.meta && Array.isArray(payload.meta.warnings) ? payload.meta.warnings : [];
+    const labelMap = {
+      pagamentos:"Pagamentos", pagamentosDetalhados:"Pagamentos detalhados", pagamentosDetalhadosValores:"Valores detalhados",
+      debitos:"Débitos", debitosReceitas:"Débitos/receitas", dividas:"Dívidas", dividasReceitas:"Dívidas/receitas",
+      encerramentoDividas:"Encerramento de dívidas", encerramentoLancamentos:"Encerramento de lançamentos",
+      parcelamentos:"Parcelamentos", parcelas:"Parcelas", referentes:"Referentes", baseParcelas:"Parcelas (base)",
+      contribuintes:"Contribuintes", imoveis:"Imóveis", baseImoveis:"Imóveis (base)", responsaveis:"Responsáveis",
+      economicos:"Econômicos", atividades:"Atividades", transferencias:"Transferências", solicitacoes:"Solicitações",
+      itens:"Itens ITBI", compras:"Compras", plantaValores:"Planta de valores", obras:"Obras",
+      camposAdicionais:"Campos adicionais", baseDividas:"Dívidas (base)"
     };
+    const warningBySource = new Map(warnings.map(w => [String(w.source), w]));
     const coverageItems = document.getElementById("coverageItems");
     if (coverageItems) {
-      coverageItems.innerHTML = Object.entries(labels).map(([key,label]) => {
-        const value = Number(sourceRows[key] || 0);
-        return `<div class="coverage-item">
-          <span class="coverage-dot ${value > 0 ? "ok" : ""}"></span>
-          <span>${escapeHtml(label)}</span>
+      coverageItems.innerHTML = Object.entries(sourceRows).map(([key,raw]) => {
+        const value = Number(raw || 0);
+        const warning = warningBySource.get(key);
+        const stateClass = warning ? "warn" : (value > 0 ? "ok" : "");
+        const title = warning
+          ? (warning.error ? "Falha: " + warning.error : "Carga parcial/truncada")
+          : (value > 0 ? "Fonte carregada" : "Fonte sem registros nesta carga");
+        return `<div class="coverage-item" title="${escapeHtml(title)}">
+          <span class="coverage-dot ${stateClass}"></span>
+          <span>${escapeHtml(labelMap[key] || key)}</span>
           <strong>${value.toLocaleString("pt-BR")}</strong>
         </div>`;
-      }).join("");
+      }).join("") || '<span class="coverage-loading">Nenhuma fonte informada pelo backend.</span>';
     }
   }
 
