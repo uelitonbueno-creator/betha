@@ -392,6 +392,363 @@ async function bethaGet(env,tenant,source,resource,query="") {
   return parsed.body;
 }
 
+function payloadRows(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload!=="object") return [];
+  if (Array.isArray(payload.content)) return payload.content;
+  if (Array.isArray(payload.data)) return payload.data;
+  if (payload.data && Array.isArray(payload.data.content)) return payload.data.content;
+  if (Array.isArray(payload.items)) return payload.items;
+  return [];
+}
+
+function payloadTotal(payload) {
+  if (!payload || typeof payload!=="object") return null;
+  const candidates=[
+    payload.total,
+    payload.totalElements,
+    payload.totalRegistros,
+    payload.totalRecords,
+    payload.count,
+    payload.pagination && payload.pagination.total,
+    payload.page && payload.page.totalElements,
+    payload.metadata && payload.metadata.total
+  ];
+  for (const value of candidates) {
+    const n=Number(value);
+    if (Number.isFinite(n) && n>=0) return n;
+  }
+  return null;
+}
+
+async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=5}={}) {
+  const rows=[];
+  let total=null;
+  let truncated=false;
+
+  for (let page=0;page<maxPages;page++) {
+    const offset=page*limit;
+    const body=await bethaGet(env,tenant,source,resource,"limit="+limit+"&offset="+offset);
+    const pageRows=payloadRows(body);
+    if (total===null) total=payloadTotal(body);
+    rows.push(...pageRows);
+
+    if (!pageRows.length || pageRows.length<limit || (total!==null && rows.length>=total)) {
+      break;
+    }
+    if (page===maxPages-1) truncated=true;
+  }
+
+  return {rows,total:total===null?rows.length:total,truncated};
+}
+
+async function safeBethaRows(env,tenant,source,resource,options={}) {
+  try {
+    const result=await fetchBethaRows(env,tenant,source,resource,options);
+    return {...result,error:null};
+  } catch(error) {
+    console.warn("dashboard source failed",source,resource,error.message);
+    return {rows:[],total:0,truncated:false,error:error.message};
+  }
+}
+
+function valueAt(obj,path) {
+  if (!obj || !path) return undefined;
+  if (!String(path).includes(".")) return obj[path];
+  return String(path).split(".").reduce((acc,key)=>acc==null?undefined:acc[key],obj);
+}
+
+function firstValue(obj,paths) {
+  for (const path of paths) {
+    const value=valueAt(obj,path);
+    if (value!==undefined && value!==null && value!=="") return value;
+  }
+  return undefined;
+}
+
+function numericValue(obj,paths) {
+  const raw=firstValue(obj,paths);
+  if (raw===undefined) return 0;
+  if (typeof raw==="number") return Number.isFinite(raw)?raw:0;
+  const normalized=String(raw).replace(/\./g,"").replace(",",".");
+  const n=Number(normalized);
+  return Number.isFinite(n)?n:0;
+}
+
+function stringValue(obj,paths,fallback="Não informado") {
+  const raw=firstValue(obj,paths);
+  if (raw===undefined || raw===null || raw==="") return fallback;
+  if (typeof raw==="object") {
+    return String(raw.descricao ?? raw.nome ?? raw.codigo ?? raw.id ?? fallback);
+  }
+  return String(raw);
+}
+
+function dateValue(obj,paths) {
+  const raw=firstValue(obj,paths);
+  if (!raw) return null;
+  const d=new Date(raw);
+  return Number.isNaN(d.getTime())?null:d;
+}
+
+function yearValue(obj,datePaths,yearPaths=[]) {
+  const explicit=Number(firstValue(obj,yearPaths));
+  if (Number.isFinite(explicit) && explicit>1900) return explicit;
+  const d=dateValue(obj,datePaths);
+  return d?d.getFullYear():null;
+}
+
+function periodIncludes(obj,{periodo,exercicio,datePaths,yearPaths=[]}) {
+  if (periodo==="todos") return true;
+  const selectedYear=Number(exercicio);
+  const d=dateValue(obj,datePaths);
+  const y=yearValue(obj,datePaths,yearPaths);
+
+  if (periodo==="ano") {
+    return y===selectedYear || (y===null && !d);
+  }
+
+  if (periodo==="mes") {
+    if (d) return d.getFullYear()===selectedYear && d.getMonth()===new Date().getMonth();
+    return y===selectedYear || y===null;
+  }
+
+  if (periodo==="12m") {
+    if (!d) return y===selectedYear || y===null;
+    const end=new Date();
+    const start=new Date(end.getFullYear(),end.getMonth()-11,1);
+    return d>=start && d<=end;
+  }
+
+  return true;
+}
+
+function sumRows(rows,paths) {
+  return rows.reduce((total,row)=>total+numericValue(row,paths),0);
+}
+
+function monthSeries(rows,{datePaths,valuePaths,periodo,exercicio}) {
+  const buckets=new Map();
+  const selectedYear=Number(exercicio);
+  let months=[];
+
+  if (periodo==="12m") {
+    const now=new Date();
+    for (let i=11;i>=0;i--) months.push(new Date(now.getFullYear(),now.getMonth()-i,1));
+  } else {
+    for (let m=0;m<12;m++) months.push(new Date(selectedYear,m,1));
+  }
+
+  for (const m of months) buckets.set(m.getFullYear()+"-"+String(m.getMonth()+1).padStart(2,"0"),0);
+
+  for (const row of rows) {
+    const d=dateValue(row,datePaths);
+    if (!d) continue;
+    if (!periodIncludes(row,{periodo,exercicio,datePaths})) continue;
+    const key=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+    if (!buckets.has(key)) continue;
+    buckets.set(key,buckets.get(key)+numericValue(row,valuePaths));
+  }
+
+  return {
+    labels:months.map(d=>d.toLocaleDateString("pt-BR",{month:"short",year:periodo==="12m"?"2-digit":undefined}).replace(".","")),
+    values:[...buckets.values()]
+  };
+}
+
+function topGroups(rows,{labelPaths,valuePaths,limit=10,countOnly=false,filter=null}) {
+  const grouped=new Map();
+  for (const row of rows) {
+    if (filter && !filter(row)) continue;
+    const label=stringValue(row,labelPaths);
+    const current=grouped.get(label)||0;
+    grouped.set(label,current+(countOnly?1:numericValue(row,valuePaths)));
+  }
+  return [...grouped.entries()]
+    .sort((a,b)=>b[1]-a[1])
+    .slice(0,limit);
+}
+
+function debtYearSeries(rows) {
+  const grouped=new Map();
+  for (const row of rows) {
+    const year=yearValue(row,["dataInscricao","dtInscricao","dataDivida"],["anoDivida","ano"]);
+    if (!year) continue;
+    const saldo=numericValue(row,["vlSaldo","valorSaldo","saldo","saldoCalculado"]);
+    grouped.set(year,(grouped.get(year)||0)+saldo);
+  }
+  return [...grouped.entries()].sort((a,b)=>a[0]-b[0]);
+}
+
+async function buildOverviewDashboard(env,tenant,url) {
+  const periodo=url.searchParams.get("periodo") || "ano";
+  const exercicio=Number(url.searchParams.get("exercicio") || new Date().getFullYear());
+
+  const [
+    pagamentos,
+    debitos,
+    dividas,
+    parcelamentos,
+    contribuintes,
+    imoveis,
+    economicos,
+    pagamentosDetalhados
+  ]=await Promise.all([
+    safeBethaRows(env,tenant,"bi","pagamentos",{maxPages:5}),
+    safeBethaRows(env,tenant,"bi","debitos",{maxPages:5}),
+    safeBethaRows(env,tenant,"bi","dividas",{maxPages:5}),
+    safeBethaRows(env,tenant,"bi","parcelamentos",{maxPages:3}),
+    safeBethaRows(env,tenant,"bi","contribuintes",{maxPages:3}),
+    safeBethaRows(env,tenant,"bi","imoveis",{maxPages:3}),
+    safeBethaRows(env,tenant,"bi","economicos",{maxPages:3}),
+    safeBethaRows(env,tenant,"bi","pagamentos-detalhados",{maxPages:5})
+  ]);
+
+  const paymentDatePaths=["dataPagamento","dtPagamento","dhPagamento","pagamento.dataPagamento"];
+  const debitDatePaths=["dhDebito","dataDebito","dtDebito","dataLancamento","dtLancamento"];
+
+  const filteredPayments=pagamentos.rows.filter(row=>periodIncludes(row,{
+    periodo,exercicio,datePaths:paymentDatePaths,yearPaths:["ano","exercicio"]
+  }));
+
+  const filteredDebits=debitos.rows.filter(row=>periodIncludes(row,{
+    periodo,exercicio,datePaths:debitDatePaths,yearPaths:["ano","anoDebito","exercicio"]
+  }));
+
+  const filteredParcels=parcelamentos.rows.filter(row=>periodIncludes(row,{
+    periodo,exercicio,datePaths:["dtParcelamento","dataParcelamento","dhParcelamento"],yearPaths:["ano","exercicio"]
+  }));
+
+  const paymentMonthly=monthSeries(pagamentos.rows,{
+    datePaths:paymentDatePaths,
+    valuePaths:["valorPago","vlPago","valorTotalPago"],
+    periodo,
+    exercicio
+  });
+
+  const debitMonthly=monthSeries(debitos.rows,{
+    datePaths:debitDatePaths,
+    valuePaths:["vlLancado","valorLancado","valorDebito"],
+    periodo,
+    exercicio
+  });
+
+  const debitPaidMonthly=monthSeries(debitos.rows,{
+    datePaths:debitDatePaths,
+    valuePaths:["vlPago","valorPago"],
+    periodo,
+    exercicio
+  });
+
+  const debitSaldoMonthly=monthSeries(debitos.rows,{
+    datePaths:debitDatePaths,
+    valuePaths:["vlSaldo","valorSaldo","saldo"],
+    periodo,
+    exercicio
+  });
+
+  const creditRows=pagamentosDetalhados.rows.filter(row=>periodIncludes(row,{
+    periodo,exercicio,
+    datePaths:["pagamento.dataPagamento","dataPagamento","dtPagamento"],
+    yearPaths:["ano","exercicio"]
+  }));
+
+  const creditGroups=topGroups(creditRows,{
+    labelPaths:["creditoTributario.descricao","creditoTributario.nome","descricaoCreditoTributario","idCreditoTributario"],
+    valuePaths:["valorPagoLancado","vlPagoLancado","valorPago","vlPago"],
+    limit:10
+  });
+
+  const debtStatus=topGroups(dividas.rows,{
+    labelPaths:["statusDivida","situacaoDivida","situacao","status"],
+    countOnly:true,
+    limit:12
+  });
+
+  const debtYears=debtYearSeries(dividas.rows);
+  const debtSaldo=sumRows(dividas.rows,["vlSaldo","valorSaldo","saldo","saldoCalculado"]);
+
+  const warnings=[
+    ["pagamentos",pagamentos],
+    ["debitos",debitos],
+    ["dividas",dividas],
+    ["parcelamentos",parcelamentos],
+    ["contribuintes",contribuintes],
+    ["imoveis",imoveis],
+    ["economicos",economicos],
+    ["pagamentos-detalhados",pagamentosDetalhados]
+  ].filter(([,src])=>src.error || src.truncated)
+   .map(([name,src])=>({source:name,error:src.error,truncated:src.truncated}));
+
+  return {
+    view:"visao-geral",
+    tenant:{id:tenant.id,name:tenant.name},
+    period:{periodo,exercicio},
+    kpis:{
+      arrecadado:sumRows(filteredPayments,["valorPago","vlPago","valorTotalPago"]),
+      lancado:sumRows(filteredDebits,["vlLancado","valorLancado","valorDebito"]),
+      divida:debtSaldo,
+      parcelado:filteredParcels.length || parcelamentos.total,
+      contribuintes:contribuintes.total,
+      imoveis:imoveis.total
+    },
+    charts:{
+      "receita-mensal":{
+        format:"currency",
+        labels:paymentMonthly.labels,
+        datasets:[{label:"Arrecadado",data:paymentMonthly.values}]
+      },
+      "lancado-pago-saldo":{
+        format:"currency",
+        labels:debitMonthly.labels,
+        datasets:[
+          {label:"Lançado",data:debitMonthly.values},
+          {label:"Pago",data:debitPaidMonthly.values.some(v=>v!==0)?debitPaidMonthly.values:paymentMonthly.values},
+          ...(debitSaldoMonthly.values.some(v=>v!==0)?[{label:"Saldo",data:debitSaldoMonthly.values}]:[])
+        ]
+      },
+      "divida-evolucao":{
+        format:"currency",
+        labels:debtYears.map(([year])=>String(year)),
+        datasets:[{label:"Saldo da dívida",data:debtYears.map(([,value])=>value)}]
+      },
+      "receita-credito":{
+        format:"currency",
+        labels:creditGroups.map(([label])=>label),
+        datasets:[{label:"Arrecadado",data:creditGroups.map(([,value])=>value)}]
+      },
+      "situacao-divida":{
+        format:"number",
+        labels:debtStatus.map(([label])=>label),
+        datasets:[{label:"Dívidas",data:debtStatus.map(([,value])=>value)}]
+      },
+      cadastros:{
+        format:"number",
+        labels:["Contribuintes","Imóveis","Econômicos"],
+        datasets:[{
+          label:"Cadastros",
+          data:[contribuintes.total,imoveis.total,economicos.total]
+        }]
+      }
+    },
+    meta:{
+      generatedAt:new Date().toISOString(),
+      publicAggregateMode:true,
+      warnings,
+      sourceRows:{
+        pagamentos:pagamentos.rows.length,
+        debitos:debitos.rows.length,
+        dividas:dividas.rows.length,
+        parcelamentos:parcelamentos.rows.length,
+        contribuintes:contribuintes.rows.length,
+        imoveis:imoveis.rows.length,
+        economicos:economicos.rows.length,
+        pagamentosDetalhados:pagamentosDetalhados.rows.length
+      }
+    }
+  };
+}
+
 async function listContextUsers(userToken, tenant, url) {
   const params=new URLSearchParams();
   params.set("limit",url.searchParams.get("limit") || "100");
@@ -641,6 +998,25 @@ export default {
           sessionValid:true,
           accessCount:Array.isArray(accesses)?accesses.length:0
         });
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
+    const dashboardMatch=url.pathname.match(/^\/api\/dashboard\/([a-z0-9-]+)$/);
+    if (dashboardMatch && request.method==="GET") {
+      try {
+        const tenant=resolveTenant(env,getTenantId(request,url));
+        const view=dashboardMatch[1];
+
+        // Enquanto o login está desativado, esta rota devolve apenas agregados.
+        // Nenhum registro individual ou dado cadastral é exposto.
+        if (view==="visao-geral") {
+          const body=await buildOverviewDashboard(env,tenant,url);
+          return json(request,env,200,body);
+        }
+
+        return json(request,env,501,{error:"DASHBOARD_NOT_IMPLEMENTED",view});
       } catch(error) {
         return errorResponse(request,env,error);
       }
