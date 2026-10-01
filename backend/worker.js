@@ -208,6 +208,35 @@ async function validateOAuthState(state, secret) {
   return true;
 }
 
+function devSessionSecret(env) {
+  return env.BI_DEV_SESSION_SECRET || env.BETHA_LOGIN_CLIENT_SECRET || "";
+}
+
+async function createDevSession(env, username) {
+  const secret=devSessionSecret(env);
+  if (!secret) throw new Error("DEV_SESSION_SECRET_NOT_CONFIGURED");
+  const exp=Date.now()+8*60*60*1000;
+  return sealSession({
+    kind:"dev-session",
+    username:String(username||""),
+    accessToken:"dev",
+    exp
+  },secret);
+}
+
+async function validateDevSession(request, env) {
+  const header=request.headers.get("Authorization") || "";
+  const match=header.match(/^DevSession\s+(.+)$/i);
+  if (!match) throw new Error("DEV_SESSION_REQUIRED");
+  const secret=devSessionSecret(env);
+  if (!secret) throw new Error("DEV_SESSION_SECRET_NOT_CONFIGURED");
+  const session=await openSession(match[1].trim(),secret);
+  if (!session || session.kind!=="dev-session" || session.accessToken!=="dev") {
+    throw new Error("DEV_SESSION_INVALID");
+  }
+  return session;
+}
+
 async function getUserToken(request, env) {
   const header=request.headers.get("Authorization") || "";
   const sessionMatch=header.match(/^Session\s+(.+)$/i);
@@ -819,6 +848,11 @@ function errorResponse(request,env,error) {
     APPLICATION_SESSION_INVALID:401,
     APPLICATION_SESSION_EXPIRED:401,
     LOGIN_CLIENT_SECRET_NOT_CONFIGURED:503,
+    DEV_LOGIN_NOT_CONFIGURED:503,
+    DEV_SESSION_SECRET_NOT_CONFIGURED:503,
+    DEV_SESSION_REQUIRED:401,
+    DEV_SESSION_INVALID:401,
+    DEV_LOGIN_INVALID:401,
     TENANT_CONTEXT_UNRESOLVED:503,
     TENANT_ACCESS_DENIED:403,
     TENANT_ACCESS_NOT_ACCEPTED:403,
@@ -846,8 +880,47 @@ export default {
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
         tenantsConfigured:Boolean(env.BETHA_TENANTS_JSON),
         userAuthorizationRequired:String(env.ALLOW_UNAUTHENTICATED_DEV || "").toLowerCase()!=="true",
-        loginCredentialConfigured:Boolean(env.BETHA_LOGIN_CLIENT_ID && env.BETHA_LOGIN_CLIENT_SECRET)
+        loginCredentialConfigured:Boolean(env.BETHA_LOGIN_CLIENT_ID && env.BETHA_LOGIN_CLIENT_SECRET),
+        devLoginConfigured:Boolean(env.BI_DEV_LOGIN_USER && env.BI_DEV_LOGIN_PASSWORD)
       });
+    }
+
+    if (url.pathname==="/api/dev/login" && request.method==="POST") {
+      try {
+        if (!env.BI_DEV_LOGIN_USER || !env.BI_DEV_LOGIN_PASSWORD) {
+          throw new Error("DEV_LOGIN_NOT_CONFIGURED");
+        }
+
+        const body=await request.json().catch(()=>({}));
+        const username=String(body.username||"");
+        const password=String(body.password||"");
+
+        if (username!==String(env.BI_DEV_LOGIN_USER) || password!==String(env.BI_DEV_LOGIN_PASSWORD)) {
+          throw new Error("DEV_LOGIN_INVALID");
+        }
+
+        const session=await createDevSession(env,username);
+        return json(request,env,200,{
+          ok:true,
+          session,
+          expires_in:8*60*60
+        });
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
+    if (url.pathname==="/api/dev/session-check" && request.method==="GET") {
+      try {
+        const session=await validateDevSession(request,env);
+        return json(request,env,200,{
+          ok:true,
+          sessionValid:true,
+          username:session.username || ""
+        });
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
     }
 
     if (url.pathname==="/api/auth/login" && request.method==="GET") {
@@ -1009,6 +1082,7 @@ export default {
     const dashboardMatch=url.pathname.match(/^\/api\/dashboard\/([a-z0-9-]+)$/);
     if (dashboardMatch && request.method==="GET") {
       try {
+        await validateDevSession(request,env);
         const tenant=resolveTenant(env,getTenantId(request,url));
         const view=dashboardMatch[1];
 
@@ -1032,6 +1106,7 @@ export default {
     // Teste de credencial de serviço: consulta mínima e não devolve dados cadastrais.
     if (url.pathname==="/api/connection-test" && request.method==="GET") {
       try {
+        await validateDevSession(request,env);
         const tenant=resolveTenant(env,getTenantId(request,url));
         const body=await bethaGet(env,tenant,"bi","contribuintes","limit=1&fields=id");
         return json(request,env,200,{
