@@ -519,7 +519,7 @@ async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=5}
     if (page===maxPages-1) truncated=true;
   }
 
-  return {rows,total:total===null?rows.length:total,truncated};
+  return {rows,total:Math.max(total===null?0:total,rows.length),truncated};
 }
 
 async function safeBethaRows(env,tenant,source,resource,options={}) {
@@ -608,6 +608,18 @@ function periodIncludes(obj,{periodo,exercicio,datePaths,yearPaths=[]}) {
 
 function sumRows(rows,paths) {
   return rows.reduce((total,row)=>total+numericValue(row,paths),0);
+}
+
+function hasAnyValue(rows,paths) {
+  return rows.some(row=>paths.some(path=>{
+    const value=valueAt(row,path);
+    return value!==undefined && value!==null && value!=="";
+  }));
+}
+
+function sumRowsOrNull(rows,paths) {
+  if (!hasAnyValue(rows,paths)) return null;
+  return sumRows(rows,paths);
 }
 
 function monthSeries(rows,{datePaths,valuePaths,periodo,exercicio}) {
@@ -768,9 +780,11 @@ async function buildOverviewDashboard(env,tenant,url) {
     tenant:{id:tenant.id,name:tenant.name},
     period:{periodo,exercicio},
     kpis:{
-      arrecadado:sumRows(filteredPayments,["valorPago","vlPago","valorTotalPago"]),
-      lancado:sumRows(filteredDebits,["vlLancado","valorLancado","valorDebito"]),
-      divida:debtSaldo,
+      arrecadado:sumRowsOrNull(filteredPayments,["valorPago","vlPago","valorTotalPago","vlTotalPago","valorArrecadado"]),
+      lancado:sumRowsOrNull(filteredDebits,["vlLancado","valorLancado","valorDebito","vlDebito","valorOriginal"]),
+      divida:hasAnyValue(dividas.rows,["vlSaldo","valorSaldo","saldo","saldoCalculado"])
+        ? debtSaldo
+        : null,
       parcelado:periodo==="todos" ? parcelamentos.total : filteredParcels.length,
       contribuintes:contribuintes.total,
       imoveis:imoveis.total
@@ -827,6 +841,16 @@ async function buildOverviewDashboard(env,tenant,url) {
         imoveis:imoveis.rows.length,
         economicos:economicos.rows.length,
         pagamentosDetalhados:pagamentosDetalhados.rows.length
+      },
+      sourceTotals:{
+        pagamentos:pagamentos.total,
+        debitos:debitos.total,
+        dividas:dividas.total,
+        parcelamentos:parcelamentos.total,
+        contribuintes:contribuintes.total,
+        imoveis:imoveis.total,
+        economicos:economicos.total,
+        pagamentosDetalhados:pagamentosDetalhados.total
       }
     }
   };
