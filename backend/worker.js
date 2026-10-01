@@ -1479,6 +1479,185 @@ async function buildTaxpayersDashboard(env,tenant,url) {
   };
 }
 
+
+async function buildClosingDashboard(env,tenant,url) {
+  const periodo=url.searchParams.get("periodo")||"ano";
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const [lan,div]=await Promise.all([
+    safeBethaRows(env,tenant,"base","encerramento-lancamentos",{maxPages:5}),
+    safeBethaRows(env,tenant,"base","encerramento-dividas",{maxPages:5})
+  ]);
+
+  const labelFor=row=>String(firstValue(row,["mesEncerramento","competencia","mes","referencia"])||"Não informado");
+  const aggregate=(rows)=>{
+    const map=new Map();
+    for(const r of rows){
+      const k=labelFor(r);
+      const x=map.get(k)||{saldo:0,lancado:0,inscrito:0,correcao:0,juros:0,multa:0,correcaoMes:0,jurosMes:0,multaMes:0};
+      x.saldo+=numericValue(r,["valorSaldo","vlSaldo","saldo"]);
+      x.lancado+=numericValue(r,["valorLancado","vlLancado","lancado"]);
+      x.inscrito+=numericValue(r,["valorInscrito","vlInscrito","inscrito"]);
+      x.correcao+=numericValue(r,["valorCorrecao","vlCorrecao"]);
+      x.juros+=numericValue(r,["valorJuros","vlJuros"]);
+      x.multa+=numericValue(r,["valorMulta","vlMulta"]);
+      x.correcaoMes+=numericValue(r,["valorCorrecaoMes","vlCorrecaoMes"]);
+      x.jurosMes+=numericValue(r,["valorJurosMes","vlJurosMes"]);
+      x.multaMes+=numericValue(r,["valorMultaMes","vlMultaMes"]);
+      map.set(k,x);
+    }
+    return [...map.entries()].sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
+  };
+
+  const l=aggregate(lan.rows), d=aggregate(div.rows);
+  return {
+    view:"encerramento",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    kpis:{
+      "saldo-lancamentos":sumRowsOrNull(lan.rows,["valorSaldo","vlSaldo","saldo"]),
+      "saldo-dividas":sumRowsOrNull(div.rows,["valorSaldo","vlSaldo","saldo"]),
+      "acrescimos-lancamentos":hasAnyValue(lan.rows,["valorCorrecao","vlCorrecao","valorJuros","vlJuros","valorMulta","vlMulta"])
+        ? sumRows(lan.rows,["valorCorrecao","vlCorrecao"])+sumRows(lan.rows,["valorJuros","vlJuros"])+sumRows(lan.rows,["valorMulta","vlMulta"])
+        : null,
+      "acrescimos-dividas":hasAnyValue(div.rows,["valorCorrecao","vlCorrecao","valorJuros","vlJuros","valorMulta","vlMulta"])
+        ? sumRows(div.rows,["valorCorrecao","vlCorrecao"])+sumRows(div.rows,["valorJuros","vlJuros"])+sumRows(div.rows,["valorMulta","vlMulta"])
+        : null
+    },
+    charts:{
+      "saldo-lancamentos-mes":{format:"currency",labels:l.map(([k])=>k),datasets:[{label:"Saldo",data:l.map(([,v])=>v.saldo)}]},
+      "saldo-divida-mes":{format:"currency",labels:d.map(([k])=>k),datasets:[{label:"Saldo",data:d.map(([,v])=>v.saldo)}]},
+      "lancado-saldo":{format:"currency",labels:l.map(([k])=>k),datasets:[
+        {label:"Lançado",data:l.map(([,v])=>v.lancado)},
+        {label:"Saldo",data:l.map(([,v])=>v.saldo)}
+      ]},
+      "inscrito-saldo":{format:"currency",labels:d.map(([k])=>k),datasets:[
+        {label:"Inscrito",data:d.map(([,v])=>v.inscrito)},
+        {label:"Saldo",data:d.map(([,v])=>v.saldo)}
+      ]},
+      "acrescimos-lancamentos-mes":{format:"currency",labels:l.map(([k])=>k),datasets:[
+        {label:"Correção",data:l.map(([,v])=>v.correcao)},
+        {label:"Juros",data:l.map(([,v])=>v.juros)},
+        {label:"Multa",data:l.map(([,v])=>v.multa)}
+      ]},
+      "acrescimos-divida-mes":{format:"currency",labels:d.map(([k])=>k),datasets:[
+        {label:"Correção",data:d.map(([,v])=>v.correcao)},
+        {label:"Juros",data:d.map(([,v])=>v.juros)},
+        {label:"Multa",data:d.map(([,v])=>v.multa)}
+      ]},
+      "fluxo-acrescimos":{format:"currency",labels:d.map(([k])=>k),datasets:[
+        {label:"Correção",data:d.map(([,v])=>v.correcaoMes)},
+        {label:"Juros",data:d.map(([,v])=>v.jurosMes)},
+        {label:"Multa",data:d.map(([,v])=>v.multaMes)}
+      ]}
+    },
+    meta:dashboardMeta([["encerramentoLancamentos",lan],["encerramentoDividas",div]])
+  };
+}
+
+async function buildWorksDashboard(env,tenant,url) {
+  const periodo=url.searchParams.get("periodo")||"ano";
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const [obras,resp]=await Promise.all([
+    safeBethaRows(env,tenant,"base","obras",{maxPages:5}),
+    safeBethaRows(env,tenant,"base","obras-responsaveis",{maxPages:4})
+  ]);
+  const entrada=monthlyCount(obras.rows,["dataEntrada","dtEntrada","dataCadastro"],periodo,exercicio);
+  const liber=monthlyCount(obras.rows,["dataLiberacao","dtLiberacao"],periodo,exercicio,r=>Boolean(firstValue(r,["dataLiberacao","dtLiberacao"])));
+  const sit=groupCount(obras.rows,["situacao","situacao.descricao","status"],12);
+  const medida=groupSum(obras.rows,["situacao","situacao.descricao","status"],["medida","area","metragem"],12);
+  const respGrouped=new Map();
+  for(const r of resp.rows){
+    const tipo=stringValue(r,["tipoResponsavel","tipo","funcao"],"Responsável");
+    respGrouped.set(tipo,(respGrouped.get(tipo)||0)+1);
+  }
+  return {
+    view:"obras",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    kpis:{
+      "obras-total":obras.total,
+      "obras-situacao":countWhere(obras.rows,r=>/andamento|execu|abert/i.test(stringValue(r,["situacao","situacao.descricao","status"],""))),
+      medida:sumRowsOrNull(obras.rows,["medida","area","metragem"]),
+      liberadas:obras.rows.filter(r=>Boolean(firstValue(r,["dataLiberacao","dtLiberacao"]))&&periodIncludes(r,{periodo,exercicio,datePaths:["dataLiberacao","dtLiberacao"]})).length
+    },
+    charts:{
+      "obras-situacao-grafico":chartGroups(sit,"Obras","number"),
+      "obras-entrada":{format:"number",labels:entrada.labels,datasets:[{label:"Entradas",data:entrada.values}]},
+      "obras-liberacao":{format:"number",labels:liber.labels,datasets:[{label:"Liberações",data:liber.values}]},
+      "obras-medida":chartGroups(medida,"Medida","number"),
+      "obras-responsaveis":chartGroups([...respGrouped.entries()],"Vínculos","number")
+    },
+    meta:dashboardMeta([["obras",obras],["responsaveis",resp]],{
+      privacy:["nomes de responsáveis ocultados enquanto login oficial estiver desativado"]
+    })
+  };
+}
+
+async function buildQualityDashboard(env,tenant,url) {
+  const periodo=url.searchParams.get("periodo")||"ano";
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const [con,imo,eco,ativ,campos]=await Promise.all([
+    safeBethaRows(env,tenant,"bi","contribuintes",{maxPages:5}),
+    safeBethaRows(env,tenant,"bi","imoveis",{maxPages:5}),
+    safeBethaRows(env,tenant,"bi","economicos",{maxPages:5}),
+    safeBethaRows(env,tenant,"bi","economicos-atividades",{maxPages:5}),
+    safeBethaRows(env,tenant,"bi","imoveis-campos-adicionais",{maxPages:4})
+  ]);
+
+  const ecoWithActivity=new Set(ativ.rows.map(r=>String(firstValue(r,["idEconomico","economico.id"])||"")).filter(Boolean));
+  const opCon=monthlyCount(con.rows,["dhOperacao","dataHoraOperacao","dataAtualizacao"],periodo,exercicio);
+  const opImo=monthlyCount(imo.rows,["dhOperacao","dataHoraOperacao","dataAtualizacao"],periodo,exercicio);
+  const opEco=monthlyCount(eco.rows,["dhOperacao","dataHoraOperacao","dataAtualizacao"],periodo,exercicio);
+  const campoGroups=groupCount(campos.rows,["campoAdicional.descricao","descricaoCampo","campoAdicional","campo"],12);
+
+  const completionCon=completenessChart(con.rows,[
+    {label:"CPF/CNPJ",paths:["cpf","cnpj","cpfCnpj","documento"]},
+    {label:"E-mail",paths:["email","emailPrincipal"]},
+    {label:"Telefone",paths:["telefone","fone","celular"]},
+    {label:"CEP",paths:["cep","endereco.cep"]},
+    {label:"Logradouro",paths:["nomeLogradouro","logradouro.nome","endereco.logradouro"]}
+  ]);
+  const completionImo=completenessChart(imo.rows,[
+    {label:"Logradouro",paths:["nomeLogradouro","logradouro.nome"]},
+    {label:"Número",paths:["numero","numeroImovel"]},
+    {label:"CEP",paths:["cep","endereco.cep"]},
+    {label:"Bairro",paths:["nomeBairro","bairro.nome"]},
+    {label:"Setor",paths:["setor","setor.codigo"]}
+  ]);
+  const completionEco=completenessChart(eco.rows,[
+    {label:"Início atividade",paths:["dtInicioAtiv","dataInicioAtividade"]},
+    {label:"Situação",paths:["situacao","situacao.descricao"]},
+    {label:"Bairro",paths:["nomeBairro","bairro.nome"]},
+    {label:"Logradouro",paths:["nomeLogradouro","logradouro.nome"]},
+    {label:"Tipo cadastro",paths:["tipoCadastro","tipoEconomico"]}
+  ]);
+
+  return {
+    view:"qualidade",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    kpis:{
+      "sem-documento":countWhere(con.rows,r=>firstValue(r,["cpf","cnpj","cpfCnpj","documento"])===undefined),
+      "sem-contato":countWhere(con.rows,r=>firstValue(r,["email","emailPrincipal","telefone","fone","celular"])===undefined),
+      "imoveis-sem-endereco":countWhere(imo.rows,r=>firstValue(r,["nomeLogradouro","logradouro.nome"])===undefined||firstValue(r,["cep","endereco.cep"])===undefined),
+      "economicos-sem-atividade":countWhere(eco.rows,r=>{
+        const id=String(firstValue(r,["id","idEconomico"])||"");
+        return id&&!ecoWithActivity.has(id);
+      })
+    },
+    charts:{
+      "completude-contribuintes":completionCon,
+      "completude-imoveis":completionImo,
+      "completude-economicos":completionEco,
+      "operacoes-integracao":{format:"number",labels:opCon.labels,datasets:[
+        {label:"Contribuintes",data:opCon.values},
+        {label:"Imóveis",data:opImo.values},
+        {label:"Econômicos",data:opEco.values}
+      ]},
+      "registros-desativados":chartFixed(["Contribuintes","Imóveis"],[
+        countWhere(con.rows,r=>truthyValue(r,["desativado"])||/inativ|desativ/i.test(stringValue(r,["situacao","status"],""))),
+        countWhere(imo.rows,r=>truthyValue(r,["desativado"])||/inativ|desativ/i.test(stringValue(r,["situacao","status"],"")))
+      ],"Desativados","number"),
+      "campos-adicionais":chartGroups(campoGroups,"Registros","number")
+    },
+    meta:dashboardMeta([["contribuintes",con],["imoveis",imo],["economicos",eco],["atividades",ativ],["camposAdicionais",campos]])
+  };
+}
+
 async function listContextUsers(userToken, tenant, url) {
   const params=new URLSearchParams();
   params.set("limit",url.searchParams.get("limit") || "100");
