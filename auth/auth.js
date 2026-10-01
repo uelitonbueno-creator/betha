@@ -2,60 +2,47 @@
   const cfg = () => (window.BI_CONFIG && window.BI_CONFIG.AUTH) || {};
   const KEY_TOKEN = "betha_bi_user_token";
   const KEY_EXPIRES = "betha_bi_user_token_expires";
-  const KEY_STATE = "betha_bi_oauth_state";
-  const KEY_RETURN = "betha_bi_return_url";
+  const COOKIE_STATE = "betha_bi_oauth_state";
+  const COOKIE_VERIFIER = "betha_bi_pkce_verifier";
+  const AUTH_ERROR = "betha_bi_auth_error";
 
-  function randomState(size = 24) {
-    const bytes = new Uint8Array(size);
-    crypto.getRandomValues(bytes);
+  function base64url(bytes) {
     let binary = "";
-    for (const b of bytes) binary += String.fromCharCode(b);
-    return btoa(binary).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");
+    const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    for (const b of arr) binary += String.fromCharCode(b);
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
   }
 
-  function consumeTokenFromLocation() {
-    const query = new URLSearchParams(location.search);
-    const fragment = new URLSearchParams(String(location.hash || "").replace(/^#/, ""));
+  function randomUrlSafe(size = 32) {
+    const bytes = new Uint8Array(size);
+    crypto.getRandomValues(bytes);
+    return base64url(bytes);
+  }
 
-    const accessToken = fragment.get("access_token") || query.get("access_token");
-    const error = fragment.get("error") || query.get("error");
+  async function sha256(text) {
+    return crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  }
 
-    if (error) {
-      const description = fragment.get("error_description") || query.get("error_description") || "";
-      sessionStorage.setItem("betha_bi_auth_error", error + (description ? ": " + description : ""));
+  function setCookie(name, value, maxAge = 600) {
+    document.cookie =
+      encodeURIComponent(name) + "=" + encodeURIComponent(value) +
+      "; Max-Age=" + maxAge +
+      "; Path=/betha/" +
+      "; SameSite=Lax; Secure";
+  }
+
+  function getCookie(name) {
+    const prefix = encodeURIComponent(name) + "=";
+    for (const part of document.cookie.split(";")) {
+      const item = part.trim();
+      if (item.startsWith(prefix)) return decodeURIComponent(item.slice(prefix.length));
     }
+    return "";
+  }
 
-    if (!accessToken) return false;
-
-    const returnedState = fragment.get("state") || query.get("state");
-    const expectedState = sessionStorage.getItem(KEY_STATE);
-
-    // Valida state quando o contexto original ainda está disponível.
-    if (expectedState && returnedState && returnedState !== expectedState) {
-      sessionStorage.setItem("betha_bi_auth_error", "OAUTH_STATE_INVALID");
-      return false;
-    }
-
-    sessionStorage.setItem(KEY_TOKEN, accessToken);
-
-    const seconds = Number(
-      fragment.get("expires_in") || query.get("expires_in") ||
-      fragment.get("expires") || query.get("expires") || 0
-    );
-    if (seconds > 0) {
-      sessionStorage.setItem(KEY_EXPIRES, String(Date.now() + Math.max(0, seconds - 30) * 1000));
-    } else {
-      sessionStorage.removeItem(KEY_EXPIRES);
-    }
-
-    sessionStorage.removeItem(KEY_STATE);
-    sessionStorage.removeItem(KEY_RETURN);
-    sessionStorage.removeItem("betha_bi_auth_error");
-
-    // Remove token da barra de endereços sem recarregar.
-    const clean = location.pathname + location.search.replace(/([?&])(access_token|token_type|expires_in|expires|state)=[^&]*/g, "$1").replace(/[?&]$/,"");
-    history.replaceState({}, document.title, clean || location.pathname);
-    return true;
+  function deleteCookie(name) {
+    document.cookie =
+      encodeURIComponent(name) + "=; Max-Age=0; Path=/betha/; SameSite=Lax; Secure";
   }
 
   function getToken() {
@@ -69,35 +56,51 @@
     return token;
   }
 
+  function getError() {
+    return sessionStorage.getItem(AUTH_ERROR) || "";
+  }
+
+  function setError(message) {
+    sessionStorage.setItem(AUTH_ERROR, String(message || "AUTH_ERROR"));
+  }
+
+  function clearError() {
+    sessionStorage.removeItem(AUTH_ERROR);
+  }
+
   function clear() {
     sessionStorage.removeItem(KEY_TOKEN);
     sessionStorage.removeItem(KEY_EXPIRES);
-    sessionStorage.removeItem(KEY_STATE);
-    sessionStorage.removeItem(KEY_RETURN);
+    clearError();
+    deleteCookie(COOKIE_STATE);
+    deleteCookie(COOKIE_VERIFIER);
   }
 
-  function login(returnUrl = location.href) {
+  async function login() {
     const auth = cfg();
     if (!auth.CLIENT_ID || !auth.REDIRECT_URI || !auth.AUTHORIZE_URL) {
       throw new Error("AUTH_CONFIG_INCOMPLETE");
     }
 
-    const state = randomState();
-    sessionStorage.setItem(KEY_STATE, state);
-    sessionStorage.setItem(KEY_RETURN, returnUrl);
+    clearError();
+
+    const verifier = randomUrlSafe(48);
+    const state = randomUrlSafe(24);
+    const challenge = base64url(await sha256(verifier));
+
+    setCookie(COOKIE_VERIFIER, verifier, 600);
+    setCookie(COOKIE_STATE, state, 600);
 
     const url = new URL(auth.AUTHORIZE_URL);
+    url.searchParams.set("response_type", "code");
     url.searchParams.set("client_id", auth.CLIENT_ID);
-    url.searchParams.set("response_type", "token");
     url.searchParams.set("redirect_uri", auth.REDIRECT_URI);
+    url.searchParams.set("scope", (auth.SCOPES || []).join(","));
+    url.searchParams.set("code_challenge", challenge);
+    url.searchParams.set("code_challenge_method", "S256");
     url.searchParams.set("state", state);
     url.searchParams.set("bth_ignore_origin", "true");
 
-    const scopes = Array.isArray(auth.SCOPES) ? auth.SCOPES.filter(Boolean) : [];
-    if (scopes.length) url.searchParams.set("scopes", scopes.join(","));
-
-    // Redirecionamento integral. Se o usuário já possuir sessão Betha,
-    // a autenticação pode ser concluída sem exibir novamente o formulário.
     try {
       window.top.location.href = url.toString();
     } catch {
@@ -105,54 +108,104 @@
     }
   }
 
-  function handleCallback() {
-    const query = new URLSearchParams(location.search);
-    const fragment = new URLSearchParams(String(location.hash || "").replace(/^#/, ""));
+  async function exchangeCallbackIfPresent() {
+    const params = new URLSearchParams(location.search);
+    const oauthError = params.get("error");
+    const code = params.get("code");
 
-    const error = query.get("error") || fragment.get("error");
-    const accessToken = fragment.get("access_token") || query.get("access_token");
-
-    if (!accessToken && !error) {
-      throw new Error("ACCESS_TOKEN_MISSING");
+    if (oauthError) {
+      const description = params.get("error_description") || "";
+      setError(oauthError + (description ? ": " + description : ""));
+      cleanCallbackUrl();
+      return false;
     }
 
-    // A página principal recebe o retorno OAuth diretamente no fragmento.
-    // Isso evita depender do storage da página callback.
-    const out = new URLSearchParams();
+    if (!code) return false;
 
-    if (accessToken) {
-      out.set("access_token", accessToken);
-      const tokenType = fragment.get("token_type") || query.get("token_type");
-      const expiresIn = fragment.get("expires_in") || query.get("expires_in") || fragment.get("expires") || query.get("expires");
-      const state = fragment.get("state") || query.get("state");
-      if (tokenType) out.set("token_type", tokenType);
-      if (expiresIn) out.set("expires_in", expiresIn);
-      if (state) out.set("state", state);
-    } else {
-      out.set("error", error);
-      const description = query.get("error_description") || fragment.get("error_description");
-      if (description) out.set("error_description", description);
+    const returnedState = params.get("state") || "";
+    const expectedState = getCookie(COOKIE_STATE);
+    const verifier = getCookie(COOKIE_VERIFIER);
+
+    if (!expectedState || !returnedState || expectedState !== returnedState) {
+      setError("OAUTH_STATE_INVALID");
+      cleanCallbackUrl();
+      return false;
     }
 
-    location.replace("../#" + out.toString());
+    if (!verifier) {
+      setError("PKCE_VERIFIER_MISSING");
+      cleanCallbackUrl();
+      return false;
+    }
+
+    const backend = String((window.BI_CONFIG && window.BI_CONFIG.BACKEND_URL) || "").replace(/\/$/, "");
+    if (!backend) {
+      setError("BACKEND_NOT_CONFIGURED");
+      cleanCallbackUrl();
+      return false;
+    }
+
+    try {
+      const response = await fetch(backend + "/api/auth/exchange", {
+        method: "POST",
+        headers: {"Content-Type":"application/json","Accept":"application/json"},
+        body: JSON.stringify({
+          code,
+          codeVerifier: verifier,
+          state: returnedState
+        })
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.access_token) {
+        throw new Error(
+          (payload.error || ("TOKEN_HTTP_" + response.status)) +
+          (payload.detail ? " | " + payload.detail : "")
+        );
+      }
+
+      sessionStorage.setItem(KEY_TOKEN, payload.access_token);
+
+      const seconds = Number(payload.expires_in || 0);
+      if (seconds > 0) {
+        sessionStorage.setItem(KEY_EXPIRES, String(Date.now() + Math.max(0, seconds - 30) * 1000));
+      } else {
+        sessionStorage.removeItem(KEY_EXPIRES);
+      }
+
+      clearError();
+      deleteCookie(COOKIE_STATE);
+      deleteCookie(COOKIE_VERIFIER);
+      cleanCallbackUrl();
+      return true;
+    } catch (error) {
+      setError(error.message || String(error));
+      cleanCallbackUrl();
+      return false;
+    }
+  }
+
+  function cleanCallbackUrl() {
+    const clean = new URL(location.href);
+    ["code","state","error","error_description"].forEach(k => clean.searchParams.delete(k));
+    clean.hash = "";
+    history.replaceState({}, document.title, clean.pathname + (clean.search ? clean.search : ""));
   }
 
   function logout() {
     clear();
-    location.reload();
+    location.href = new URL("./", location.href).toString();
   }
 
-  // Se o OAuth retornou para a página principal, consome o token antes
-  // de qualquer decisão de interface.
-  consumeTokenFromLocation();
+  const ready = exchangeCallbackIfPresent();
 
   window.BIAuth = {
+    ready,
     getToken,
+    getError,
     isAuthenticated: () => Boolean(getToken()),
     login,
     logout,
-    clear,
-    consumeTokenFromLocation,
-    handleCallback
+    clear
   };
 })();
