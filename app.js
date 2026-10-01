@@ -402,11 +402,45 @@
 
   function readDashboardCache(view) {
     try {
-      const raw = localStorage.getItem(dashboardCacheKey(view));
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (!parsed || !parsed.payload) return null;
-      return parsed;
+      // 1) tenta o snapshot exato da fonte selecionada
+      const exactKey=dashboardCacheKey(view);
+      const raw = localStorage.getItem(exactKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.payload) {
+          parsed._cacheKey=exactKey;
+          parsed._fallback=false;
+          return parsed;
+        }
+      }
+
+      // 2) fallback: usa o snapshot mais recente da mesma entidade/painel/período/exercício,
+      // independentemente da fonte selecionada.
+      const periodo = document.getElementById("periodo")?.value || "ano";
+      const exercicio = document.getElementById("exercicio")?.value || "";
+      const prefix = [
+        CACHE_PREFIX,
+        tenantId || "default",
+        view || currentView || "visao-geral",
+        periodo,
+        exercicio
+      ].join(":") + ":";
+
+      let newest=null;
+      for(let i=0;i<localStorage.length;i++){
+        const key=localStorage.key(i);
+        if(!key || !key.startsWith(prefix)) continue;
+        try{
+          const candidate=JSON.parse(localStorage.getItem(key));
+          if(!candidate || !candidate.payload) continue;
+          const time=new Date(candidate.savedAt||0).getTime();
+          if(!newest || time>newest.time){
+            newest={...candidate,time,_cacheKey:key,_fallback:true};
+          }
+        }catch{}
+      }
+
+      return newest;
     } catch (error) {
       console.warn("Snapshot local inválido:", error);
       return null;
@@ -432,7 +466,8 @@
     renderPayload(cached.payload);
     const stamp = formatCacheTime(cached.savedAt);
     const suffix = cached.state === "partial" ? " · carga parcial" : "";
-    setStatus("online", "Dados locais · " + stamp + suffix);
+    const fallback = cached._fallback ? " · snapshot de outra fonte" : "";
+    setStatus("online", "Dados locais · " + stamp + suffix + fallback);
     return true;
   }
 
