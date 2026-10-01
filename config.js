@@ -9,6 +9,6 @@ window.BI_CONFIG = {
     REDIRECT_URI: "https://uelitonbueno-creator.github.io/betha/",
     AUTHORIZE_URL: "https://plataforma-oauth.betha.cloud/auth/oauth2/authorize",
     TOKEN_URL: "https://plataforma-oauth.betha.cloud/auth/oauth2/token",
-    SCOPES: ["user-accounts.suite", "licenses.suite"]
+    SCOPES: ["contas-usuarios.suite", "user-accounts.suite", "licenses.suite"]
   }
 };
