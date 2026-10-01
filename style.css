@@ -220,3 +220,15 @@ button,select{font:inherit}
   .wizard-steps{grid-template-columns:1fr 1fr}
   .permission-list{grid-template-columns:1fr}
 }
+
+.integration-coverage{display:flex;align-items:center;gap:18px;margin:0 0 14px;padding:12px 16px;border:1px solid #dfe4e9;background:#fff}
+.coverage-title{min-width:190px;display:flex;flex-direction:column;gap:2px}
+.coverage-title strong{font-size:12px;color:#232a31}
+.coverage-title span{font-size:10px;color:#6c7580}
+.coverage-items{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.coverage-item{display:flex;align-items:center;gap:6px;padding:5px 8px;background:#f7f9fb;border:1px solid #e4e8ec;font-size:10px;color:#505963}
+.coverage-item strong{font-size:11px;color:#20262d}
+.coverage-dot{width:7px;height:7px;border-radius:50%;background:#c8cdd3}
+.coverage-dot.ok{background:#2fa36b}
+.coverage-loading{font-size:10px;color:#7a838d}
+@media(max-width:800px){.integration-coverage{align-items:flex-start;flex-direction:column}.coverage-title{min-width:0}}
