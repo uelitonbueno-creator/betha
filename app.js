@@ -304,6 +304,7 @@
     }
 
     const sourceRows = payload && payload.meta && payload.meta.sourceRows ? payload.meta.sourceRows : {};
+    const sourceAudit = payload && payload.meta && payload.meta.sourceAudit ? payload.meta.sourceAudit : {};
     const warnings = payload && payload.meta && Array.isArray(payload.meta.warnings) ? payload.meta.warnings : [];
     const labelMap = {
       pagamentos:"Pagamentos", pagamentosDetalhados:"Pagamentos detalhados", pagamentosDetalhadosValores:"Valores detalhados",
@@ -320,15 +321,27 @@
     if (coverageItems) {
       coverageItems.innerHTML = Object.entries(sourceRows).map(([key,raw]) => {
         const value = Number(raw || 0);
+        const audit = sourceAudit[key] || {};
         const warning = warningBySource.get(key);
-        const stateClass = warning ? "warn" : (value > 0 ? "ok" : "");
-        const title = warning
-          ? (warning.error ? "Falha: " + warning.error : "Carga parcial/truncada")
-          : (value > 0 ? "Fonte carregada" : "Fonte sem registros nesta carga");
-        return `<div class="coverage-item" title="${escapeHtml(title)}">
+        const reported = audit.reportedTotal === null || audit.reportedTotal === undefined
+          ? null
+          : Number(audit.reportedTotal);
+        const complete = audit.complete === true;
+        const error = audit.error || (warning && warning.error) || "";
+        const stateClass = error ? "error" : (complete ? "ok" : "warn");
+        const status = error ? "ERRO" : (complete ? "COMPLETO" : "PARCIAL");
+        const countText = reported !== null
+          ? value.toLocaleString("pt-BR") + " / " + reported.toLocaleString("pt-BR")
+          : value.toLocaleString("pt-BR");
+        const pages = Number(audit.pages || 0);
+        const title = error
+          ? "Falha: " + error
+          : status + " · " + pages + " página(s)";
+        return `<div class="coverage-item coverage-audit" title="${escapeHtml(title)}">
           <span class="coverage-dot ${stateClass}"></span>
-          <span>${escapeHtml(labelMap[key] || key)}</span>
-          <strong>${value.toLocaleString("pt-BR")}</strong>
+          <span class="coverage-source">${escapeHtml(labelMap[key] || key)}</span>
+          <strong>${escapeHtml(countText)}</strong>
+          <small>${status}${pages ? " · " + pages + " pág." : ""}</small>
         </div>`;
       }).join("") || '<span class="coverage-loading">Nenhuma fonte informada pelo backend.</span>';
     }
@@ -370,7 +383,9 @@
       if (warnings.length) {
         setStatus("waiting", "Dados carregados · " + warnings.length + " fonte(s) com aviso");
       } else {
-        setStatus("online", "Dados reais carregados da Betha");
+        setStatus("online", payload && payload.meta && payload.meta.auditMode === "FULL"
+          ? "Auditoria completa · dados reais carregados"
+          : "Dados reais carregados da Betha");
       }
     } catch (error) {
       console.warn("Dashboard ainda sem motor analítico publicado:", error);
