@@ -1756,7 +1756,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-01-dashboard-public-v2",
+        buildVersion:"2026-10-01-all-panels-v3",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -1973,14 +1973,28 @@ export default {
         const tenant=resolveTenant(env,getTenantId(request,url));
         const view=dashboardMatch[1];
 
-        // Enquanto o login está desativado, esta rota devolve apenas agregados.
+        // Enquanto o login está desativado, estas rotas devolvem apenas agregados.
         // Nenhum registro individual ou dado cadastral é exposto.
-        if (view==="visao-geral") {
-          const body=await buildOverviewDashboard(env,tenant,url);
-          return json(request,env,200,body);
-        }
+        const builders={
+          "visao-geral":buildOverviewDashboard,
+          arrecadacao:buildRevenueDashboard,
+          debitos:buildDebtsDashboard,
+          divida:buildActiveDebtDashboard,
+          parcelamentos:buildInstallmentsDashboard,
+          economicos:buildEconomicsDashboard,
+          imobiliario:buildRealEstateDashboard,
+          itbi:buildItbiDashboard,
+          contribuintes:buildTaxpayersDashboard,
+          encerramento:buildClosingDashboard,
+          obras:buildWorksDashboard,
+          qualidade:buildQualityDashboard
+        };
 
-        return json(request,env,501,{error:"DASHBOARD_NOT_IMPLEMENTED",view});
+        const builder=builders[view];
+        if (!builder) return json(request,env,501,{error:"DASHBOARD_NOT_IMPLEMENTED",view});
+
+        const body=await builder(env,tenant,url);
+        return json(request,env,200,body);
       } catch(error) {
         return errorResponse(request,env,error);
       }
