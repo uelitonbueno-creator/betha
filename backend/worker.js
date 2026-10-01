@@ -212,6 +212,18 @@ function devSessionSecret(env) {
   return env.BI_DEV_SESSION_SECRET || env.BETHA_LOGIN_CLIENT_SECRET || "";
 }
 
+function normalizeDevCredential(value) {
+  let text=String(value ?? "").trim();
+  if (
+    text.length>=2 &&
+    ((text.startsWith('"') && text.endsWith('"')) ||
+     (text.startsWith("'") && text.endsWith("'")))
+  ) {
+    text=text.slice(1,-1).trim();
+  }
+  return text;
+}
+
 async function createDevSession(env, username) {
   const secret=devSessionSecret(env);
   if (!secret) throw new Error("DEV_SESSION_SECRET_NOT_CONFIGURED");
@@ -892,10 +904,13 @@ export default {
         }
 
         const body=await request.json().catch(()=>({}));
-        const username=String(body.username||"");
-        const password=String(body.password||"");
+        const username=normalizeDevCredential(body.username).toLowerCase();
+        const password=normalizeDevCredential(body.password);
 
-        if (username!==String(env.BI_DEV_LOGIN_USER) || password!==String(env.BI_DEV_LOGIN_PASSWORD)) {
+        const expectedUser=normalizeDevCredential(env.BI_DEV_LOGIN_USER).toLowerCase();
+        const expectedPassword=normalizeDevCredential(env.BI_DEV_LOGIN_PASSWORD);
+
+        if (username!==expectedUser || password!==expectedPassword) {
           throw new Error("DEV_LOGIN_INVALID");
         }
 
