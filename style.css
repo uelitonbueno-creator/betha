@@ -231,5 +231,12 @@ button,select{font:inherit}
 .coverage-dot{width:7px;height:7px;border-radius:50%;background:#c8cdd3}
 .coverage-dot.ok{background:#2fa36b}
 .coverage-dot.warn{background:#d49317}
+.coverage-dot.error{background:#c43d3d}
 .coverage-loading{font-size:10px;color:#7a838d}
 @media(max-width:800px){.integration-coverage{align-items:flex-start;flex-direction:column}.coverage-title{min-width:0}}
+
+.coverage-audit{min-width:190px;display:grid;grid-template-columns:auto 1fr auto;grid-template-rows:auto auto;column-gap:7px;row-gap:2px;align-items:center}
+.coverage-audit .coverage-dot{grid-row:1 / span 2}
+.coverage-audit .coverage-source{font-weight:500}
+.coverage-audit strong{text-align:right}
+.coverage-audit small{grid-column:2 / span 2;font-size:9px;color:#737d87}
