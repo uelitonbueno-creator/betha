@@ -378,7 +378,16 @@
     target.charts = target.charts || {};
     target.meta = target.meta || {warnings:[],sourceRows:{},sourceTotals:{},sourceAudit:{}};
 
-    Object.assign(target.kpis, part.kpis || {});
+    // Na Visão Geral fragmentada, cada lote representa uma parcela do total.
+    for (const [key,value] of Object.entries(part.kpis || {})) {
+      if (value === null || value === undefined) continue;
+      const n=Number(value);
+      if (Number.isFinite(n)) {
+        target.kpis[key]=(Number(target.kpis[key])||0)+n;
+      } else {
+        target.kpis[key]=value;
+      }
+    }
 
     for (const [chartId, incoming] of Object.entries(part.charts || {})) {
       if (!target.charts[chartId]) {
@@ -390,9 +399,18 @@
       const sameLabels = JSON.stringify(existing.labels || []) === JSON.stringify(incoming.labels || []);
 
       if (sameLabels) {
-        const labels = new Set((existing.datasets || []).map(ds => ds.label));
         for (const ds of incoming.datasets || []) {
-          if (!labels.has(ds.label)) existing.datasets.push(ds);
+          const existingDs=(existing.datasets || []).find(item=>item.label===ds.label);
+          if (!existingDs) {
+            existing.datasets.push(JSON.parse(JSON.stringify(ds)));
+            continue;
+          }
+          const max=Math.max(existingDs.data?.length||0,ds.data?.length||0);
+          const summed=[];
+          for(let i=0;i<max;i++){
+            summed[i]=(Number(existingDs.data?.[i])||0)+(Number(ds.data?.[i])||0);
+          }
+          existingDs.data=summed;
         }
       } else if (
         (existing.datasets || []).length === 1 &&
@@ -411,10 +429,75 @@
     target.meta.auditMode = meta.auditMode || target.meta.auditMode || "FULL";
     target.meta.generatedAt = meta.generatedAt || target.meta.generatedAt;
     target.meta.warnings = [...(target.meta.warnings || []), ...(meta.warnings || [])];
-    Object.assign(target.meta.sourceRows, meta.sourceRows || {});
-    Object.assign(target.meta.sourceTotals, meta.sourceTotals || {});
-    Object.assign(target.meta.sourceAudit, meta.sourceAudit || {});
+
+    for(const [key,value] of Object.entries(meta.sourceRows||{})){
+      target.meta.sourceRows[key]=(Number(target.meta.sourceRows[key])||0)+(Number(value)||0);
+    }
+    for(const [key,value] of Object.entries(meta.sourceTotals||{})){
+      target.meta.sourceTotals[key]=(Number(target.meta.sourceTotals[key])||0)+(Number(value)||0);
+    }
+
+    for(const [key,audit] of Object.entries(meta.sourceAudit||{})){
+      const prev=target.meta.sourceAudit[key]||{};
+      target.meta.sourceAudit[key]={
+        reportedTotal:audit.reportedTotal ?? prev.reportedTotal ?? null,
+        loaded:(Number(prev.loaded)||0)+(Number(audit.loaded)||0),
+        pages:(Number(prev.pages)||0)+(Number(audit.pages)||0),
+        complete:audit.complete===true,
+        hasMore:audit.hasMore===true,
+        nextOffset:audit.nextOffset ?? null,
+        startOffset:prev.startOffset ?? audit.startOffset ?? 0,
+        truncated:Boolean(prev.truncated||audit.truncated),
+        repeatedPage:Boolean(prev.repeatedPage||audit.repeatedPage),
+        totalMismatch:Boolean(prev.totalMismatch||audit.totalMismatch),
+        pageLimit:audit.pageLimit ?? prev.pageLimit ?? null,
+        error:audit.error || prev.error || null,
+        errorStatus:audit.errorStatus || prev.errorStatus || null,
+        errorDetail:audit.errorDetail || prev.errorDetail || null
+      };
+    }
     return target;
+  }
+
+  async function loadOverviewPartFully(part, params) {
+    const aggregate={
+      part,
+      kpis:{},
+      charts:{},
+      meta:{auditMode:"FULL",warnings:[],sourceRows:{},sourceTotals:{},sourceAudit:{}}
+    };
+
+    let offset=0;
+    let iterations=0;
+
+    while(iterations<100){
+      iterations++;
+      const chunkParams=new URLSearchParams(params);
+      chunkParams.set("chunked","1");
+      chunkParams.set("chunkOffset",String(offset));
+      chunkParams.set("chunkPages","20");
+      chunkParams.set("chunkLimit","1000");
+
+      const payload=await api(
+        "/api/dashboard/visao-geral/part/" + encodeURIComponent(part) + "?" + chunkParams.toString()
+      );
+
+      mergeDashboardPart(aggregate,payload);
+
+      const audits=Object.values(payload?.meta?.sourceAudit||{});
+      const audit=audits[0]||null;
+
+      if (!audit) break;
+      if (audit.error) break;
+      if (audit.complete===true) break;
+      if (audit.hasMore!==true || audit.nextOffset===null || audit.nextOffset===undefined) break;
+
+      const next=Number(audit.nextOffset);
+      if (!Number.isFinite(next) || next<=offset) break;
+      offset=next;
+    }
+
+    return aggregate;
   }
 
   async function loadOverviewSharded(params) {
@@ -430,9 +513,7 @@
     ];
 
     const settled = await Promise.allSettled(
-      parts.map(part => api(
-        "/api/dashboard/visao-geral/part/" + encodeURIComponent(part) + "?" + params.toString()
-      ))
+      parts.map(part => loadOverviewPartFully(part,params))
     );
 
     const merged = {
