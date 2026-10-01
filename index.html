@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261001-15">
+  <link rel="stylesheet" href="style.css?v=20261001-16">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -18,8 +18,18 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 </head>
 <body>
+  <script>
+    (() => {
+      const clean = new URL(location.href);
+      if (clean.searchParams.has("username") || clean.searchParams.has("password")) {
+        clean.searchParams.delete("username");
+        clean.searchParams.delete("password");
+        history.replaceState({}, document.title, clean.pathname + clean.search + clean.hash);
+      }
+    })();
+  </script>
   <div id="authGate" class="auth-gate" hidden>
-    <form id="devLoginForm" class="auth-card" autocomplete="off">
+    <form id="devLoginForm" class="auth-card" autocomplete="off" onsubmit="return false;">
       <div class="auth-brand">B</div>
       <h1>BI Tributos</h1>
       <p>Acesso temporário de desenvolvimento para os painéis de teste.</p>
@@ -34,7 +44,7 @@
         <input id="devPassword" name="password" type="password" autocomplete="current-password" required>
       </div>
 
-      <button id="loginButton" class="btn-primary-betha auth-login" type="submit">ENTRAR</button>
+      <button id="loginButton" class="btn-primary-betha auth-login" type="button">ENTRAR</button>
       <div id="authMessage" class="auth-message"></div>
     </form>
   </div>
@@ -278,9 +288,9 @@
     </div>
   </aside>
 
-  <script src="config.js?v=20261001-15"></script>
-  <script src="auth/auth.js?v=20261001-15"></script>
+  <script src="config.js?v=20261001-16"></script>
+  <script src="auth/auth.js?v=20261001-16"></script>
   <script src="dashboard-catalog.js"></script>
-  <script src="app.js?v=20261001-15"></script>
+  <script src="app.js?v=20261001-16"></script>
 </body>
 </html>
