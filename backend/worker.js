@@ -1119,8 +1119,13 @@ function numberBucket(value,bounds) {
 
 function dashboardWarnings(entries) {
   return entries
-    .filter(([,src])=>src && (src.error||src.truncated))
-    .map(([source,src])=>({source,error:src.error,truncated:Boolean(src.truncated)}));
+    .filter(([,src])=>src && (src.error||src.truncated||src.totalMismatch))
+    .map(([source,src])=>({
+      source,
+      error:src.error,
+      truncated:Boolean(src.truncated),
+      totalMismatch:Boolean(src.totalMismatch)
+    }));
 }
 
 function dashboardMeta(entries,extra={}) {
