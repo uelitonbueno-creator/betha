@@ -37,9 +37,11 @@
         await BIAuth.login(username, password);
         location.replace(location.pathname);
       } catch (error) {
-        message.textContent = error.message === "DEV_LOGIN_INVALID"
-          ? "Usuário ou senha inválidos."
-          : "Falha no login: " + error.message;
+        message.textContent =
+          error.message === "DEV_LOGIN_USER_INVALID" ? "Usuário divergente da configuração do Worker." :
+          error.message === "DEV_LOGIN_PASSWORD_INVALID" ? "Senha divergente da configuração do Worker." :
+          error.message === "DEV_LOGIN_INVALID" ? "Usuário ou senha inválidos." :
+          "Falha no login: " + error.message;
         button.disabled = false;
         button.textContent = "ENTRAR";
       }
