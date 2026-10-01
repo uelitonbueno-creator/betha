@@ -264,7 +264,7 @@
     if (!base) throw new Error("BACKEND_NOT_CONFIGURED");
     const headers = {...(options.headers || {}), Accept:"application/json"};
     const token = BIAuth.getToken();
-    if (token) headers.Authorization = "Bearer " + token;
+    if (token) headers.Authorization = "Session " + token;
     if (tenantId) headers["X-Tenant-Id"] = tenantId;
     const fetchOptions = {...options, headers, credentials:"include"};
     const response = await fetch(base + path, fetchOptions);
