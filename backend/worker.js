@@ -1063,7 +1063,18 @@ async function buildOverviewPart(env,tenant,url,part) {
   }
 
   if (part==="dividas") {
-    const src=await loadOverviewSource(env,tenant,"base","encerramento-dividas",url);
+    let src=await loadOverviewSource(env,tenant,"base","encerramento-dividas",url);
+    let sourceKey="encerramentoDividas";
+    let sourceUsed="base:encerramento-dividas";
+
+    // A API Base pode não estar liberada na credencial atual.
+    // Nesse caso mantém o BI funcional usando a fonte BI de dívidas.
+    if (src.error && [401,403].includes(Number(src.errorStatus))) {
+      src=await loadOverviewSource(env,tenant,"bi","dividas",url);
+      sourceKey="dividas";
+      sourceUsed="bi:dividas";
+    }
+
     const saldoPath=resolveNumericPath(
       src.rows,
       ["valorSaldo","vlSaldo","saldo","saldoCalculado"],
@@ -1072,7 +1083,7 @@ async function buildOverviewPart(env,tenant,url,part) {
     const debtStatus=groupCount(src.rows,["statusDivida","situacaoDivida","situacao","status"],12);
     const debtYears=groupSum(
       src.rows,
-      ["anoDivida","ano","exercicio"],
+      ["anoDivida","ano","exercicio","dataInscricao"],
       saldoPath?[saldoPath]:["valorSaldo","vlSaldo","saldo","saldoCalculado"],
       30
     );
@@ -1088,8 +1099,9 @@ async function buildOverviewPart(env,tenant,url,part) {
         },
         "situacao-divida":chartGroups(debtStatus,"Dívidas","number")
       },
-      meta:dashboardMeta([["encerramentoDividas",src]],{
-        fieldMapping:{saldo:saldoPath}
+      meta:dashboardMeta([[sourceKey,src]],{
+        fieldMapping:{saldo:saldoPath},
+        sourceUsed:{divida:sourceUsed}
       })
     };
   }
@@ -2282,7 +2294,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-01-financial-mapping-v13",
+        buildVersion:"2026-10-01-resume-fallback-v14",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
