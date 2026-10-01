@@ -109,7 +109,7 @@
       return;
     }
     renderDashboard(view);
-    loadDashboardData(view);
+    loadDashboardData(view); // somente snapshot local; API apenas no botão Atualizar
   }
 
   function sourceClass(source) {
@@ -353,6 +353,87 @@
         </div>`;
       }).join("") || '<span class="coverage-loading">Nenhuma fonte informada pelo backend.</span>';
     }
+  }
+
+  const CACHE_PREFIX = "betha_bi_snapshot_v1";
+
+  function dashboardCacheKey(view) {
+    const periodo = document.getElementById("periodo")?.value || "ano";
+    const exercicio = document.getElementById("exercicio")?.value || "";
+    const fonte = document.getElementById("fontePreferencial")?.value || "auto";
+    return [
+      CACHE_PREFIX,
+      tenantId || "default",
+      view || currentView || "visao-geral",
+      periodo,
+      exercicio,
+      fonte
+    ].join(":");
+  }
+
+  function compactPayloadForCache(payload) {
+    const clone = JSON.parse(JSON.stringify(payload || {}));
+    if (clone.meta && clone.meta.sourceAudit) {
+      for (const audit of Object.values(clone.meta.sourceAudit)) {
+        if (audit && typeof audit === "object") delete audit.pageMeta;
+      }
+    }
+    if (clone.meta) {
+      clone.meta.cachedLocally = true;
+    }
+    return clone;
+  }
+
+  function saveDashboardCache(view, payload, state="complete") {
+    try {
+      const record = {
+        version:1,
+        savedAt:new Date().toISOString(),
+        state,
+        payload:compactPayloadForCache(payload)
+      };
+      localStorage.setItem(dashboardCacheKey(view), JSON.stringify(record));
+      return record;
+    } catch (error) {
+      console.warn("Não foi possível salvar snapshot local:", error);
+      return null;
+    }
+  }
+
+  function readDashboardCache(view) {
+    try {
+      const raw = localStorage.getItem(dashboardCacheKey(view));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !parsed.payload) return null;
+      return parsed;
+    } catch (error) {
+      console.warn("Snapshot local inválido:", error);
+      return null;
+    }
+  }
+
+  function formatCacheTime(value) {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleString("pt-BR", {
+      day:"2-digit", month:"2-digit", year:"numeric",
+      hour:"2-digit", minute:"2-digit"
+    });
+  }
+
+  function loadDashboardFromCache(view) {
+    const cached = readDashboardCache(view);
+    if (!cached) {
+      setStatus("waiting", "Sem dados locais · clique em ATUALIZAR");
+      return false;
+    }
+
+    renderPayload(cached.payload);
+    const stamp = formatCacheTime(cached.savedAt);
+    const suffix = cached.state === "partial" ? " · carga parcial" : "";
+    setStatus("online", "Dados locais · " + stamp + suffix);
+    return true;
   }
 
   async function api(path, options = {}) {
@@ -624,14 +705,23 @@
       }
 
       renderPayload(merged);
+      saveDashboardCache("visao-geral", merged, index === parts.length - 1 ? "complete" : "partial");
     }
 
     return merged;
   }
 
-  async function loadDashboardData(view) {
+  async function loadDashboardData(view, options = {}) {
+    const force = options.force === true;
+
+    if (!force) {
+      loadDashboardFromCache(view);
+      return;
+    }
+
     if (!cfg.BACKEND_URL) return;
-    setStatus("waiting", "Consultando backend...");
+    setStatus("waiting", "Atualizando dados da Betha...");
+
     try {
       const health = await api("/api/health");
       const missing = [];
@@ -646,28 +736,38 @@
         exercicio: document.getElementById("exercicio").value,
         fonte: document.getElementById("fontePreferencial").value
       });
+
       const payload = view === "visao-geral"
         ? await loadOverviewSharded(params)
         : await api("/api/dashboard/" + encodeURIComponent(view) + "?" + params.toString());
+
       renderPayload(payload);
+      saveDashboardCache(view, payload, "complete");
+
       const warnings = payload && payload.meta && Array.isArray(payload.meta.warnings)
         ? payload.meta.warnings
         : [];
+
+      const saved = readDashboardCache(view);
+      const stamp = saved ? formatCacheTime(saved.savedAt) : "";
+
       if (warnings.length) {
-        setStatus("waiting", "Dados carregados · " + warnings.length + " fonte(s) com aviso");
+        setStatus("waiting", "Atualizado " + stamp + " · " + warnings.length + " fonte(s) com aviso");
       } else {
-        setStatus("online", payload && payload.meta && payload.meta.auditMode === "FULL"
-          ? "Auditoria completa · dados reais carregados"
-          : "Dados reais carregados da Betha");
+        setStatus("online", "Atualizado " + stamp + " · salvo localmente");
       }
     } catch (error) {
-      console.warn("Dashboard ainda sem motor analítico publicado:", error);
+      console.warn("Falha ao atualizar dashboard:", error);
+
+      // Mantém o último snapshot na tela mesmo se a atualização falhar.
+      const restored = loadDashboardFromCache(view);
+
       if (error.status === 404 || error.status === 501) {
-        setStatus("waiting", "Front completo · motor analítico aguardando publicação");
+        setStatus("waiting", "Dados locais mantidos · motor analítico indisponível");
       } else if (error.message === "APPLICATION_SESSION_NOT_CONFIGURED") {
-        setStatus("waiting", "Aguardando autenticação Betha");
-      } else {
-        setStatus("error", "Integração indisponível");
+        setStatus("waiting", "Dados locais mantidos · aguardando autenticação Betha");
+      } else if (!restored) {
+        setStatus("error", "Atualização indisponível");
       }
     }
   }
@@ -1043,10 +1143,16 @@
     } catch {}
   }
 
-  document.getElementById("refreshButton").addEventListener("click", () => loadDashboardData(currentView));
-  document.getElementById("periodo").addEventListener("change", () => loadDashboardData(currentView));
-  document.getElementById("exercicio").addEventListener("change", () => loadDashboardData(currentView));
-  document.getElementById("fontePreferencial").addEventListener("change", () => loadDashboardData(currentView));
+  document.getElementById("refreshButton").addEventListener("click", () => loadDashboardData(currentView, {force:true}));
+
+  const reloadLocalSelection = () => {
+    renderDashboard(currentView);
+    loadDashboardData(currentView);
+  };
+
+  document.getElementById("periodo").addEventListener("change", reloadLocalSelection);
+  document.getElementById("exercicio").addEventListener("change", reloadLocalSelection);
+  document.getElementById("fontePreferencial").addEventListener("change", reloadLocalSelection);
 
   function escapeHtml(value) {
     return String(value ?? "")
@@ -1066,7 +1172,8 @@
     renderUsersAdmin();
   } else {
     renderDashboard(currentView);
-    loadDashboardData(currentView);
+    loadDashboardData(currentView); // abre o snapshot local sem consultar a Betha
   }
-  loadTenants();
+  // Lista de entidades não é necessária enquanto o login oficial estiver desativado.
+  if (cfg.AUTH_REQUIRED) loadTenants();
 })();
