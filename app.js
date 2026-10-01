@@ -4,6 +4,10 @@
   const bethaApp = document.getElementById("bethaApp");
   const authGate = document.getElementById("authGate");
 
+  if (window.BIAuth && BIAuth.ready) {
+    try { await BIAuth.ready; } catch {}
+  }
+
   if (!window.BIAuth || !BIAuth.isAuthenticated()) {
     bethaApp.style.display = "none";
     authGate.hidden = false;
@@ -12,6 +16,8 @@
     const previousAuthError = window.BIAuth ? BIAuth.getError() : "BIAuth não carregou";
     if (previousAuthError) {
       authMessage.textContent = "Retorno da autenticação: " + previousAuthError;
+    } else if (window.BIAuth && BIAuth.getStatus && BIAuth.getStatus()) {
+      authMessage.textContent = "Estado da autenticação: " + BIAuth.getStatus();
     } else {
       const q = new URLSearchParams(location.search);
       const h = new URLSearchParams(String(location.hash || "").replace(/^#/, ""));
