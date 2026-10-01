@@ -14,7 +14,7 @@ const USERS_BASE = "https://plataforma-usuarios.betha.cloud";
 const LICENSES_BASE = "https://plataforma-licencas.betha.cloud";
 const OAUTH_TOKEN_URL = "https://plataforma-oauth.betha.cloud/auth/oauth2/token";
 const BROWSER_CLIENT_ID = "9296eb53-4d03-495b-96e6-a3ed3a7d14e3";
-const BROWSER_REDIRECT_URI = "https://uelitonbueno-creator.github.io/betha/auth/callback.html";
+const BROWSER_REDIRECT_URI = "https://uelitonbueno-creator.github.io/betha/";\nconst BROWSER_SCOPES = "contas-usuarios.suite,user-accounts.suite,licenses.suite";
 
 const BI_RESOURCES = Object.freeze({
   contribuintes: "/integracoes-bi/v1/contribuintes",
@@ -408,6 +408,7 @@ export default {
         form.set("code_verifier",verifier);
         form.set("code",code);
         form.set("redirect_uri",BROWSER_REDIRECT_URI);
+        form.set("scope",BROWSER_SCOPES);
 
         const oauthResponse=await fetch(OAUTH_TOKEN_URL,{
           method:"POST",
