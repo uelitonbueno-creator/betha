@@ -32,13 +32,19 @@
 
   authGate.hidden = true;
   bethaApp.style.display = "";
+  // O componente Betha é registrado de forma assíncrona pelo loader.
+  // Aguarda o upgrade antes de chamar métodos como setMenuAtivo().
+  if (window.customElements && customElements.whenDefined) {
+    try { await customElements.whenDefined("bth-app"); } catch {}
+  }
+
   const query = Object.fromEntries(new URLSearchParams(location.search).entries());
   const chartInstances = new Map();
   let currentView = query.view === "usuarios-admin" ? "usuarios-admin" :
     (query.view && dashboards[query.view] ? query.view : "visao-geral");
   let currentPayload = null;
 
-  const tenantId = query.tenant || query.entidadeId || query.entityId || "";
+  const tenantId = query.tenant || query.entidadeId || query.entityId || cfg.DEFAULT_TENANT || "";
   const entityLabel = query.entidade || query.entity || query.entidadeNome || cfg.ENTITY_LABEL || "ENTIDADE NÃO IDENTIFICADA";
 
   document.getElementById("entityContext").textContent = String(entityLabel).toUpperCase();
@@ -53,13 +59,13 @@
   }
 
   bethaApp.opcoes = window.BI_MENU || [];
-  bethaApp.setMenuAtivo(currentView);
+  if (typeof bethaApp.setMenuAtivo === "function") bethaApp.setMenuAtivo(currentView);
 
   bethaApp.addEventListener("opcaoMenuSelecionada", (event) => {
     const detail = event.detail || {};
     const view = detail.rota || detail.id;
     if (!dashboards[view] && view !== "usuarios-admin") return;
-    if (detail.id) bethaApp.setMenuAtivo(detail.id);
+    if (detail.id && typeof bethaApp.setMenuAtivo === "function") bethaApp.setMenuAtivo(detail.id);
     navigate(view);
   });
 
