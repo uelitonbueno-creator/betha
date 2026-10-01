@@ -501,29 +501,73 @@ function payloadTotal(payload) {
   return null;
 }
 
+function payloadPageMeta(payload, requestedOffset, requestedLimit, rowCount) {
+  const root=(payload && typeof payload==="object") ? payload : {};
+  const nested=root.pagination || root.page || root.metadata || {};
+
+  const offsetCandidates=[root.offset,nested.offset,nested.number!=null ? Number(nested.number)*Number(root.limit||nested.size||requestedLimit) : null];
+  const limitCandidates=[root.limit,nested.limit,nested.size];
+  const hasNextCandidates=[root.hasNext,nested.hasNext,nested.last===false ? true : nested.last===true ? false : undefined];
+
+  let offset=requestedOffset;
+  for(const value of offsetCandidates){
+    const n=Number(value);
+    if(Number.isFinite(n)&&n>=0){offset=n;break;}
+  }
+
+  let limit=requestedLimit;
+  for(const value of limitCandidates){
+    const n=Number(value);
+    if(Number.isFinite(n)&&n>0){limit=n;break;}
+  }
+
+  let hasNext=null;
+  for(const value of hasNextCandidates){
+    if(typeof value==="boolean"){hasNext=value;break;}
+    if(value==="true"||value==="false"){hasNext=value==="true";break;}
+  }
+
+  return {
+    offset,
+    limit,
+    total:payloadTotal(payload),
+    hasNext,
+    nextOffset:offset + (limit>0 ? limit : rowCount)
+  };
+}
+
 async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=null}={}) {
   const rows=[];
   const seenIds=new Set();
   const seenFingerprints=new Set();
-  let total=null;
+  const pageMeta=[];
+  let reportedTotal=null;
   let truncated=false;
-  let pages=0;
   let repeatedPage=false;
+  let offset=0;
+  let pages=0;
+  let reachedEnd=false;
 
-  // Auditoria completa: sem limite artificial de 2k/5k.
-  // O teto de 500 páginas é apenas uma trava contra loop de endpoint defeituoso.
   const safetyMaxPages=maxPages==null ? 500 : Math.max(1,Number(maxPages));
 
   for (let page=0;page<safetyMaxPages;page++) {
-    const offset=page*limit;
     const body=await bethaGet(env,tenant,source,resource,"limit="+limit+"&offset="+offset);
     pages++;
+
     const pageRows=payloadRows(body);
-    if (total===null) total=payloadTotal(body);
+    const meta=payloadPageMeta(body,offset,limit,pageRows.length);
+    if (reportedTotal===null && meta.total!==null) reportedTotal=meta.total;
+    pageMeta.push({
+      offset:meta.offset,
+      limit:meta.limit,
+      total:meta.total,
+      hasNext:meta.hasNext,
+      returned:pageRows.length
+    });
 
     const fingerprint=pageRows.slice(0,10).map((row,index)=>{
       const id=firstValue(row,["id","codigo","idIntegracao","uuid"]);
-      return id!==undefined?String(id):JSON.stringify(row||{}).slice(0,180)+":"+index;
+      return id!==undefined ? String(id) : JSON.stringify(row||{}).slice(0,220)+":"+index;
     }).join("|");
 
     if (fingerprint && seenFingerprints.has(fingerprint)) {
@@ -545,31 +589,48 @@ async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=nu
       newRows++;
     }
 
-    if (!pageRows.length || pageRows.length<limit || (total!==null && rows.length>=total)) {
+    // hasNext, quando presente, é a regra principal de paginação da Betha.
+    if (meta.hasNext===false) {
+      reachedEnd=true;
       break;
     }
 
-    if (!newRows) {
+    // Fallback para endpoints que não retornam hasNext.
+    if (meta.hasNext===null && (!pageRows.length || pageRows.length<meta.limit)) {
+      reachedEnd=true;
+      break;
+    }
+
+    if (!pageRows.length || !newRows) {
       repeatedPage=true;
       truncated=true;
       break;
     }
 
+    const nextOffset=meta.nextOffset;
+    if (!Number.isFinite(nextOffset) || nextOffset<=offset) {
+      truncated=true;
+      break;
+    }
+    offset=nextOffset;
+
     if (page===safetyMaxPages-1) truncated=true;
   }
 
-  const normalizedTotal=Math.max(total===null?0:total,rows.length);
-  const complete=!truncated && (total===null || rows.length>=total);
+  const totalMismatch=reportedTotal!==null && reachedEnd && reportedTotal!==rows.length;
+  const complete=reachedEnd && !truncated;
 
   return {
     rows,
-    total:normalizedTotal,
-    reportedTotal:total,
+    total:complete ? rows.length : Math.max(reportedTotal||0,rows.length),
+    reportedTotal,
     loaded:rows.length,
     pages,
     complete,
     truncated,
-    repeatedPage
+    repeatedPage,
+    totalMismatch,
+    pageMeta
   };
 }
 
@@ -579,7 +640,7 @@ async function safeBethaRows(env,tenant,source,resource,options={}) {
     return {...result,error:null};
   } catch(error) {
     console.warn("dashboard source failed",source,resource,error.message);
-    return {rows:[],total:0,reportedTotal:null,loaded:0,pages:0,complete:false,truncated:false,repeatedPage:false,error:error.message};
+    return {rows:[],total:0,reportedTotal:null,loaded:0,pages:0,complete:false,truncated:false,repeatedPage:false,totalMismatch:false,pageMeta:[],error:error.message};
   }
 }
 
@@ -589,12 +650,45 @@ function valueAt(obj,path) {
   return String(path).split(".").reduce((acc,key)=>acc==null?undefined:acc[key],obj);
 }
 
+function normalizeFieldName(value) {
+  return String(value||"")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g,"")
+    .replace(/[^a-zA-Z0-9]/g,"")
+    .toLowerCase();
+}
+
+function findFieldAdaptive(obj,candidates,maxDepth=4) {
+  if (!obj || typeof obj!=="object") return undefined;
+  const wanted=new Set(candidates.map(c=>normalizeFieldName(String(c).split(".").pop())));
+
+  const queue=[{value:obj,depth:0}];
+  const visited=new Set();
+
+  while(queue.length){
+    const current=queue.shift();
+    const value=current.value;
+    if(!value || typeof value!=="object" || visited.has(value)) continue;
+    visited.add(value);
+
+    for(const [key,val] of Object.entries(value)){
+      if(wanted.has(normalizeFieldName(key)) && val!==undefined && val!==null && val!==""){
+        return val;
+      }
+      if(current.depth<maxDepth && val && typeof val==="object" && !Array.isArray(val)){
+        queue.push({value:val,depth:current.depth+1});
+      }
+    }
+  }
+  return undefined;
+}
+
 function firstValue(obj,paths) {
   for (const path of paths) {
     const value=valueAt(obj,path);
     if (value!==undefined && value!==null && value!=="") return value;
   }
-  return undefined;
+  return findFieldAdaptive(obj,paths);
 }
 
 function numericValue(obj,paths) {
@@ -920,6 +1014,8 @@ async function buildOverviewDashboard(env,tenant,url) {
         complete:Boolean(src.complete),
         truncated:Boolean(src.truncated),
         repeatedPage:Boolean(src.repeatedPage),
+        totalMismatch:Boolean(src.totalMismatch),
+        pageMeta:Array.isArray(src.pageMeta)?src.pageMeta:[],
         error:src.error
       }]))
     }
@@ -1042,6 +1138,8 @@ function dashboardMeta(entries,extra={}) {
       complete:Boolean(src&&src.complete),
       truncated:Boolean(src&&src.truncated),
       repeatedPage:Boolean(src&&src.repeatedPage),
+      totalMismatch:Boolean(src&&src.totalMismatch),
+      pageMeta:src&&Array.isArray(src.pageMeta)?src.pageMeta:[],
       error:src?src.error:null
     }])),
     ...extra
@@ -1812,7 +1910,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-01-full-audit-v4",
+        buildVersion:"2026-10-01-pagination-fields-v5",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
