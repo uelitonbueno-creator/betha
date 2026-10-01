@@ -373,6 +373,100 @@
     return body;
   }
 
+  function mergeDashboardPart(target, part) {
+    target.kpis = target.kpis || {};
+    target.charts = target.charts || {};
+    target.meta = target.meta || {warnings:[],sourceRows:{},sourceTotals:{},sourceAudit:{}};
+
+    Object.assign(target.kpis, part.kpis || {});
+
+    for (const [chartId, incoming] of Object.entries(part.charts || {})) {
+      if (!target.charts[chartId]) {
+        target.charts[chartId] = JSON.parse(JSON.stringify(incoming));
+        continue;
+      }
+
+      const existing = target.charts[chartId];
+      const sameLabels = JSON.stringify(existing.labels || []) === JSON.stringify(incoming.labels || []);
+
+      if (sameLabels) {
+        const labels = new Set((existing.datasets || []).map(ds => ds.label));
+        for (const ds of incoming.datasets || []) {
+          if (!labels.has(ds.label)) existing.datasets.push(ds);
+        }
+      } else if (
+        (existing.datasets || []).length === 1 &&
+        (incoming.datasets || []).length === 1 &&
+        existing.datasets[0].label === incoming.datasets[0].label
+      ) {
+        existing.labels = [...(existing.labels || []), ...(incoming.labels || [])];
+        existing.datasets[0].data = [
+          ...(existing.datasets[0].data || []),
+          ...(incoming.datasets[0].data || [])
+        ];
+      }
+    }
+
+    const meta = part.meta || {};
+    target.meta.auditMode = meta.auditMode || target.meta.auditMode || "FULL";
+    target.meta.generatedAt = meta.generatedAt || target.meta.generatedAt;
+    target.meta.warnings = [...(target.meta.warnings || []), ...(meta.warnings || [])];
+    Object.assign(target.meta.sourceRows, meta.sourceRows || {});
+    Object.assign(target.meta.sourceTotals, meta.sourceTotals || {});
+    Object.assign(target.meta.sourceAudit, meta.sourceAudit || {});
+    return target;
+  }
+
+  async function loadOverviewSharded(params) {
+    const parts = [
+      "pagamentos",
+      "debitos",
+      "dividas",
+      "parcelamentos",
+      "contribuintes",
+      "imoveis",
+      "economicos",
+      "pagamentos-detalhados"
+    ];
+
+    const settled = await Promise.allSettled(
+      parts.map(part => api(
+        "/api/dashboard/visao-geral/part/" + encodeURIComponent(part) + "?" + params.toString()
+      ))
+    );
+
+    const merged = {
+      view:"visao-geral",
+      kpis:{},
+      charts:{},
+      meta:{auditMode:"FULL",warnings:[],sourceRows:{},sourceTotals:{},sourceAudit:{}}
+    };
+
+    settled.forEach((result,index) => {
+      const partName = parts[index];
+      if (result.status === "fulfilled") {
+        mergeDashboardPart(merged,result.value);
+      } else {
+        const error = result.reason || {};
+        merged.meta.warnings.push({
+          source:partName,
+          error:error.message || "PART_REQUEST_FAILED",
+          errorStatus:error.status || null
+        });
+        merged.meta.sourceRows[partName] = 0;
+        merged.meta.sourceAudit[partName] = {
+          loaded:0,
+          pages:0,
+          complete:false,
+          error:error.message || "PART_REQUEST_FAILED",
+          errorStatus:error.status || null
+        };
+      }
+    });
+
+    return merged;
+  }
+
   async function loadDashboardData(view) {
     if (!cfg.BACKEND_URL) return;
     setStatus("waiting", "Consultando backend...");
@@ -390,7 +484,9 @@
         exercicio: document.getElementById("exercicio").value,
         fonte: document.getElementById("fontePreferencial").value
       });
-      const payload = await api("/api/dashboard/" + encodeURIComponent(view) + "?" + params.toString());
+      const payload = view === "visao-geral"
+        ? await loadOverviewSharded(params)
+        : await api("/api/dashboard/" + encodeURIComponent(view) + "?" + params.toString());
       renderPayload(payload);
       const warnings = payload && payload.meta && Array.isArray(payload.meta.warnings)
         ? payload.meta.warnings
