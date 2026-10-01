@@ -837,6 +837,75 @@ function periodIncludes(obj,{periodo,exercicio,datePaths,yearPaths=[]}) {
   return true;
 }
 
+function leafFieldPaths(obj,maxDepth=4) {
+  const paths=[];
+  const queue=[{value:obj,prefix:"",depth:0}];
+  const visited=new Set();
+
+  while(queue.length){
+    const {value,prefix,depth}=queue.shift();
+    if(!value || typeof value!=="object" || Array.isArray(value) || visited.has(value)) continue;
+    visited.add(value);
+
+    for(const [key,child] of Object.entries(value)){
+      const path=prefix ? prefix+"."+key : key;
+      if(child && typeof child==="object" && !Array.isArray(child) && depth<maxDepth){
+        queue.push({value:child,prefix:path,depth:depth+1});
+      } else {
+        paths.push(path);
+      }
+    }
+  }
+  return paths;
+}
+
+function resolveNumericPath(rows,preferredPaths,tokenSets=[]) {
+  // Preferência explícita/documentada.
+  for(const path of preferredPaths){
+    for(const row of rows.slice(0,20)){
+      const raw=valueAt(row,path);
+      if(raw===undefined || raw===null || raw==="") continue;
+      const n=numericValue(row,[path]);
+      if(Number.isFinite(n)) return path;
+    }
+  }
+
+  const sampleRows=rows.slice(0,20);
+  const candidates=new Map();
+
+  for(const row of sampleRows){
+    for(const path of leafFieldPaths(row)){
+      const raw=valueAt(row,path);
+      if(raw===undefined || raw===null || raw==="") continue;
+
+      let numeric=false;
+      if(typeof raw==="number") numeric=Number.isFinite(raw);
+      else {
+        const text=String(raw).trim();
+        const normalized=text.includes(",")
+          ? text.replace(/\./g,"").replace(",",".")
+          : text;
+        numeric=normalized!=="" && Number.isFinite(Number(normalized));
+      }
+      if(!numeric) continue;
+
+      const normalizedPath=normalizeFieldName(path);
+      let score=0;
+      for(const tokens of tokenSets){
+        const ok=tokens.every(token=>normalizedPath.includes(normalizeFieldName(token)));
+        if(ok) score=Math.max(score,tokens.length*10);
+      }
+      if(!score) continue;
+
+      const current=candidates.get(path)||0;
+      candidates.set(path,Math.max(current,score));
+    }
+  }
+
+  return [...candidates.entries()]
+    .sort((a,b)=>b[1]-a[1] || a[0].length-b[0].length)[0]?.[0] || null;
+}
+
 function sumRows(rows,paths) {
   return rows.reduce((total,row)=>total+numericValue(row,paths),0);
 }
@@ -928,14 +997,19 @@ async function buildOverviewPart(env,tenant,url,part) {
     const rows=src.rows.filter(row=>periodIncludes(row,{
       periodo,exercicio,datePaths:paymentDatePaths,yearPaths:["ano","exercicio"]
     }));
+    const paymentValuePath=resolveNumericPath(
+      src.rows,
+      ["valorPago","vlPago","valorTotalPago","vlTotalPago","valorArrecadado"],
+      [["valor","pago"],["vl","pago"],["arrecad"]]
+    );
     const monthly=monthSeries(src.rows,{
       datePaths:paymentDatePaths,
-      valuePaths:["valorPago","vlPago","valorTotalPago","vlTotalPago","valorArrecadado"],
+      valuePaths:paymentValuePath?[paymentValuePath]:["valorPago","vlPago","valorTotalPago","vlTotalPago","valorArrecadado"],
       periodo,exercicio
     });
     return {
       part,kpis:{
-        arrecadado:sumRowsOrNull(rows,["valorPago","vlPago","valorTotalPago","vlTotalPago","valorArrecadado"])
+        arrecadado:paymentValuePath?sumRowsOrNull(rows,[paymentValuePath]):null
       },
       charts:{
         "receita-mensal":{
@@ -947,7 +1021,9 @@ async function buildOverviewPart(env,tenant,url,part) {
           datasets:[{label:"Pago",data:monthly.values}]
         }
       },
-      meta:dashboardMeta([["pagamentos",src]])
+      meta:dashboardMeta([["pagamentos",src]],{
+        fieldMapping:{paymentValue:paymentValuePath}
+      })
     };
   }
 
@@ -956,9 +1032,14 @@ async function buildOverviewPart(env,tenant,url,part) {
     const rows=src.rows.filter(row=>periodIncludes(row,{
       periodo,exercicio,datePaths:debitDatePaths,yearPaths:["ano","anoDebito","exercicio"]
     }));
+    const lancadoPath=resolveNumericPath(
+      src.rows,
+      ["vlLancado","valorLancado","valorDebito","vlDebito","valorOriginal"],
+      [["lanc"],["valor","debito"],["vl","debito"],["valor","original"]]
+    );
     const lancado=monthSeries(src.rows,{
       datePaths:debitDatePaths,
-      valuePaths:["vlLancado","valorLancado","valorDebito","vlDebito","valorOriginal"],
+      valuePaths:lancadoPath?[lancadoPath]:["vlLancado","valorLancado","valorDebito","vlDebito","valorOriginal"],
       periodo,exercicio
     });
     const saldo=monthSeries(src.rows,{
@@ -970,27 +1051,34 @@ async function buildOverviewPart(env,tenant,url,part) {
     if (saldo.values.some(v=>v!==0)) datasets.push({label:"Saldo",data:saldo.values});
     return {
       part,kpis:{
-        lancado:sumRowsOrNull(rows,["vlLancado","valorLancado","valorDebito","vlDebito","valorOriginal"])
+        lancado:lancadoPath?sumRowsOrNull(rows,[lancadoPath]):null
       },
       charts:{
         "lancado-pago-saldo":{format:"currency",labels:lancado.labels,datasets}
       },
-      meta:dashboardMeta([["debitos",src]])
+      meta:dashboardMeta([["debitos",src]],{
+        fieldMapping:{lancado:lancadoPath}
+      })
     };
   }
 
   if (part==="dividas") {
     const src=await loadOverviewSource(env,tenant,"base","encerramento-dividas",url);
+    const saldoPath=resolveNumericPath(
+      src.rows,
+      ["valorSaldo","vlSaldo","saldo","saldoCalculado"],
+      [["saldo"]]
+    );
     const debtStatus=groupCount(src.rows,["statusDivida","situacaoDivida","situacao","status"],12);
     const debtYears=groupSum(
       src.rows,
       ["anoDivida","ano","exercicio"],
-      ["valorSaldo","vlSaldo","saldo","saldoCalculado"],
+      saldoPath?[saldoPath]:["valorSaldo","vlSaldo","saldo","saldoCalculado"],
       30
     );
     return {
       part,kpis:{
-        divida:sumRowsOrNull(src.rows,["valorSaldo","vlSaldo","saldo","saldoCalculado"])
+        divida:saldoPath?sumRowsOrNull(src.rows,[saldoPath]):null
       },
       charts:{
         "divida-evolucao":{
@@ -1000,7 +1088,9 @@ async function buildOverviewPart(env,tenant,url,part) {
         },
         "situacao-divida":chartGroups(debtStatus,"Dívidas","number")
       },
-      meta:dashboardMeta([["encerramentoDividas",src]])
+      meta:dashboardMeta([["encerramentoDividas",src]],{
+        fieldMapping:{saldo:saldoPath}
+      })
     };
   }
 
@@ -2192,7 +2282,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-01-fields-resume-v12",
+        buildVersion:"2026-10-01-financial-mapping-v13",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
