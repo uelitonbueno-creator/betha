@@ -470,7 +470,10 @@ function numericValue(obj,paths) {
   const raw=firstValue(obj,paths);
   if (raw===undefined) return 0;
   if (typeof raw==="number") return Number.isFinite(raw)?raw:0;
-  const normalized=String(raw).replace(/\./g,"").replace(",",".");
+  const text=String(raw).trim();
+  const normalized=text.includes(",")
+    ? text.replace(/\./g,"").replace(",",".")
+    : text;
   const n=Number(normalized);
   return Number.isFinite(n)?n:0;
 }
@@ -688,7 +691,7 @@ async function buildOverviewDashboard(env,tenant,url) {
       arrecadado:sumRows(filteredPayments,["valorPago","vlPago","valorTotalPago"]),
       lancado:sumRows(filteredDebits,["vlLancado","valorLancado","valorDebito"]),
       divida:debtSaldo,
-      parcelado:filteredParcels.length || parcelamentos.total,
+      parcelado:periodo==="todos" ? parcelamentos.total : filteredParcels.length,
       contribuintes:contribuintes.total,
       imoveis:imoveis.total
     },
