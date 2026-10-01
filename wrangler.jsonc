@@ -1,0 +1,5 @@
+{
+  "name": "betha-bi-api",
+  "main": "backend/worker.js",
+  "compatibility_date": "2026-10-01"
+}
