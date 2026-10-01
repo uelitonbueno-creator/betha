@@ -3,8 +3,13 @@
   const dashboards = window.BI_DASHBOARDS || {};
   const bethaApp = document.getElementById("bethaApp");
   const authGate = document.getElementById("authGate");
+  if (window.BI_DEV_NO_AUTH === true) {
+    authGate.hidden = true;
+    authGate.style.display = "none";
+    bethaApp.style.display = "";
+  }
 
-  const authRequired = cfg.AUTH_REQUIRED !== false;
+  const authRequired = window.BI_DEV_NO_AUTH === true ? false : (cfg.AUTH_REQUIRED !== false);
 
   if (authRequired && window.BIAuth && BIAuth.ready) {
     try { await BIAuth.ready; } catch {}
