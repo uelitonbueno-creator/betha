@@ -865,6 +865,8 @@ function errorResponse(request,env,error) {
     DEV_SESSION_REQUIRED:401,
     DEV_SESSION_INVALID:401,
     DEV_LOGIN_INVALID:401,
+    DEV_LOGIN_USER_INVALID:401,
+    DEV_LOGIN_PASSWORD_INVALID:401,
     TENANT_CONTEXT_UNRESOLVED:503,
     TENANT_ACCESS_DENIED:403,
     TENANT_ACCESS_NOT_ACCEPTED:403,
@@ -910,8 +912,11 @@ export default {
         const expectedUser=normalizeDevCredential(env.BI_DEV_LOGIN_USER).toLowerCase();
         const expectedPassword=normalizeDevCredential(env.BI_DEV_LOGIN_PASSWORD);
 
-        if (username!==expectedUser || password!==expectedPassword) {
-          throw new Error("DEV_LOGIN_INVALID");
+        if (username!==expectedUser) {
+          throw new Error("DEV_LOGIN_USER_INVALID");
+        }
+        if (password!==expectedPassword) {
+          throw new Error("DEV_LOGIN_PASSWORD_INVALID");
         }
 
         const session=await createDevSession(env,username);
