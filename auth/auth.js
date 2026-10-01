@@ -99,7 +99,6 @@
     url.searchParams.set("code_challenge", challenge);
     url.searchParams.set("code_challenge_method", "S256");
     url.searchParams.set("state", state);
-    url.searchParams.set("bth_ignore_origin", "true");
 
     try {
       window.top.location.href = url.toString();
@@ -120,7 +119,14 @@
       return false;
     }
 
-    if (!code) return false;
+    if (!code) {
+      // Se a Betha retornou do login mas não propagou o authorization code,
+      // não falhar silenciosamente.
+      if (params.has("session_state") && getCookie(COOKIE_STATE)) {
+        setError("OAUTH_RETURN_WITHOUT_CODE");
+      }
+      return false;
+    }
 
     const returnedState = params.get("state") || "";
     const expectedState = getCookie(COOKIE_STATE);
