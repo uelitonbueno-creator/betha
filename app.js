@@ -30,16 +30,6 @@
       }
     }
 
-    document.getElementById("loginButton").addEventListener("click", async () => {
-      const message = document.getElementById("authMessage");
-      message.textContent = "";
-      try {
-        message.textContent = "Redirecionando para a Betha…";
-        BIAuth.login();
-      } catch (error) {
-        message.textContent = "Falha no login: " + error.message;
-      }
-    });
     return;
   }
 
