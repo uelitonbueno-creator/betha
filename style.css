@@ -230,5 +230,6 @@ button,select{font:inherit}
 .coverage-item strong{font-size:11px;color:#20262d}
 .coverage-dot{width:7px;height:7px;border-radius:50%;background:#c8cdd3}
 .coverage-dot.ok{background:#2fa36b}
+.coverage-dot.warn{background:#d49317}
 .coverage-loading{font-size:10px;color:#7a838d}
 @media(max-width:800px){.integration-coverage{align-items:flex-start;flex-direction:column}.coverage-title{min-width:0}}
