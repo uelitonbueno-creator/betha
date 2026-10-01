@@ -288,7 +288,14 @@
       });
       const payload = await api("/api/dashboard/" + encodeURIComponent(view) + "?" + params.toString());
       renderPayload(payload);
-      setStatus("online", "Dados atualizados");
+      const warnings = payload && payload.meta && Array.isArray(payload.meta.warnings)
+        ? payload.meta.warnings
+        : [];
+      if (warnings.length) {
+        setStatus("waiting", "Dados carregados · " + warnings.length + " fonte(s) com aviso");
+      } else {
+        setStatus("online", "Dados atualizados");
+      }
     } catch (error) {
       console.warn("Dashboard ainda sem motor analítico publicado:", error);
       if (error.status === 404 || error.status === 501) {
