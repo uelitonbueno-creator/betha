@@ -629,6 +629,23 @@ export default {
       }
     }
 
+    if (url.pathname==="/api/auth/session-check" && request.method==="GET") {
+      try {
+        const userToken=await getUserToken(request,env);
+        if (!userToken) throw new Error("USER_TOKEN_REQUIRED");
+
+        // Valida também se o token Betha continua aceito, sem retornar dados pessoais.
+        const accesses=await getUserAccesses(userToken);
+        return json(request,env,200,{
+          ok:true,
+          sessionValid:true,
+          accessCount:Array.isArray(accesses)?accesses.length:0
+        });
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
     if (url.pathname==="/api/catalog" && request.method==="GET") {
       return json(request,env,200,publicCatalog(env));
     }
