@@ -1256,6 +1256,229 @@ async function buildInstallmentsDashboard(env,tenant,url) {
   };
 }
 
+
+function completenessChart(rows,fields) {
+  const labels=[],values=[];
+  for(const field of fields){
+    labels.push(field.label);
+    const filled=countWhere(rows,row=>firstValue(row,field.paths)!==undefined);
+    values.push(rows.length?Math.round((filled/rows.length)*1000)/10:0);
+  }
+  return chartFixed(labels,values,"Preenchimento (%)","number");
+}
+
+async function buildEconomicsDashboard(env,tenant,url) {
+  const periodo=url.searchParams.get("periodo")||"ano";
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const [eco,ativ,pagdet]=await Promise.all([
+    safeBethaRows(env,tenant,"bi","economicos",{maxPages:5}),
+    safeBethaRows(env,tenant,"bi","economicos-atividades",{maxPages:5}),
+    safeBethaRows(env,tenant,"bi","pagamentos-detalhados",{maxPages:4})
+  ]);
+  const openDates=["dtInicioAtiv","dataInicioAtividade","dataAbertura","dtAbertura"];
+  const closeDates=["dtFechamento","dataFechamento","dataEncerramento","dtEncerramento"];
+  const opened=monthlyCount(eco.rows,openDates,periodo,exercicio);
+  const closed=monthlyCount(eco.rows,closeDates,periodo,exercicio,r=>Boolean(firstValue(r,closeDates)));
+  const situ=groupCount(eco.rows,["situacao","situacao.descricao","status"],12);
+  const tipos=groupCount(eco.rows,["tipoCadastro","tipoEconomico","tipo"],12);
+  const atividade=groupCount(ativ.rows,["descricaoAtividade","atividade.descricao","atividade.nome","cnae.descricao"],15);
+  const principal=groupCount(ativ.rows,["principal","atividadePrincipal"],5);
+  const bairros=groupCount(eco.rows,["nomeBairro","bairro.nome","bairro"],15);
+  const issRows=pagdet.rows.filter(r=>firstValue(r,["idEconomico","economico.id","referente.idEconomico"])!==undefined);
+  const iss=monthSeries(issRows,{
+    datePaths:["pagamento.dataPagamento","dataPagamento","dtPagamento"],
+    valuePaths:["valorPagoLancado","vlPagoLancado","valorPago","vlPago"],periodo,exercicio
+  });
+  return {
+    view:"economicos",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    kpis:{
+      economicos:eco.total,
+      "ativos-economicos":countWhere(eco.rows,r=>!/inativ|baixad|encerr|cancel/i.test(stringValue(r,["situacao","situacao.descricao","status"],""))&&!truthyValue(r,["desativado"])),
+      "novos-economicos":eco.rows.filter(r=>periodIncludes(r,{periodo,exercicio,datePaths:openDates,yearPaths:["anoInicio","exercicio"]})).length,
+      fechados:eco.rows.filter(r=>Boolean(firstValue(r,closeDates))&&periodIncludes(r,{periodo,exercicio,datePaths:closeDates})).length,
+      atividades:ativ.total
+    },
+    charts:{
+      aberturas:{format:"number",labels:opened.labels,datasets:[{label:"Aberturas",data:opened.values}]},
+      fechamentos:{format:"number",labels:closed.labels,datasets:[{label:"Encerramentos",data:closed.values}]},
+      "situacao-economicos":chartGroups(situ,"Econômicos","number"),
+      "tipo-economico":chartGroups(tipos,"Econômicos","number"),
+      "atividades-top":chartGroups(atividade,"Vínculos","number"),
+      "atividade-principal":chartGroups(principal,"Vínculos","number"),
+      "bairro-economicos":chartGroups(bairros,"Econômicos","number"),
+      "iss-arrecadacao":{format:"currency",labels:iss.labels,datasets:[{label:"Arrecadação",data:iss.values}]}
+    },
+    meta:dashboardMeta([["economicos",eco],["atividades",ativ],["pagamentosDetalhados",pagdet]])
+  };
+}
+
+async function buildRealEstateDashboard(env,tenant,url) {
+  const periodo=url.searchParams.get("periodo")||"ano";
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const [imo,resp,trans,baseImo,planta,pagdet]=await Promise.all([
+    safeBethaRows(env,tenant,"bi","imoveis",{maxPages:5}),
+    safeBethaRows(env,tenant,"bi","imoveis-responsaveis",{maxPages:4}),
+    safeBethaRows(env,tenant,"bi","transferencias-imoveis",{maxPages:4}),
+    safeBethaRows(env,tenant,"base","imoveis",{maxPages:4}),
+    safeBethaRows(env,tenant,"base","planta-valores",{maxPages:3}),
+    safeBethaRows(env,tenant,"bi","pagamentos-detalhados",{maxPages:4})
+  ]);
+  const bairros=groupCount(imo.rows,["nomeBairro","bairro.nome","bairro"],15);
+  const setores=groupCount(imo.rows,["setor","setor.codigo","nomeSetor"],15);
+  const rural=groupCount(imo.rows,["rural","tipoZona","zona"],6);
+  const ativo=groupCount(imo.rows,["desativado","situacao","status"],8);
+  const condo=groupCount(imo.rows,["nomeCondominio","condominio.nome","condominio"],12);
+  const lote=groupCount(imo.rows,["nomeLoteamento","loteamento.nome","loteamento"],12);
+  const tipo=groupCount(baseImo.rows,["tipoImovel","tipoImovel.descricao","tipo"],12);
+  const plantaGroups=groupSum(planta.rows,["bairro.nome","nomeBairro","logradouro.nome","nomeLogradouro"],["vlMetroQuadrado","valorMetroQuadrado","valor"],12);
+  const iptuRows=pagdet.rows.filter(r=>firstValue(r,["idImovel","imovel.id","referente.idImovel"])!==undefined);
+  const iptu=monthSeries(iptuRows,{
+    datePaths:["pagamento.dataPagamento","dataPagamento","dtPagamento"],
+    valuePaths:["valorPagoLancado","vlPagoLancado","valorPago","vlPago"],periodo,exercicio
+  });
+  const perc=new Map();
+  for(const r of resp.rows){
+    const p=numericValue(r,["percentual","percentualTitularidade","percResponsabilidade"]);
+    const b=numberBucket(p,[[25,"Até 25%"],[50,"26–50%"],[75,"51–75%"],[99.99,"76–99%"],[100,"100%"]]);
+    perc.set(b,(perc.get(b)||0)+1);
+  }
+  return {
+    view:"imobiliario",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    kpis:{
+      "imoveis-total":imo.total,
+      "imoveis-ativos":countWhere(imo.rows,r=>!truthyValue(r,["desativado"])&&!/inativ|desativ|cancel/i.test(stringValue(r,["situacao","status"],""))),
+      rurais:countWhere(imo.rows,r=>truthyValue(r,["rural"])||/rural/i.test(stringValue(r,["tipoZona","zona"],""))),
+      responsaveis:resp.total,
+      transferencias:trans.total
+    },
+    charts:{
+      "bairro-imoveis":chartGroups(bairros,"Imóveis","number"),
+      "setor-imoveis":chartGroups(setores,"Imóveis","number"),
+      "rural-urbano":chartGroups(rural,"Imóveis","number"),
+      "ativos-inativos-imoveis":chartGroups(ativo,"Imóveis","number"),
+      condominios:chartGroups(condo,"Imóveis","number"),
+      loteamentos:chartGroups(lote,"Imóveis","number"),
+      "tipo-imovel":chartGroups(tipo,"Imóveis","number"),
+      "planta-valores":chartGroups(plantaGroups,"Valor m²","currency"),
+      "iptu-pagamentos":{format:"currency",labels:iptu.labels,datasets:[{label:"Arrecadação",data:iptu.values}]},
+      responsabilidade:chartGroups([...perc.entries()],"Responsáveis","number")
+    },
+    meta:dashboardMeta([["imoveis",imo],["responsaveis",resp],["transferencias",trans],["baseImoveis",baseImo],["plantaValores",planta],["pagamentosDetalhados",pagdet]])
+  };
+}
+
+async function buildItbiDashboard(env,tenant,url) {
+  const periodo=url.searchParams.get("periodo")||"ano";
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const [sol,itens,trans,compra]=await Promise.all([
+    safeBethaRows(env,tenant,"bi","solicitacoes-transferencias-imoveis",{maxPages:4}),
+    safeBethaRows(env,tenant,"bi","solicitacoes-transferencias-imoveis-itens",{maxPages:4}),
+    safeBethaRows(env,tenant,"bi","transferencias-imoveis",{maxPages:4}),
+    safeBethaRows(env,tenant,"bi","transferencias-imoveis-compra",{maxPages:4})
+  ]);
+  const solMon=monthlyCount(sol.rows,["dataHoraSolicitacao","dataSolicitacao","dhSolicitacao"],periodo,exercicio);
+  const transMon=monthlyCount(trans.rows,["dataHoraTransferencia","dataTransferencia","dhTransferencia"],periodo,exercicio);
+  const sitSol=groupCount(sol.rows,["situacao","situacao.descricao","status"],10);
+  const sitTrans=groupCount(trans.rows,["situacao","situacao.descricao","status"],10);
+  const cert=groupCount(trans.rows,["statusCertidaoITBI","statusCertidao","certidaoStatus"],10);
+  const compGroups=new Map();
+  for(const r of itens.rows){
+    const label=stringValue(r,["competencia","ano","exercicio"],"Sem competência");
+    const x=compGroups.get(label)||{declarado:0,ajustado:0,itbi:0,itbiAj:0,fin:0,vista:0};
+    x.declarado+=numericValue(r,["valorDeclarado","vlDeclarado"]);
+    x.ajustado+=numericValue(r,["valorDeclaradoAjustado","vlDeclaradoAjustado"]);
+    x.itbi+=numericValue(r,["valorITBI","vlITBI","valorItbi"]);
+    x.itbiAj+=numericValue(r,["valorITBIAjustado","vlITBIAjustado","valorItbiAjustado"]);
+    x.fin+=numericValue(r,["valorFinanciado","vlFinanciado"]);
+    x.vista+=numericValue(r,["valorAvista","vlAvista","valorAVista"]);
+    compGroups.set(label,x);
+  }
+  const comps=[...compGroups.entries()].sort((a,b)=>String(a[0]).localeCompare(String(b[0]))).slice(-12);
+  const cobr=groupCount(trans.rows,["tipoCobranca","tipoCobranca.descricao","cobranca"],10);
+  const soldGroups=new Map();
+  for(const r of compra.rows){
+    const p=numericValue(r,["percVendido","percentualVendido","percentual"]);
+    const b=numberBucket(p,[[25,"Até 25%"],[50,"26–50%"],[75,"51–75%"],[99.99,"76–99%"],[100,"100%"]]);
+    soldGroups.set(b,(soldGroups.get(b)||0)+1);
+  }
+  return {
+    view:"itbi",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    kpis:{
+      solicitacoes:sol.total,
+      "transferencias-itbi":trans.total,
+      itbi:sumRowsOrNull(itens.rows,["valorITBI","vlITBI","valorItbi"]),
+      declarado:sumRowsOrNull(itens.rows,["valorDeclarado","vlDeclarado"]),
+      financiado:sumRowsOrNull(itens.rows,["valorFinanciado","vlFinanciado"])
+    },
+    charts:{
+      "solicitacoes-mes":{format:"number",labels:solMon.labels,datasets:[{label:"Solicitações",data:solMon.values}]},
+      "transferencias-mes":{format:"number",labels:transMon.labels,datasets:[{label:"Transferências",data:transMon.values}]},
+      "situacao-solicitacoes":chartGroups(sitSol,"Solicitações","number"),
+      "situacao-transferencias":chartGroups(sitTrans,"Transferências","number"),
+      "certidao-itbi":chartGroups(cert,"Transferências","number"),
+      "declarado-ajustado":{format:"currency",labels:comps.map(([k])=>k),datasets:[
+        {label:"Declarado",data:comps.map(([,v])=>v.declarado)},
+        {label:"Ajustado",data:comps.map(([,v])=>v.ajustado)}
+      ]},
+      "itbi-ajustado":{format:"currency",labels:comps.map(([k])=>k),datasets:[
+        {label:"ITBI",data:comps.map(([,v])=>v.itbi)},
+        {label:"ITBI ajustado",data:comps.map(([,v])=>v.itbiAj)}
+      ]},
+      financiamento:{format:"currency",labels:comps.map(([k])=>k),datasets:[
+        {label:"Financiado",data:comps.map(([,v])=>v.fin)},
+        {label:"À vista",data:comps.map(([,v])=>v.vista)}
+      ]},
+      "tipo-cobranca":chartGroups(cobr,"Transferências","number"),
+      compradores:chartGroups([...soldGroups.entries()],"Operações","number")
+    },
+    meta:dashboardMeta([["solicitacoes",sol],["itens",itens],["transferencias",trans],["compras",compra]],{
+      privacy:["nomes de compradores ocultados enquanto login oficial estiver desativado"]
+    })
+  };
+}
+
+async function buildTaxpayersDashboard(env,tenant,url) {
+  const periodo=url.searchParams.get("periodo")||"ano";
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const con=await safeBethaRows(env,tenant,"bi","contribuintes",{maxPages:5});
+  const rows=con.rows;
+  const tipo=groupCount(rows,["tipoPessoa","tipoPessoa.descricao","pessoa.tipo"],5);
+  const simples=groupCount(rows,["optanteSimples","simplesNacional","optanteSimplesNacional"],5);
+  const porte=groupCount(rows,["porteEmpresa","porteEmpresa.descricao","porte"],10);
+  const bairro=groupCount(rows,["nomeBairro","bairro.nome","bairro"],15);
+  const cidade=groupCount(rows,["nomeCidade","cidade.nome","municipio.nome"],15);
+  const ativo=groupCount(rows,["desativado","situacao","status"],8);
+  const updates=monthlyCount(rows,["dhOperacao","dataHoraOperacao","dataAtualizacao","dhAtualizacao"],periodo,exercicio);
+  const completion=completenessChart(rows,[
+    {label:"CPF/CNPJ",paths:["cpf","cnpj","cpfCnpj","documento"]},
+    {label:"E-mail",paths:["email","emailPrincipal"]},
+    {label:"Telefone",paths:["telefone","fone","celular"]},
+    {label:"CEP",paths:["cep","endereco.cep"]},
+    {label:"Logradouro",paths:["nomeLogradouro","logradouro.nome","endereco.logradouro"]}
+  ]);
+  return {
+    view:"contribuintes",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    kpis:{
+      "contribuintes-total":con.total,
+      pf:countWhere(rows,r=>/fis|pf|física/i.test(stringValue(r,["tipoPessoa","tipoPessoa.descricao"],""))),
+      pj:countWhere(rows,r=>/jur|pj|jurídica/i.test(stringValue(r,["tipoPessoa","tipoPessoa.descricao"],""))),
+      simples:countWhere(rows,r=>truthyValue(r,["optanteSimples","simplesNacional","optanteSimplesNacional"])),
+      inativos:countWhere(rows,r=>truthyValue(r,["desativado"])||/inativ|desativ/i.test(stringValue(r,["situacao","status"],"")))
+    },
+    charts:{
+      "tipo-pessoa":chartGroups(tipo,"Contribuintes","number"),
+      "optante-simples":chartGroups(simples,"Contribuintes","number"),
+      "porte-empresa":chartGroups(porte,"Contribuintes","number"),
+      "bairro-contribuintes":chartGroups(bairro,"Contribuintes","number"),
+      "cidade-contribuintes":chartGroups(cidade,"Contribuintes","number"),
+      "completude-contato":completion,
+      "situacao-cadastro":chartGroups(ativo,"Contribuintes","number"),
+      atualizacoes:{format:"number",labels:updates.labels,datasets:[{label:"Atualizações",data:updates.values}]}
+    },
+    meta:dashboardMeta([["contribuintes",con]])
+  };
+}
+
 async function listContextUsers(userToken, tenant, url) {
   const params=new URLSearchParams();
   params.set("limit",url.searchParams.get("limit") || "100");
