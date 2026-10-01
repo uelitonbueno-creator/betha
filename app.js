@@ -619,6 +619,7 @@
       };
     }
     target.meta.fieldMapping={...(target.meta.fieldMapping||{}),...(meta.fieldMapping||{})};
+    target.meta.sourceUsed={...(target.meta.sourceUsed||{}),...(meta.sourceUsed||{})};
     return target;
   }
 
@@ -628,10 +629,10 @@
       imoveis:{pages:1,limit:1000},
       economicos:{pages:1,limit:1000},
       parcelamentos:{pages:1,limit:1000},
-      pagamentos:{pages:1,limit:500},
+      pagamentos:{pages:1,limit:100},
       debitos:{pages:1,limit:500},
-      dividas:{pages:1,limit:500},
-      "pagamentos-detalhados":{pages:1,limit:250}
+      dividas:{pages:1,limit:250},
+      "pagamentos-detalhados":{pages:1,limit:100}
     };
     return profiles[part] || {pages:1,limit:250};
   }
@@ -665,30 +666,33 @@
     throw lastError || new Error("CHUNK_REQUEST_FAILED");
   }
 
-  async function loadOverviewPartFully(part, params, onProgress) {
+  async function loadOverviewPartFully(part, params, onProgress, options={}) {
     const aggregate={
       part,
       kpis:{},
       charts:{},
-      meta:{auditMode:"FULL",warnings:[],sourceRows:{},sourceTotals:{},sourceAudit:{}}
+      meta:{auditMode:"FULL",warnings:[],sourceRows:{},sourceTotals:{},sourceAudit:{},fieldMapping:{}}
     };
 
     const profile=overviewProfile(part);
-    let offset=0;
+    let offset=Math.max(0,Number(options.startOffset)||0);
     let iterations=0;
 
-    while(iterations<500){
+    // Trava extrema contra endpoint defeituoso. Não é limite de dados.
+    const safetyMaxIterations=10000;
+
+    while(iterations<safetyMaxIterations){
       iterations++;
 
-      if (typeof onProgress==="function") onProgress(aggregate,iterations,"requesting");
+      if (typeof onProgress==="function") onProgress(aggregate,iterations,"requesting",offset);
 
       const payload=await requestOverviewChunk(part,params,offset,profile);
       mergeDashboardPart(aggregate,payload);
 
-      if (typeof onProgress==="function") onProgress(aggregate,iterations,"loaded");
-
       const audits=Object.values(payload?.meta?.sourceAudit||{});
       const audit=audits[0]||null;
+
+      if (typeof onProgress==="function") onProgress(aggregate,iterations,"loaded",offset,audit);
 
       if (!audit) break;
       if (audit.error) break;
@@ -699,8 +703,15 @@
       if (!Number.isFinite(next) || next<=offset) break;
       offset=next;
 
-      // Pequena pausa evita saturar Betha/Cloudflare em fontes muito extensas.
-      await new Promise(resolve=>setTimeout(resolve,80));
+      await new Promise(resolve=>setTimeout(resolve,60));
+    }
+
+    if(iterations>=safetyMaxIterations){
+      aggregate.meta.warnings=aggregate.meta.warnings||[];
+      aggregate.meta.warnings.push({
+        source:part,
+        error:"SAFETY_PAGE_LIMIT_REACHED"
+      });
     }
 
     return aggregate;
@@ -717,6 +728,12 @@
       dividas:"encerramentoDividas",
       "pagamentos-detalhados":"pagamentosDetalhados"
     }[part] || part;
+  }
+
+  function existingAuditForPart(part,payload) {
+    const audits=payload?.meta?.sourceAudit||{};
+    if(part==="dividas") return audits.encerramentoDividas || audits.dividas || null;
+    return audits[sourceKeyForOverviewPart(part)] || null;
   }
 
   function financialPartNeedsRebuild(part,payload) {
@@ -758,7 +775,7 @@
     for (let index=0; index<parts.length; index++) {
       const partName=parts[index];
       const sourceKey=sourceKeyForOverviewPart(partName);
-      const existingAudit=merged.meta?.sourceAudit?.[sourceKey];
+      const existingAudit=existingAuditForPart(partName,merged);
       const needsRebuild=financialPartNeedsRebuild(partName,merged);
 
       if (canResume && existingAudit?.complete===true && !needsRebuild) {
@@ -766,8 +783,12 @@
         continue;
       }
 
-      // Quando o mapeamento financeiro mudou, recalculamos a fonte inteira.
-      if (needsRebuild) {
+      // Só reinicia uma fonte com mapeamento antigo quando ainda não existe
+      // progresso útil. Fontes parciais grandes são retomadas do último offset.
+      const hasUsefulProgress=(Number(existingAudit?.loaded)||0)>0;
+      const shouldRebuild=needsRebuild && !hasUsefulProgress;
+
+      if (shouldRebuild) {
         if (partName==="pagamentos") {
           delete merged.kpis.arrecadado;
           delete merged.charts["receita-mensal"];
@@ -799,19 +820,39 @@
       setStatus("waiting","Carregando " + (index+1) + "/" + parts.length + " · " + partName);
 
       try {
-        const result=await loadOverviewPartFully(partName,params,(partial,iteration,phase)=>{
-          setStatus(
-            "waiting",
-            "Carregando " + (index+1) + "/" + parts.length +
-            " · " + partName +
-            " · página " + iteration +
-            (phase==="requesting" ? "..." : "")
-          );
+        const resumeOffset=(
+          canResume &&
+          existingAudit &&
+          existingAudit.complete!==true &&
+          existingAudit.hasMore===true &&
+          existingAudit.nextOffset!==null &&
+          existingAudit.nextOffset!==undefined
+        ) ? Number(existingAudit.nextOffset) : 0;
 
-          const preview=JSON.parse(JSON.stringify(merged));
-          mergeDashboardPart(preview,partial);
-          renderPayload(preview);
-        });
+        const result=await loadOverviewPartFully(
+          partName,
+          params,
+          (partial,iteration,phase,currentOffset,audit)=>{
+            setStatus(
+              "waiting",
+              "Carregando " + (index+1) + "/" + parts.length +
+              " · " + partName +
+              " · página " + ((Number(existingAudit?.pages)||0)+iteration) +
+              (phase==="requesting" ? "..." : "")
+            );
+
+            const preview=JSON.parse(JSON.stringify(merged));
+            mergeDashboardPart(preview,partial);
+            renderPayload(preview);
+
+            // Checkpoint a cada página concluída. Se fechar/recarregar,
+            // a próxima atualização continua do nextOffset salvo.
+            if(phase==="loaded"){
+              saveDashboardCache("visao-geral",preview,"partial");
+            }
+          },
+          {startOffset:resumeOffset}
+        );
         mergeDashboardPart(merged,result);
       } catch(error) {
         merged.meta.warnings.push({
@@ -829,7 +870,14 @@
       }
 
       renderPayload(merged);
-      saveDashboardCache("visao-geral", merged, index === parts.length - 1 ? "complete" : "partial");
+
+      const allAudits=Object.values(merged.meta?.sourceAudit||{});
+      const allComplete=allAudits.length>0 && allAudits.every(a=>a && a.complete===true);
+      saveDashboardCache(
+        "visao-geral",
+        merged,
+        index === parts.length - 1 && allComplete ? "complete" : "partial"
+      );
     }
 
     return merged;
