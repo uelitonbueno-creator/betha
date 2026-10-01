@@ -536,7 +536,7 @@ function payloadPageMeta(payload, requestedOffset, requestedLimit, rowCount) {
   };
 }
 
-async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=null}={}) {
+async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=null,startOffset=0}={}) {
   const rows=[];
   const seenIds=new Set();
   const seenFingerprints=new Set();
@@ -544,18 +544,22 @@ async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=nu
   let reportedTotal=null;
   let truncated=false;
   let repeatedPage=false;
-  let offset=0;
+  let offset=Math.max(0,Number(startOffset)||0);
   let pages=0;
   let reachedEnd=false;
 
-  const safetyMaxPages=maxPages==null ? 500 : Math.max(1,Number(maxPages));
+  // Quando maxPages é informado, trata-se de um lote controlado.
+  // Sem maxPages, 500 páginas é apenas a trava extrema contra loop.
+  const chunkMode=maxPages!==null && maxPages!==undefined;
+  const safetyMaxPages=chunkMode ? Math.max(1,Number(maxPages)) : 500;
 
   for (let page=0;page<safetyMaxPages;page++) {
-    const body=await bethaGet(env,tenant,source,resource,"limit="+limit+"&offset="+offset);
+    const requestOffset=offset;
+    const body=await bethaGet(env,tenant,source,resource,"limit="+limit+"&offset="+requestOffset);
     pages++;
 
     const pageRows=payloadRows(body);
-    const meta=payloadPageMeta(body,offset,limit,pageRows.length);
+    const meta=payloadPageMeta(body,requestOffset,limit,pageRows.length);
     if (reportedTotal===null && meta.total!==null) reportedTotal=meta.total;
     pageMeta.push({
       offset:meta.offset,
@@ -589,15 +593,15 @@ async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=nu
       newRows++;
     }
 
-    // hasNext, quando presente, é a regra principal de paginação da Betha.
     if (meta.hasNext===false) {
       reachedEnd=true;
+      offset=meta.nextOffset;
       break;
     }
 
-    // Fallback para endpoints que não retornam hasNext.
     if (meta.hasNext===null && (!pageRows.length || pageRows.length<meta.limit)) {
       reachedEnd=true;
+      offset=meta.nextOffset;
       break;
     }
 
@@ -608,23 +612,24 @@ async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=nu
     }
 
     const nextOffset=meta.nextOffset;
-    if (!Number.isFinite(nextOffset) || nextOffset<=offset) {
+    if (!Number.isFinite(nextOffset) || nextOffset<=requestOffset) {
       truncated=true;
       break;
     }
     offset=nextOffset;
 
-    if (page===safetyMaxPages-1) truncated=true;
+    // Em modo lote, chegar ao fim do lote NÃO é truncamento:
+    // o front pedirá o próximo offset em uma nova invocação.
+    if (page===safetyMaxPages-1 && !chunkMode) truncated=true;
   }
 
   if (reportedTotal!==null && rows.length>reportedTotal) {
-    // O endpoint percorreu mais registros do que o suposto "total".
-    // Nesse caso esse campo não representa o total global.
     reportedTotal=null;
   }
 
   const totalMismatch=reportedTotal!==null && reachedEnd && reportedTotal!==rows.length;
   const complete=reachedEnd && !truncated;
+  const hasMore=!complete && !truncated && !repeatedPage;
 
   return {
     rows,
@@ -633,6 +638,9 @@ async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=nu
     loaded:rows.length,
     pages,
     complete,
+    hasMore,
+    nextOffset:hasMore ? offset : null,
+    startOffset:Math.max(0,Number(startOffset)||0),
     truncated,
     repeatedPage,
     totalMismatch,
@@ -698,6 +706,9 @@ async function safeBethaRows(env,tenant,source,resource,options={}) {
     totalMismatch:false,
     pageMeta:[],
     pageLimit:null,
+    hasMore:false,
+    nextOffset:null,
+    startOffset:Number(options.startOffset||0),
     error:lastError ? lastError.message : "UNKNOWN_ERROR",
     errorStatus:lastError ? (lastError.status || null) : null,
     errorDetail:detail
@@ -880,6 +891,17 @@ function debtYearSeries(rows) {
   return [...grouped.entries()].sort((a,b)=>a[0]-b[0]);
 }
 
+async function loadOverviewSource(env,tenant,source,resource,url) {
+  const chunked=url.searchParams.get("chunked")==="1";
+  if (!chunked) return safeBethaRows(env,tenant,source,resource);
+
+  const startOffset=Math.max(0,Number(url.searchParams.get("chunkOffset")||0));
+  const maxPages=Math.min(25,Math.max(1,Number(url.searchParams.get("chunkPages")||20)));
+  const limit=Math.min(1000,Math.max(50,Number(url.searchParams.get("chunkLimit")||1000)));
+
+  return safeBethaRows(env,tenant,source,resource,{limit,maxPages,startOffset});
+}
+
 async function buildOverviewPart(env,tenant,url,part) {
   const periodo=url.searchParams.get("periodo") || "ano";
   const exercicio=Number(url.searchParams.get("exercicio") || new Date().getFullYear());
@@ -887,7 +909,7 @@ async function buildOverviewPart(env,tenant,url,part) {
   const debitDatePaths=["dhDebito","dataDebito","dtDebito","dataLancamento","dtLancamento"];
 
   if (part==="pagamentos") {
-    const src=await safeBethaRows(env,tenant,"bi","pagamentos");
+    const src=await loadOverviewSource(env,tenant,"bi","pagamentos",url);
     const rows=src.rows.filter(row=>periodIncludes(row,{
       periodo,exercicio,datePaths:paymentDatePaths,yearPaths:["ano","exercicio"]
     }));
@@ -915,7 +937,7 @@ async function buildOverviewPart(env,tenant,url,part) {
   }
 
   if (part==="debitos") {
-    const src=await safeBethaRows(env,tenant,"bi","debitos");
+    const src=await loadOverviewSource(env,tenant,"bi","debitos",url);
     const rows=src.rows.filter(row=>periodIncludes(row,{
       periodo,exercicio,datePaths:debitDatePaths,yearPaths:["ano","anoDebito","exercicio"]
     }));
@@ -943,7 +965,7 @@ async function buildOverviewPart(env,tenant,url,part) {
   }
 
   if (part==="dividas") {
-    const src=await safeBethaRows(env,tenant,"bi","dividas");
+    const src=await loadOverviewSource(env,tenant,"bi","dividas",url);
     const debtStatus=groupCount(src.rows,["statusDivida","situacaoDivida","situacao","status"],12);
     const debtYears=debtYearSeries(src.rows);
     return {
@@ -963,7 +985,7 @@ async function buildOverviewPart(env,tenant,url,part) {
   }
 
   if (part==="parcelamentos") {
-    const src=await safeBethaRows(env,tenant,"bi","parcelamentos");
+    const src=await loadOverviewSource(env,tenant,"bi","parcelamentos",url);
     const rows=src.rows.filter(row=>periodIncludes(row,{
       periodo,exercicio,datePaths:["dtParcelamento","dataParcelamento","dhParcelamento"],yearPaths:["ano","exercicio"]
     }));
@@ -974,34 +996,34 @@ async function buildOverviewPart(env,tenant,url,part) {
   }
 
   if (part==="contribuintes") {
-    const src=await safeBethaRows(env,tenant,"bi","contribuintes");
+    const src=await loadOverviewSource(env,tenant,"bi","contribuintes",url);
     return {
-      part,kpis:{contribuintes:src.total},
-      charts:{cadastros:chartFixed(["Contribuintes"],[src.total],"Cadastros","number")},
+      part,kpis:{contribuintes:src.loaded},
+      charts:{cadastros:chartFixed(["Contribuintes"],[src.loaded],"Cadastros","number")},
       meta:dashboardMeta([["contribuintes",src]])
     };
   }
 
   if (part==="imoveis") {
-    const src=await safeBethaRows(env,tenant,"bi","imoveis");
+    const src=await loadOverviewSource(env,tenant,"bi","imoveis",url);
     return {
-      part,kpis:{imoveis:src.total},
-      charts:{cadastros:chartFixed(["Imóveis"],[src.total],"Cadastros","number")},
+      part,kpis:{imoveis:src.loaded},
+      charts:{cadastros:chartFixed(["Imóveis"],[src.loaded],"Cadastros","number")},
       meta:dashboardMeta([["imoveis",src]])
     };
   }
 
   if (part==="economicos") {
-    const src=await safeBethaRows(env,tenant,"bi","economicos");
+    const src=await loadOverviewSource(env,tenant,"bi","economicos",url);
     return {
       part,
-      charts:{cadastros:chartFixed(["Econômicos"],[src.total],"Cadastros","number")},
+      charts:{cadastros:chartFixed(["Econômicos"],[src.loaded],"Cadastros","number")},
       meta:dashboardMeta([["economicos",src]])
     };
   }
 
   if (part==="pagamentos-detalhados") {
-    const src=await safeBethaRows(env,tenant,"bi","pagamentos-detalhados");
+    const src=await loadOverviewSource(env,tenant,"bi","pagamentos-detalhados",url);
     const rows=src.rows.filter(row=>periodIncludes(row,{
       periodo,exercicio,
       datePaths:["pagamento.dataPagamento","dataPagamento","dtPagamento"],
@@ -1218,6 +1240,9 @@ async function buildOverviewDashboard(env,tenant,url) {
         totalMismatch:Boolean(src.totalMismatch),
         pageMeta:Array.isArray(src.pageMeta)?src.pageMeta:[],
         pageLimit:src.pageLimit,
+        hasMore:Boolean(src.hasMore),
+        nextOffset:src.nextOffset!==undefined?src.nextOffset:null,
+        startOffset:src.startOffset!==undefined?src.startOffset:0,
         error:src.error,
         errorStatus:src.errorStatus,
         errorDetail:src.errorDetail
@@ -1352,6 +1377,9 @@ function dashboardMeta(entries,extra={}) {
       totalMismatch:Boolean(src&&src.totalMismatch),
       pageMeta:src&&Array.isArray(src.pageMeta)?src.pageMeta:[],
       pageLimit:src?src.pageLimit:null,
+      hasMore:Boolean(src&&src.hasMore),
+      nextOffset:src&&src.nextOffset!==undefined?src.nextOffset:null,
+      startOffset:src&&src.startOffset!==undefined?src.startOffset:0,
       error:src?src.error:null,
       errorStatus:src?src.errorStatus:null,
       errorDetail:src?src.errorDetail:null
@@ -2124,7 +2152,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-01-sharded-overview-v8",
+        buildVersion:"2026-10-01-chunked-sources-v9",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
