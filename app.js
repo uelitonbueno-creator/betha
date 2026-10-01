@@ -166,6 +166,23 @@
       kpiGrid.appendChild(el);
     }
 
+    let coverage = document.getElementById("integrationCoverage");
+    if (!coverage) {
+      coverage = document.createElement("section");
+      coverage.id = "integrationCoverage";
+      coverage.className = "integration-coverage";
+      kpiGrid.insertAdjacentElement("afterend", coverage);
+    }
+    coverage.innerHTML = `
+      <div class="coverage-title">
+        <strong>Cobertura da integração</strong>
+        <span>Registros efetivamente lidos da Betha nesta carga.</span>
+      </div>
+      <div id="coverageItems" class="coverage-items">
+        <span class="coverage-loading">Carregando fontes...</span>
+      </div>
+    `;
+
     const chartGrid = document.getElementById("chartGrid");
     chartGrid.innerHTML = "";
     (def.charts || []).forEach((chartDef, index) => {
@@ -285,13 +302,36 @@
     for (const chartDef of def.charts || []) {
       if (charts[chartDef.id]) renderChartData(chartDef, charts[chartDef.id]);
     }
+
+    const sourceRows = payload && payload.meta && payload.meta.sourceRows ? payload.meta.sourceRows : {};
+    const labels = {
+      pagamentos:"Pagamentos",
+      debitos:"Débitos",
+      dividas:"Dívidas",
+      parcelamentos:"Parcelamentos",
+      contribuintes:"Contribuintes",
+      imoveis:"Imóveis",
+      economicos:"Econômicos",
+      pagamentosDetalhados:"Pagamentos detalhados"
+    };
+    const coverageItems = document.getElementById("coverageItems");
+    if (coverageItems) {
+      coverageItems.innerHTML = Object.entries(labels).map(([key,label]) => {
+        const value = Number(sourceRows[key] || 0);
+        return `<div class="coverage-item">
+          <span class="coverage-dot ${value > 0 ? "ok" : ""}"></span>
+          <span>${escapeHtml(label)}</span>
+          <strong>${value.toLocaleString("pt-BR")}</strong>
+        </div>`;
+      }).join("");
+    }
   }
 
   async function api(path, options = {}) {
     const base = String(cfg.BACKEND_URL || "").replace(/\/$/, "");
     if (!base) throw new Error("BACKEND_NOT_CONFIGURED");
     const headers = {...(options.headers || {}), Accept:"application/json"};
-    const token = BIAuth.getToken();
+    const token = window.BIAuth && typeof BIAuth.getToken === "function" ? BIAuth.getToken() : "";
     if (token) headers.Authorization = "DevSession " + token;
     if (tenantId) headers["X-Tenant-Id"] = tenantId;
     const fetchOptions = {...options, headers, credentials:"include"};
@@ -323,7 +363,7 @@
       if (warnings.length) {
         setStatus("waiting", "Dados carregados · " + warnings.length + " fonte(s) com aviso");
       } else {
-        setStatus("online", "Dados atualizados");
+        setStatus("online", "Dados reais carregados da Betha");
       }
     } catch (error) {
       console.warn("Dashboard ainda sem motor analítico publicado:", error);
