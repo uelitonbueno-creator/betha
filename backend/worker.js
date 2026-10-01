@@ -880,6 +880,147 @@ function debtYearSeries(rows) {
   return [...grouped.entries()].sort((a,b)=>a[0]-b[0]);
 }
 
+async function buildOverviewPart(env,tenant,url,part) {
+  const periodo=url.searchParams.get("periodo") || "ano";
+  const exercicio=Number(url.searchParams.get("exercicio") || new Date().getFullYear());
+  const paymentDatePaths=["dataPagamento","dtPagamento","dhPagamento","pagamento.dataPagamento"];
+  const debitDatePaths=["dhDebito","dataDebito","dtDebito","dataLancamento","dtLancamento"];
+
+  if (part==="pagamentos") {
+    const src=await safeBethaRows(env,tenant,"bi","pagamentos");
+    const rows=src.rows.filter(row=>periodIncludes(row,{
+      periodo,exercicio,datePaths:paymentDatePaths,yearPaths:["ano","exercicio"]
+    }));
+    const monthly=monthSeries(src.rows,{
+      datePaths:paymentDatePaths,
+      valuePaths:["valorPago","vlPago","valorTotalPago","vlTotalPago","valorArrecadado"],
+      periodo,exercicio
+    });
+    return {
+      part,kpis:{
+        arrecadado:sumRowsOrNull(rows,["valorPago","vlPago","valorTotalPago","vlTotalPago","valorArrecadado"])
+      },
+      charts:{
+        "receita-mensal":{
+          format:"currency",labels:monthly.labels,
+          datasets:[{label:"Arrecadado",data:monthly.values}]
+        },
+        "lancado-pago-saldo":{
+          format:"currency",labels:monthly.labels,
+          datasets:[{label:"Pago",data:monthly.values}]
+        }
+      },
+      meta:dashboardMeta([["pagamentos",src]])
+    };
+  }
+
+  if (part==="debitos") {
+    const src=await safeBethaRows(env,tenant,"bi","debitos");
+    const rows=src.rows.filter(row=>periodIncludes(row,{
+      periodo,exercicio,datePaths:debitDatePaths,yearPaths:["ano","anoDebito","exercicio"]
+    }));
+    const lancado=monthSeries(src.rows,{
+      datePaths:debitDatePaths,
+      valuePaths:["vlLancado","valorLancado","valorDebito","vlDebito","valorOriginal"],
+      periodo,exercicio
+    });
+    const saldo=monthSeries(src.rows,{
+      datePaths:debitDatePaths,
+      valuePaths:["vlSaldo","valorSaldo","saldo"],
+      periodo,exercicio
+    });
+    const datasets=[{label:"Lançado",data:lancado.values}];
+    if (saldo.values.some(v=>v!==0)) datasets.push({label:"Saldo",data:saldo.values});
+    return {
+      part,kpis:{
+        lancado:sumRowsOrNull(rows,["vlLancado","valorLancado","valorDebito","vlDebito","valorOriginal"])
+      },
+      charts:{
+        "lancado-pago-saldo":{format:"currency",labels:lancado.labels,datasets}
+      },
+      meta:dashboardMeta([["debitos",src]])
+    };
+  }
+
+  if (part==="dividas") {
+    const src=await safeBethaRows(env,tenant,"bi","dividas");
+    const debtStatus=groupCount(src.rows,["statusDivida","situacaoDivida","situacao","status"],12);
+    const debtYears=debtYearSeries(src.rows);
+    return {
+      part,kpis:{
+        divida:sumRowsOrNull(src.rows,["vlSaldo","valorSaldo","saldo","saldoCalculado"])
+      },
+      charts:{
+        "divida-evolucao":{
+          format:"currency",
+          labels:debtYears.map(([year])=>String(year)),
+          datasets:[{label:"Saldo da dívida",data:debtYears.map(([,value])=>value)}]
+        },
+        "situacao-divida":chartGroups(debtStatus,"Dívidas","number")
+      },
+      meta:dashboardMeta([["dividas",src]])
+    };
+  }
+
+  if (part==="parcelamentos") {
+    const src=await safeBethaRows(env,tenant,"bi","parcelamentos");
+    const rows=src.rows.filter(row=>periodIncludes(row,{
+      periodo,exercicio,datePaths:["dtParcelamento","dataParcelamento","dhParcelamento"],yearPaths:["ano","exercicio"]
+    }));
+    return {
+      part,kpis:{parcelado:periodo==="todos"?src.total:rows.length},
+      meta:dashboardMeta([["parcelamentos",src]])
+    };
+  }
+
+  if (part==="contribuintes") {
+    const src=await safeBethaRows(env,tenant,"bi","contribuintes");
+    return {
+      part,kpis:{contribuintes:src.total},
+      charts:{cadastros:chartFixed(["Contribuintes"],[src.total],"Cadastros","number")},
+      meta:dashboardMeta([["contribuintes",src]])
+    };
+  }
+
+  if (part==="imoveis") {
+    const src=await safeBethaRows(env,tenant,"bi","imoveis");
+    return {
+      part,kpis:{imoveis:src.total},
+      charts:{cadastros:chartFixed(["Imóveis"],[src.total],"Cadastros","number")},
+      meta:dashboardMeta([["imoveis",src]])
+    };
+  }
+
+  if (part==="economicos") {
+    const src=await safeBethaRows(env,tenant,"bi","economicos");
+    return {
+      part,
+      charts:{cadastros:chartFixed(["Econômicos"],[src.total],"Cadastros","number")},
+      meta:dashboardMeta([["economicos",src]])
+    };
+  }
+
+  if (part==="pagamentos-detalhados") {
+    const src=await safeBethaRows(env,tenant,"bi","pagamentos-detalhados");
+    const rows=src.rows.filter(row=>periodIncludes(row,{
+      periodo,exercicio,
+      datePaths:["pagamento.dataPagamento","dataPagamento","dtPagamento"],
+      yearPaths:["ano","exercicio"]
+    }));
+    const groups=groupSum(rows,
+      ["creditoTributario.descricao","creditoTributario.nome","descricaoCreditoTributario","idCreditoTributario"],
+      ["valorPagoLancado","vlPagoLancado","valorPago","vlPago"],10
+    );
+    return {
+      part,
+      charts:{"receita-credito":chartGroups(groups,"Arrecadado","currency")},
+      meta:dashboardMeta([["pagamentosDetalhados",src]])
+    };
+  }
+
+  throw new Error("OVERVIEW_PART_INVALID");
+}
+
 async function buildOverviewDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo") || "ano";
   const exercicio=Number(url.searchParams.get("exercicio") || new Date().getFullYear());
@@ -1983,7 +2124,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-01-auto-deploy-test-v7",
+        buildVersion:"2026-10-01-sharded-overview-v8",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2189,6 +2330,17 @@ export default {
           sessionValid:true,
           accessCount:Array.isArray(accesses)?accesses.length:0
         });
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
+    const overviewPartMatch=url.pathname.match(/^\/api\/dashboard\/visao-geral\/part\/([a-z0-9-]+)$/);
+    if (overviewPartMatch && request.method==="GET") {
+      try {
+        const tenant=resolveTenant(env,getTenantId(request,url));
+        const body=await buildOverviewPart(env,tenant,url,overviewPartMatch[1]);
+        return json(request,env,200,body);
       } catch(error) {
         return errorResponse(request,env,error);
       }
