@@ -1,23 +1,28 @@
-(() => {
+(async () => {
   const cfg = window.BI_CONFIG || {};
   const dashboards = window.BI_DASHBOARDS || {};
   const bethaApp = document.getElementById("bethaApp");
   const authGate = document.getElementById("authGate");
 
+  if (window.BIAuth && BIAuth.ready) {
+    try { await BIAuth.ready; } catch {}
+  }
+
   if (!window.BIAuth || !BIAuth.isAuthenticated()) {
     bethaApp.style.display = "none";
     authGate.hidden = false;
-    const previousAuthError = sessionStorage.getItem("betha_bi_auth_error");
+
+    const previousAuthError = window.BIAuth ? BIAuth.getError() : "BIAuth não carregou";
     if (previousAuthError) {
-      document.getElementById("authMessage").textContent = "Retorno da Betha: " + previousAuthError;
-      sessionStorage.removeItem("betha_bi_auth_error");
+      document.getElementById("authMessage").textContent = "Retorno da autenticação: " + previousAuthError;
     }
+
     document.getElementById("loginButton").addEventListener("click", async () => {
       const message = document.getElementById("authMessage");
       message.textContent = "";
       try {
         message.textContent = "Redirecionando para a Betha…";
-        BIAuth.login(location.href);
+        await BIAuth.login();
       } catch (error) {
         message.textContent = "Falha no login: " + error.message;
       }
