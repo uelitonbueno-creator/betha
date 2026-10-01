@@ -327,16 +327,19 @@
           ? null
           : Number(audit.reportedTotal);
         const complete = audit.complete === true;
+        const mismatch = audit.totalMismatch === true;
         const error = audit.error || (warning && warning.error) || "";
-        const stateClass = error ? "error" : (complete ? "ok" : "warn");
-        const status = error ? "ERRO" : (complete ? "COMPLETO" : "PARCIAL");
+        const stateClass = error ? "error" : (mismatch ? "warn" : (complete ? "ok" : "warn"));
+        const status = error ? "ERRO" : (mismatch ? "DIVERGÊNCIA" : (complete ? "COMPLETO" : "PARCIAL"));
         const countText = reported !== null
-          ? value.toLocaleString("pt-BR") + " / " + reported.toLocaleString("pt-BR")
-          : value.toLocaleString("pt-BR");
+          ? value.toLocaleString("pt-BR") + " carregados / API " + reported.toLocaleString("pt-BR")
+          : value.toLocaleString("pt-BR") + " carregados";
         const pages = Number(audit.pages || 0);
         const title = error
           ? "Falha: " + error
-          : status + " · " + pages + " página(s)";
+          : (mismatch
+            ? "Total informado pela API diverge do total carregado"
+            : status + " · " + pages + " página(s)");
         return `<div class="coverage-item coverage-audit" title="${escapeHtml(title)}">
           <span class="coverage-dot ${stateClass}"></span>
           <span class="coverage-source">${escapeHtml(labelMap[key] || key)}</span>
