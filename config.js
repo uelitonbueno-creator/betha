@@ -3,6 +3,7 @@ window.BI_CONFIG = {
   APP_NAME: "BI Tributos",
   ENTITY_LABEL: "ENTIDADE NÃO IDENTIFICADA",
   BACKEND_URL: "https://betha-bi-api.ueliton-bueno.workers.dev",
+  AUTH_REQUIRED: false,
 
   AUTH: {
     CLIENT_ID: "9296eb53-4d03-495b-96e6-a3ed3a7d14e3",
