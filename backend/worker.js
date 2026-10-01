@@ -627,13 +627,13 @@ async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=nu
     reportedTotal=null;
   }
 
-  const totalMismatch=reportedTotal!==null && reachedEnd && reportedTotal!==rows.length;
+  const totalMismatch=!chunkMode && reportedTotal!==null && reachedEnd && reportedTotal!==rows.length;
   const complete=reachedEnd && !truncated;
   const hasMore=!complete && !truncated && !repeatedPage;
 
   return {
     rows,
-    total:complete ? rows.length : Math.max(reportedTotal||0,rows.length),
+    total:chunkMode ? rows.length : (complete ? rows.length : Math.max(reportedTotal||0,rows.length)),
     reportedTotal,
     loaded:rows.length,
     pages,
@@ -2152,7 +2152,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-01-one-page-per-call-v10",
+        buildVersion:"2026-10-01-audit-total-fix-v11",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
