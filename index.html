@@ -18,14 +18,25 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 </head>
 <body>
-  <div id="authGate" class="auth-gate" hidden style="display:none!important">
-    <div class="auth-card">
+  <div id="authGate" class="auth-gate" hidden>
+    <form id="devLoginForm" class="auth-card" autocomplete="off">
       <div class="auth-brand">B</div>
       <h1>BI Tributos</h1>
-      <p>Entre com sua conta da Central de Usuários Betha. O acesso aos dados será limitado às entidades às quais seu usuário está vinculado.</p>
-      <a id="loginButton" class="btn-primary-betha auth-login" href="https://betha-bi-api.ueliton-bueno.workers.dev/api/auth/login">ENTRAR COM A BETHA</a>
+      <p>Acesso temporário de desenvolvimento para os painéis de teste.</p>
+
+      <div class="auth-field">
+        <label for="devUsername">Usuário</label>
+        <input id="devUsername" name="username" type="text" value="betha" autocomplete="username" required>
+      </div>
+
+      <div class="auth-field">
+        <label for="devPassword">Senha</label>
+        <input id="devPassword" name="password" type="password" autocomplete="current-password" required>
+      </div>
+
+      <button id="loginButton" class="btn-primary-betha auth-login" type="submit">ENTRAR</button>
       <div id="authMessage" class="auth-message"></div>
-    </div>
+    </form>
   </div>
 
   <bth-app id="bethaApp" menu-bg-color="#202027">
@@ -267,10 +278,9 @@
     </div>
   </aside>
 
-  <script>window.BI_DEV_NO_AUTH=true;</script>
-  <script src="config.js?v=20261001-12"></script>
-  <script src="auth/auth.js?v=20261001-11"></script>
+  <script src="config.js?v=20261001-14"></script>
+  <script src="auth/auth.js?v=20261001-14"></script>
   <script src="dashboard-catalog.js"></script>
-  <script src="app.js?v=20261001-13"></script>
+  <script src="app.js?v=20261001-14"></script>
 </body>
 </html>
