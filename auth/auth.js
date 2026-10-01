@@ -66,27 +66,38 @@
     const base=String(cfg().BACKEND_URL || "").replace(/\/$/,"");
     if (!base) throw new Error("BACKEND_NOT_CONFIGURED");
 
-    const response=await fetch(base+"/api/dev/login",{
-      method:"POST",
-      headers:{
-        "Accept":"application/json",
-        "Content-Type":"application/json"
-      },
-      body:JSON.stringify({username,password})
-    });
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),12000);
 
-    const payload=await response.json().catch(()=>({}));
-    if (!response.ok || !payload.session) {
-      throw new Error(payload.error || ("HTTP_"+response.status));
-    }
+    try {
+      const response=await fetch(base+"/api/dev/login",{
+        method:"POST",
+        headers:{
+          "Accept":"application/json",
+          "Content-Type":"application/json"
+        },
+        body:JSON.stringify({username,password}),
+        signal:controller.signal
+      });
 
-    setItem(KEY_SESSION,payload.session);
-    const seconds=Number(payload.expires_in || 0);
-    if (seconds>0) {
-      setItem(KEY_EXPIRES,String(Date.now()+Math.max(0,seconds-30)*1000));
+      const payload=await response.json().catch(()=>({}));
+      if (!response.ok || !payload.session) {
+        throw new Error(payload.error || ("HTTP_"+response.status));
+      }
+
+      setItem(KEY_SESSION,payload.session);
+      const seconds=Number(payload.expires_in || 0);
+      if (seconds>0) {
+        setItem(KEY_EXPIRES,String(Date.now()+Math.max(0,seconds-30)*1000));
+      }
+      removeItem(KEY_ERROR);
+      return true;
+    } catch(error) {
+      if (error && error.name==="AbortError") throw new Error("DEV_LOGIN_TIMEOUT");
+      throw error;
+    } finally {
+      clearTimeout(timer);
     }
-    removeItem(KEY_ERROR);
-    return true;
   }
 
   function logout() {
