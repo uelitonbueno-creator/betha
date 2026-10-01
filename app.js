@@ -41,6 +41,7 @@
           error.message === "DEV_LOGIN_USER_INVALID" ? "Usuário divergente da configuração do Worker." :
           error.message === "DEV_LOGIN_PASSWORD_INVALID" ? "Senha divergente da configuração do Worker." :
           error.message === "DEV_LOGIN_INVALID" ? "Usuário ou senha inválidos." :
+          error.message === "DEV_LOGIN_TIMEOUT" ? "O Worker não respondeu ao login em 12 segundos." :
           "Falha no login: " + error.message;
         button.disabled = false;
         button.textContent = "ENTRAR";
