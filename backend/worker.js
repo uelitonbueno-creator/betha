@@ -12,10 +12,11 @@ const BI_BASE_DEFAULT = "https://tributos.suite.betha.cloud";
 const AUTH_BASE = "https://plataforma-autorizacoes.betha.cloud";
 const USERS_BASE = "https://plataforma-usuarios.betha.cloud";
 const LICENSES_BASE = "https://plataforma-licencas.betha.cloud";
+const OAUTH_AUTHORIZE_URL = "https://plataforma-oauth.betha.cloud/auth/oauth2/authorize";
 const OAUTH_TOKEN_URL = "https://plataforma-oauth.betha.cloud/auth/oauth2/token";
-const BROWSER_CLIENT_ID = "9296eb53-4d03-495b-96e6-a3ed3a7d14e3";
-const BROWSER_REDIRECT_URI = "https://uelitonbueno-creator.github.io/betha/";
-const BROWSER_SCOPES = "contas-usuarios.suite,user-accounts.suite,licenses.suite";
+const LOGIN_REDIRECT_DEFAULT = "https://betha-bi-api.ueliton-bueno.workers.dev/api/auth/callback";
+const FRONT_URL_DEFAULT = "https://uelitonbueno-creator.github.io/betha/";
+const LOGIN_SCOPES_DEFAULT = "contas-usuarios.suite,user-accounts.suite,licenses.suite";
 
 const BI_RESOURCES = Object.freeze({
   contribuintes: "/integracoes-bi/v1/contribuintes",
@@ -118,10 +119,64 @@ function resolveTenant(env, tenantId) {
   };
 }
 
-function getUserToken(request) {
+function bytesToBase64Url(bytes) {
+  let binary="";
+  for (const b of bytes) binary+=String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");
+}
+
+function base64UrlToBytes(value) {
+  let normalized=String(value||"").replace(/-/g,"+").replace(/_/g,"/");
+  while (normalized.length%4) normalized+="=";
+  const binary=atob(normalized);
+  const out=new Uint8Array(binary.length);
+  for (let i=0;i<binary.length;i++) out[i]=binary.charCodeAt(i);
+  return out;
+}
+
+async function sessionKey(secret) {
+  if (!secret) throw new Error("LOGIN_CLIENT_SECRET_NOT_CONFIGURED");
+  const raw=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(secret));
+  return crypto.subtle.importKey("raw",raw,{name:"AES-GCM"},false,["encrypt","decrypt"]);
+}
+
+async function sealSession(payload, secret) {
+  const key=await sessionKey(secret);
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const plain=new TextEncoder().encode(JSON.stringify(payload));
+  const encrypted=await crypto.subtle.encrypt({name:"AES-GCM",iv},key,plain);
+  return "v1."+bytesToBase64Url(iv)+"."+bytesToBase64Url(new Uint8Array(encrypted));
+}
+
+async function openSession(token, secret) {
+  const parts=String(token||"").split(".");
+  if (parts.length!==3 || parts[0]!=="v1") throw new Error("APPLICATION_SESSION_INVALID");
+  try {
+    const key=await sessionKey(secret);
+    const iv=base64UrlToBytes(parts[1]);
+    const encrypted=base64UrlToBytes(parts[2]);
+    const plain=await crypto.subtle.decrypt({name:"AES-GCM",iv},key,encrypted);
+    const payload=JSON.parse(new TextDecoder().decode(plain));
+    if (!payload || !payload.accessToken) throw new Error("APPLICATION_SESSION_INVALID");
+    if (payload.exp && Date.now()>=Number(payload.exp)) throw new Error("APPLICATION_SESSION_EXPIRED");
+    return payload;
+  } catch(error) {
+    if (error.message==="APPLICATION_SESSION_EXPIRED") throw error;
+    throw new Error("APPLICATION_SESSION_INVALID");
+  }
+}
+
+async function getUserToken(request, env) {
   const header=request.headers.get("Authorization") || "";
-  const match=header.match(/^Bearer\s+(.+)$/i);
-  return match ? match[1].trim() : "";
+  const sessionMatch=header.match(/^Session\s+(.+)$/i);
+  if (sessionMatch) {
+    const session=await openSession(sessionMatch[1].trim(),env.BETHA_LOGIN_CLIENT_SECRET);
+    return session.accessToken;
+  }
+
+  // Compatibilidade temporária durante a migração.
+  const bearerMatch=header.match(/^Bearer\s+(.+)$/i);
+  return bearerMatch ? bearerMatch[1].trim() : "";
 }
 
 async function readJsonResponse(response) {
@@ -233,7 +288,7 @@ async function authorizeTenant(request, env, tenant) {
   if (String(env.ALLOW_UNAUTHENTICATED_DEV || "").toLowerCase()==="true") {
     return {dev:true,access:null,context:{entity:tenant.entityId||"",database:tenant.databaseId||""},userToken:""};
   }
-  const userToken=getUserToken(request);
+  const userToken=await getUserToken(request,env);
   if (!userToken) throw new Error("USER_TOKEN_REQUIRED");
   const [accesses,context]=await Promise.all([
     getUserAccesses(userToken),
@@ -359,6 +414,9 @@ function errorResponse(request,env,error) {
     TENANT_NOT_FOUND:403,
     TENANT_USER_ACCESS_NOT_CONFIGURED:503,
     USER_TOKEN_REQUIRED:401,
+    APPLICATION_SESSION_INVALID:401,
+    APPLICATION_SESSION_EXPIRED:401,
+    LOGIN_CLIENT_SECRET_NOT_CONFIGURED:503,
     TENANT_CONTEXT_UNRESOLVED:503,
     TENANT_ACCESS_DENIED:403,
     TENANT_ACCESS_NOT_ACCEPTED:403,
@@ -385,8 +443,98 @@ export default {
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
         tenantsConfigured:Boolean(env.BETHA_TENANTS_JSON),
-        userAuthorizationRequired:String(env.ALLOW_UNAUTHENTICATED_DEV || "").toLowerCase()!=="true"
+        userAuthorizationRequired:String(env.ALLOW_UNAUTHENTICATED_DEV || "").toLowerCase()!=="true",
+        loginCredentialConfigured:Boolean(env.BETHA_LOGIN_CLIENT_ID && env.BETHA_LOGIN_CLIENT_SECRET)
       });
+    }
+
+    if (url.pathname==="/api/auth/login" && request.method==="GET") {
+      if (!env.BETHA_LOGIN_CLIENT_ID || !env.BETHA_LOGIN_CLIENT_SECRET) {
+        return json(request,env,503,{error:"LOGIN_CREDENTIAL_NOT_CONFIGURED"});
+      }
+
+      const state=await sealSession({
+        kind:"oauth-state",
+        ts:Date.now(),
+        nonce:crypto.randomUUID()
+      },env.BETHA_LOGIN_CLIENT_SECRET);
+
+      const authorize=new URL(OAUTH_AUTHORIZE_URL);
+      authorize.searchParams.set("response_type","code");
+      authorize.searchParams.set("client_id",env.BETHA_LOGIN_CLIENT_ID);
+      authorize.searchParams.set("redirect_uri",env.BETHA_LOGIN_REDIRECT_URI || LOGIN_REDIRECT_DEFAULT);
+      authorize.searchParams.set("scope",env.BETHA_LOGIN_SCOPES || LOGIN_SCOPES_DEFAULT);
+      authorize.searchParams.set("state",state);
+
+      return new Response(null,{
+        status:302,
+        headers:{
+          "Location":authorize.toString(),
+          "Cache-Control":"no-store"
+        }
+      });
+    }
+
+    if (url.pathname==="/api/auth/callback" && request.method==="GET") {
+      const front=env.BETHA_FRONT_URL || FRONT_URL_DEFAULT;
+      const error=url.searchParams.get("error");
+      const code=url.searchParams.get("code");
+      const state=url.searchParams.get("state");
+
+      if (error) {
+        const target=new URL(front);
+        target.hash="auth_error="+encodeURIComponent(error);
+        return Response.redirect(target.toString(),302);
+      }
+
+      try {
+        if (!env.BETHA_LOGIN_CLIENT_ID || !env.BETHA_LOGIN_CLIENT_SECRET) {
+          throw new Error("LOGIN_CREDENTIAL_NOT_CONFIGURED");
+        }
+        if (!code || !state) throw new Error("OAUTH_CALLBACK_INCOMPLETE");
+
+        const statePayload=await openSession(state,env.BETHA_LOGIN_CLIENT_SECRET);
+        if (statePayload.kind!=="oauth-state" || !statePayload.ts || Date.now()-Number(statePayload.ts)>10*60*1000) {
+          throw new Error("OAUTH_STATE_INVALID");
+        }
+
+        const form=new URLSearchParams();
+        form.set("grant_type","authorization_code");
+        form.set("client_id",env.BETHA_LOGIN_CLIENT_ID);
+        form.set("client_secret",env.BETHA_LOGIN_CLIENT_SECRET);
+        form.set("code",code);
+        form.set("redirect_uri",env.BETHA_LOGIN_REDIRECT_URI || LOGIN_REDIRECT_DEFAULT);
+
+        const oauthResponse=await fetch(OAUTH_TOKEN_URL,{
+          method:"POST",
+          headers:{"Content-Type":"application/x-www-form-urlencoded","Accept":"application/json"},
+          body:form
+        });
+        const parsed=await readJsonResponse(oauthResponse);
+
+        if (!oauthResponse.ok || !parsed.body || !parsed.body.access_token) {
+          console.error("server oauth exchange",oauthResponse.status,parsed.body);
+          throw new Error("OAUTH_TOKEN_EXCHANGE_FAILED");
+        }
+
+        const oauthSeconds=Number(parsed.body.expires_in || parsed.body.expires || 0);
+        const sessionSeconds=oauthSeconds>0 ? Math.min(oauthSeconds,8*60*60) : 8*60*60;
+
+        const session=await sealSession({
+          kind:"user-session",
+          accessToken:parsed.body.access_token,
+          exp:Date.now()+sessionSeconds*1000
+        },env.BETHA_LOGIN_CLIENT_SECRET);
+
+        const target=new URL(front);
+        target.hash="session="+encodeURIComponent(session)+"&expires_in="+sessionSeconds;
+        return Response.redirect(target.toString(),302);
+      } catch(authError) {
+        console.error("oauth callback",authError);
+        const target=new URL(front);
+        target.hash="auth_error="+encodeURIComponent(authError.message || "AUTH_CALLBACK_FAILED");
+        return Response.redirect(target.toString(),302);
+      }
     }
 
     if (url.pathname==="/api/auth/exchange" && request.method==="POST") {
@@ -468,7 +616,7 @@ export default {
 
     if (url.pathname==="/api/me/access" && request.method==="GET") {
       try {
-        const accesses=await getUserAccesses(getUserToken(request));
+        const accesses=await getUserAccesses(await getUserToken(request,env));
         return json(request,env,200,{accesses});
       } catch(error) {
         return errorResponse(request,env,error);
@@ -477,7 +625,7 @@ export default {
 
     if (url.pathname==="/api/me/tenants" && request.method==="GET") {
       try {
-        const userToken=getUserToken(request);
+        const userToken=await getUserToken(request,env);
         if (!userToken) throw new Error("USER_TOKEN_REQUIRED");
         const registry=parseJsonObject(env.BETHA_TENANTS_JSON,{});
         const tenants=[];
