@@ -4,11 +4,13 @@
   const bethaApp = document.getElementById("bethaApp");
   const authGate = document.getElementById("authGate");
 
-  if (window.BIAuth && BIAuth.ready) {
+  const authRequired = cfg.AUTH_REQUIRED !== false;
+
+  if (authRequired && window.BIAuth && BIAuth.ready) {
     try { await BIAuth.ready; } catch {}
   }
 
-  if (!window.BIAuth || !BIAuth.isAuthenticated()) {
+  if (authRequired && (!window.BIAuth || !BIAuth.isAuthenticated())) {
     bethaApp.style.display = "none";
     authGate.hidden = false;
 
@@ -18,16 +20,6 @@
       authMessage.textContent = "Retorno da autenticação: " + previousAuthError;
     } else if (window.BIAuth && BIAuth.getStatus && BIAuth.getStatus()) {
       authMessage.textContent = "Estado da autenticação: " + BIAuth.getStatus();
-    } else {
-      const q = new URLSearchParams(location.search);
-      const h = new URLSearchParams(String(location.hash || "").replace(/^#/, ""));
-      const queryKeys = [...q.keys()];
-      const hashKeys = [...h.keys()];
-      if (queryKeys.length || hashKeys.length) {
-        authMessage.textContent =
-          "Retorno Betha recebido. Parâmetros: query=[" +
-          queryKeys.join(", ") + "] hash=[" + hashKeys.join(", ") + "]";
-      }
     }
 
     return;
