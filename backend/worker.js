@@ -617,6 +617,12 @@ async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=nu
     if (page===safetyMaxPages-1) truncated=true;
   }
 
+  if (reportedTotal!==null && rows.length>reportedTotal) {
+    // O endpoint percorreu mais registros do que o suposto "total".
+    // Nesse caso esse campo não representa o total global.
+    reportedTotal=null;
+  }
+
   const totalMismatch=reportedTotal!==null && reachedEnd && reportedTotal!==rows.length;
   const complete=reachedEnd && !truncated;
 
@@ -635,13 +641,67 @@ async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=nu
 }
 
 async function safeBethaRows(env,tenant,source,resource,options={}) {
-  try {
-    const result=await fetchBethaRows(env,tenant,source,resource,options);
-    return {...result,error:null};
-  } catch(error) {
-    console.warn("dashboard source failed",source,resource,error.message);
-    return {rows:[],total:0,reportedTotal:null,loaded:0,pages:0,complete:false,truncated:false,repeatedPage:false,totalMismatch:false,pageMeta:[],error:error.message};
+  const heavyFinancial=new Set([
+    "pagamentos",
+    "pagamentos-detalhados",
+    "pagamentos-detalhados-valores",
+    "debitos",
+    "debitos-receitas",
+    "dividas",
+    "dividas-receitas"
+  ]);
+
+  const requestedLimit=Number(options.limit || 0);
+  const limits=requestedLimit>0
+    ? [requestedLimit]
+    : (heavyFinancial.has(resource) ? [500,250,100,50] : [1000,500,250]);
+
+  let lastError=null;
+
+  for (const limit of limits) {
+    try {
+      const result=await fetchBethaRows(env,tenant,source,resource,{...options,limit});
+      // Alguns endpoints BI retornam 1001 como marcador/limite, e não como total global.
+      // Se o "total" informado for menor que o que efetivamente foi percorrido,
+      // descartamos esse número e confiamos no fim real da paginação.
+      if (result.reportedTotal!==null && result.loaded>result.reportedTotal) {
+        result.reportedTotal=null;
+        result.totalMismatch=false;
+        result.total=result.loaded;
+      }
+      return {...result,error:null,errorStatus:null,errorDetail:null,pageLimit:limit};
+    } catch(error) {
+      lastError=error;
+      // Tenta página menor para endpoints pesados/instáveis.
+      // 401/403/404 não melhoram reduzindo a página.
+      if ([401,403,404].includes(Number(error.status))) break;
+    }
   }
+
+  const detail=lastError && lastError.remoteBody
+    ? (typeof lastError.remoteBody==="string"
+        ? lastError.remoteBody.slice(0,240)
+        : JSON.stringify(lastError.remoteBody).slice(0,240))
+    : null;
+
+  console.warn("dashboard source failed",source,resource,lastError && lastError.message,detail);
+
+  return {
+    rows:[],
+    total:0,
+    reportedTotal:null,
+    loaded:0,
+    pages:0,
+    complete:false,
+    truncated:false,
+    repeatedPage:false,
+    totalMismatch:false,
+    pageMeta:[],
+    pageLimit:null,
+    error:lastError ? lastError.message : "UNKNOWN_ERROR",
+    errorStatus:lastError ? (lastError.status || null) : null,
+    errorDetail:detail
+  };
 }
 
 function valueAt(obj,path) {
@@ -1016,7 +1076,10 @@ async function buildOverviewDashboard(env,tenant,url) {
         repeatedPage:Boolean(src.repeatedPage),
         totalMismatch:Boolean(src.totalMismatch),
         pageMeta:Array.isArray(src.pageMeta)?src.pageMeta:[],
-        error:src.error
+        pageLimit:src.pageLimit,
+        error:src.error,
+        errorStatus:src.errorStatus,
+        errorDetail:src.errorDetail
       }]))
     }
   };
@@ -1124,7 +1187,9 @@ function dashboardWarnings(entries) {
       source,
       error:src.error,
       truncated:Boolean(src.truncated),
-      totalMismatch:Boolean(src.totalMismatch)
+      totalMismatch:Boolean(src.totalMismatch),
+      errorStatus:src.errorStatus||null,
+      errorDetail:src.errorDetail||null
     }));
 }
 
@@ -1145,7 +1210,10 @@ function dashboardMeta(entries,extra={}) {
       repeatedPage:Boolean(src&&src.repeatedPage),
       totalMismatch:Boolean(src&&src.totalMismatch),
       pageMeta:src&&Array.isArray(src.pageMeta)?src.pageMeta:[],
-      error:src?src.error:null
+      pageLimit:src?src.pageLimit:null,
+      error:src?src.error:null,
+      errorStatus:src?src.errorStatus:null,
+      errorDetail:src?src.errorDetail:null
     }])),
     ...extra
   };
@@ -1915,7 +1983,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-01-pagination-fields-v5",
+        buildVersion:"2026-10-01-financial-retry-v6",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
