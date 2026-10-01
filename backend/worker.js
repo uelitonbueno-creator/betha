@@ -503,6 +503,8 @@ function payloadTotal(payload) {
 
 async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=5}={}) {
   const rows=[];
+  const seenIds=new Set();
+  const seenFingerprints=new Set();
   let total=null;
   let truncated=false;
 
@@ -511,9 +513,31 @@ async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=5}
     const body=await bethaGet(env,tenant,source,resource,"limit="+limit+"&offset="+offset);
     const pageRows=payloadRows(body);
     if (total===null) total=payloadTotal(body);
-    rows.push(...pageRows);
 
-    if (!pageRows.length || pageRows.length<limit || (total!==null && rows.length>=total)) {
+    const fingerprint=pageRows.slice(0,5).map((row,index)=>{
+      const id=firstValue(row,["id","codigo","idIntegracao","uuid"]);
+      return id!==undefined?String(id):JSON.stringify(Object.keys(row||{}).slice(0,8))+":"+index;
+    }).join("|");
+
+    if (fingerprint && seenFingerprints.has(fingerprint)) {
+      truncated=true;
+      break;
+    }
+    if (fingerprint) seenFingerprints.add(fingerprint);
+
+    let newRows=0;
+    for (const row of pageRows) {
+      const id=firstValue(row,["id","codigo","idIntegracao","uuid"]);
+      if (id!==undefined && id!==null && id!=="") {
+        const key=String(id);
+        if (seenIds.has(key)) continue;
+        seenIds.add(key);
+      }
+      rows.push(row);
+      newRows++;
+    }
+
+    if (!pageRows.length || !newRows || pageRows.length<limit || (total!==null && rows.length>=total)) {
       break;
     }
     if (page===maxPages-1) truncated=true;
