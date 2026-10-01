@@ -12,9 +12,20 @@
     bethaApp.style.display = "none";
     authGate.hidden = false;
 
+    const authMessage = document.getElementById("authMessage");
     const previousAuthError = window.BIAuth ? BIAuth.getError() : "BIAuth não carregou";
     if (previousAuthError) {
-      document.getElementById("authMessage").textContent = "Retorno da autenticação: " + previousAuthError;
+      authMessage.textContent = "Retorno da autenticação: " + previousAuthError;
+    } else {
+      const q = new URLSearchParams(location.search);
+      const h = new URLSearchParams(String(location.hash || "").replace(/^#/, ""));
+      const queryKeys = [...q.keys()];
+      const hashKeys = [...h.keys()];
+      if (queryKeys.length || hashKeys.length) {
+        authMessage.textContent =
+          "Retorno Betha recebido. Parâmetros: query=[" +
+          queryKeys.join(", ") + "] hash=[" + hashKeys.join(", ") + "]";
+      }
     }
 
     document.getElementById("loginButton").addEventListener("click", async () => {
