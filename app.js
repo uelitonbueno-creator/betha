@@ -331,10 +331,10 @@
     const base = String(cfg.BACKEND_URL || "").replace(/\/$/, "");
     if (!base) throw new Error("BACKEND_NOT_CONFIGURED");
     const headers = {...(options.headers || {}), Accept:"application/json"};
-    const token = window.BIAuth && typeof BIAuth.getToken === "function" ? BIAuth.getToken() : "";
+    const token = cfg.AUTH_REQUIRED && window.BIAuth && typeof BIAuth.getToken === "function" ? BIAuth.getToken() : "";
     if (token) headers.Authorization = "DevSession " + token;
     if (tenantId) headers["X-Tenant-Id"] = tenantId;
-    const fetchOptions = {...options, headers, credentials:"include"};
+    const fetchOptions = {...options, headers, credentials:"omit"};
     const response = await fetch(base + path, fetchOptions);
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
