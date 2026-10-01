@@ -33,7 +33,12 @@
       message.textContent = "";
       try {
         message.textContent = "Redirecionando para a Betha…";
-        await BIAuth.login();
+        BIAuth.login();
+        setTimeout(() => {
+          if (location.hostname === "uelitonbueno-creator.github.io") {
+            message.textContent = "O navegador não iniciou o redirecionamento. Clique novamente ou permita redirecionamentos para este site.";
+          }
+        }, 1200);
       } catch (error) {
         message.textContent = "Falha no login: " + error.message;
       }
