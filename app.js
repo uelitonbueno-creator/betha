@@ -4,10 +4,6 @@
   const bethaApp = document.getElementById("bethaApp");
   const authGate = document.getElementById("authGate");
 
-  if (window.BIAuth && BIAuth.ready) {
-    try { await BIAuth.ready; } catch {}
-  }
-
   if (!window.BIAuth || !BIAuth.isAuthenticated()) {
     bethaApp.style.display = "none";
     authGate.hidden = false;
@@ -34,11 +30,6 @@
       try {
         message.textContent = "Redirecionando para a Betha…";
         BIAuth.login();
-        setTimeout(() => {
-          if (location.hostname === "uelitonbueno-creator.github.io") {
-            message.textContent = "O navegador não iniciou o redirecionamento. Clique novamente ou permita redirecionamentos para este site.";
-          }
-        }, 1200);
       } catch (error) {
         message.textContent = "Falha no login: " + error.message;
       }
