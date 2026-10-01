@@ -377,7 +377,14 @@
     if (!cfg.BACKEND_URL) return;
     setStatus("waiting", "Consultando backend...");
     try {
-      await api("/api/health");
+      const health = await api("/api/health");
+      const missing = [];
+      if (!health.accessTokenConfigured) missing.push("BETHA_ACCESS_TOKEN");
+      if (!health.tenantsConfigured) missing.push("BETHA_TENANTS_JSON");
+      if (missing.length) {
+        throw new Error("WORKER_CONFIG_MISSING:" + missing.join(","));
+      }
+
       const params = new URLSearchParams({
         periodo: document.getElementById("periodo").value,
         exercicio: document.getElementById("exercicio").value,
