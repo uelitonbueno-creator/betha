@@ -329,6 +329,8 @@
         const complete = audit.complete === true;
         const mismatch = audit.totalMismatch === true;
         const error = audit.error || (warning && warning.error) || "";
+        const errorStatus = audit.errorStatus || (warning && warning.errorStatus) || "";
+        const errorDetail = audit.errorDetail || (warning && warning.errorDetail) || "";
         const stateClass = error ? "error" : (mismatch ? "warn" : (complete ? "ok" : "warn"));
         const status = error ? "ERRO" : (mismatch ? "DIVERGÊNCIA" : (complete ? "COMPLETO" : "PARCIAL"));
         const countText = reported !== null
@@ -336,15 +338,18 @@
           : value.toLocaleString("pt-BR") + " carregados";
         const pages = Number(audit.pages || 0);
         const title = error
-          ? "Falha: " + error
+          ? "Falha: " + error + (errorStatus ? " (HTTP " + errorStatus + ")" : "") + (errorDetail ? " · " + errorDetail : "")
           : (mismatch
             ? "Total informado pela API diverge do total carregado"
             : status + " · " + pages + " página(s)");
+        const detailText = error
+          ? [errorStatus ? "HTTP " + errorStatus : error, errorDetail].filter(Boolean).join(" · ")
+          : (status + (pages ? " · " + pages + " pág." : ""));
         return `<div class="coverage-item coverage-audit" title="${escapeHtml(title)}">
           <span class="coverage-dot ${stateClass}"></span>
           <span class="coverage-source">${escapeHtml(labelMap[key] || key)}</span>
           <strong>${escapeHtml(countText)}</strong>
-          <small>${status}${pages ? " · " + pages + " pág." : ""}</small>
+          <small>${escapeHtml(detailText)}</small>
         </div>`;
       }).join("") || '<span class="coverage-loading">Nenhuma fonte informada pelo backend.</span>';
     }
