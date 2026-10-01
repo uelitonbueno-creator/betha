@@ -501,25 +501,33 @@ function payloadTotal(payload) {
   return null;
 }
 
-async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=5}={}) {
+async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=null}={}) {
   const rows=[];
   const seenIds=new Set();
   const seenFingerprints=new Set();
   let total=null;
   let truncated=false;
+  let pages=0;
+  let repeatedPage=false;
 
-  for (let page=0;page<maxPages;page++) {
+  // Auditoria completa: sem limite artificial de 2k/5k.
+  // O teto de 500 páginas é apenas uma trava contra loop de endpoint defeituoso.
+  const safetyMaxPages=maxPages==null ? 500 : Math.max(1,Number(maxPages));
+
+  for (let page=0;page<safetyMaxPages;page++) {
     const offset=page*limit;
     const body=await bethaGet(env,tenant,source,resource,"limit="+limit+"&offset="+offset);
+    pages++;
     const pageRows=payloadRows(body);
     if (total===null) total=payloadTotal(body);
 
-    const fingerprint=pageRows.slice(0,5).map((row,index)=>{
+    const fingerprint=pageRows.slice(0,10).map((row,index)=>{
       const id=firstValue(row,["id","codigo","idIntegracao","uuid"]);
-      return id!==undefined?String(id):JSON.stringify(Object.keys(row||{}).slice(0,8))+":"+index;
+      return id!==undefined?String(id):JSON.stringify(row||{}).slice(0,180)+":"+index;
     }).join("|");
 
     if (fingerprint && seenFingerprints.has(fingerprint)) {
+      repeatedPage=true;
       truncated=true;
       break;
     }
@@ -537,13 +545,32 @@ async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=5}
       newRows++;
     }
 
-    if (!pageRows.length || !newRows || pageRows.length<limit || (total!==null && rows.length>=total)) {
+    if (!pageRows.length || pageRows.length<limit || (total!==null && rows.length>=total)) {
       break;
     }
-    if (page===maxPages-1) truncated=true;
+
+    if (!newRows) {
+      repeatedPage=true;
+      truncated=true;
+      break;
+    }
+
+    if (page===safetyMaxPages-1) truncated=true;
   }
 
-  return {rows,total:Math.max(total===null?0:total,rows.length),truncated};
+  const normalizedTotal=Math.max(total===null?0:total,rows.length);
+  const complete=!truncated && (total===null || rows.length>=total);
+
+  return {
+    rows,
+    total:normalizedTotal,
+    reportedTotal:total,
+    loaded:rows.length,
+    pages,
+    complete,
+    truncated,
+    repeatedPage
+  };
 }
 
 async function safeBethaRows(env,tenant,source,resource,options={}) {
@@ -552,7 +579,7 @@ async function safeBethaRows(env,tenant,source,resource,options={}) {
     return {...result,error:null};
   } catch(error) {
     console.warn("dashboard source failed",source,resource,error.message);
-    return {rows:[],total:0,truncated:false,error:error.message};
+    return {rows:[],total:0,reportedTotal:null,loaded:0,pages:0,complete:false,truncated:false,repeatedPage:false,error:error.message};
   }
 }
 
@@ -713,14 +740,14 @@ async function buildOverviewDashboard(env,tenant,url) {
     economicos,
     pagamentosDetalhados
   ]=await Promise.all([
-    safeBethaRows(env,tenant,"bi","pagamentos",{maxPages:5}),
-    safeBethaRows(env,tenant,"bi","debitos",{maxPages:5}),
-    safeBethaRows(env,tenant,"bi","dividas",{maxPages:5}),
-    safeBethaRows(env,tenant,"bi","parcelamentos",{maxPages:3}),
-    safeBethaRows(env,tenant,"bi","contribuintes",{maxPages:3}),
-    safeBethaRows(env,tenant,"bi","imoveis",{maxPages:3}),
-    safeBethaRows(env,tenant,"bi","economicos",{maxPages:3}),
-    safeBethaRows(env,tenant,"bi","pagamentos-detalhados",{maxPages:5})
+    safeBethaRows(env,tenant,"bi","pagamentos"),
+    safeBethaRows(env,tenant,"bi","debitos"),
+    safeBethaRows(env,tenant,"bi","dividas"),
+    safeBethaRows(env,tenant,"bi","parcelamentos"),
+    safeBethaRows(env,tenant,"bi","contribuintes"),
+    safeBethaRows(env,tenant,"bi","imoveis"),
+    safeBethaRows(env,tenant,"bi","economicos"),
+    safeBethaRows(env,tenant,"bi","pagamentos-detalhados")
   ]);
 
   const paymentDatePaths=["dataPagamento","dtPagamento","dhPagamento","pagamento.dataPagamento"];
@@ -875,7 +902,26 @@ async function buildOverviewDashboard(env,tenant,url) {
         imoveis:imoveis.total,
         economicos:economicos.total,
         pagamentosDetalhados:pagamentosDetalhados.total
-      }
+      },
+      auditMode:"FULL",
+      sourceAudit:Object.fromEntries([
+        ["pagamentos",pagamentos],
+        ["debitos",debitos],
+        ["dividas",dividas],
+        ["parcelamentos",parcelamentos],
+        ["contribuintes",contribuintes],
+        ["imoveis",imoveis],
+        ["economicos",economicos],
+        ["pagamentosDetalhados",pagamentosDetalhados]
+      ].map(([name,src])=>[name,{
+        reportedTotal:src.reportedTotal,
+        loaded:src.loaded,
+        pages:src.pages,
+        complete:Boolean(src.complete),
+        truncated:Boolean(src.truncated),
+        repeatedPage:Boolean(src.repeatedPage),
+        error:src.error
+      }]))
     }
   };
 }
@@ -985,9 +1031,19 @@ function dashboardMeta(entries,extra={}) {
   return {
     generatedAt:new Date().toISOString(),
     publicAggregateMode:true,
+    auditMode:"FULL",
     warnings:dashboardWarnings(entries),
     sourceRows:Object.fromEntries(entries.map(([name,src])=>[name,src?src.rows.length:0])),
     sourceTotals:Object.fromEntries(entries.map(([name,src])=>[name,src?src.total:0])),
+    sourceAudit:Object.fromEntries(entries.map(([name,src])=>[name,{
+      reportedTotal:src?src.reportedTotal:null,
+      loaded:src?src.loaded:0,
+      pages:src?src.pages:0,
+      complete:Boolean(src&&src.complete),
+      truncated:Boolean(src&&src.truncated),
+      repeatedPage:Boolean(src&&src.repeatedPage),
+      error:src?src.error:null
+    }])),
     ...extra
   };
 }
@@ -996,9 +1052,9 @@ async function buildRevenueDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
   const [pag,det,val]=await Promise.all([
-    safeBethaRows(env,tenant,"bi","pagamentos",{maxPages:5}),
-    safeBethaRows(env,tenant,"bi","pagamentos-detalhados",{maxPages:5}),
-    safeBethaRows(env,tenant,"bi","pagamentos-detalhados-valores",{maxPages:4})
+    safeBethaRows(env,tenant,"bi","pagamentos"),
+    safeBethaRows(env,tenant,"bi","pagamentos-detalhados"),
+    safeBethaRows(env,tenant,"bi","pagamentos-detalhados-valores")
   ]);
   const dates=["dataPagamento","dtPagamento","dhPagamento","pagamento.dataPagamento"];
   const rows=pag.rows.filter(r=>periodIncludes(r,{periodo,exercicio,datePaths:dates,yearPaths:["ano","exercicio"]}));
@@ -1063,8 +1119,8 @@ async function buildDebtsDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
   const [deb,rec]=await Promise.all([
-    safeBethaRows(env,tenant,"bi","debitos",{maxPages:5}),
-    safeBethaRows(env,tenant,"bi","debitos-receitas",{maxPages:4})
+    safeBethaRows(env,tenant,"bi","debitos"),
+    safeBethaRows(env,tenant,"bi","debitos-receitas")
   ]);
   const dates=["dhDebito","dataDebito","dtDebito","dataLancamento","dtLancamento"];
   const rows=deb.rows.filter(r=>periodIncludes(r,{periodo,exercicio,datePaths:dates,yearPaths:["ano","anoDebito","exercicio"]}));
@@ -1129,11 +1185,11 @@ async function buildActiveDebtDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
   const [div,enc,rec,pagdet,baseDiv]=await Promise.all([
-    safeBethaRows(env,tenant,"bi","dividas",{maxPages:5}),
-    safeBethaRows(env,tenant,"base","encerramento-dividas",{maxPages:4}),
-    safeBethaRows(env,tenant,"bi","dividas-receitas",{maxPages:4}),
-    safeBethaRows(env,tenant,"bi","pagamentos-detalhados",{maxPages:4}),
-    safeBethaRows(env,tenant,"base","dividas",{maxPages:3})
+    safeBethaRows(env,tenant,"bi","dividas"),
+    safeBethaRows(env,tenant,"base","encerramento-dividas"),
+    safeBethaRows(env,tenant,"bi","dividas-receitas"),
+    safeBethaRows(env,tenant,"bi","pagamentos-detalhados"),
+    safeBethaRows(env,tenant,"base","dividas")
   ]);
   const saldoPaths=["valorSaldo","vlSaldo","saldo","saldoCalculado"];
   const inscritoPaths=["valorInscrito","vlInscrito","valorOriginal","vlOriginal"];
@@ -1198,10 +1254,10 @@ async function buildInstallmentsDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
   const [par,parcelas,refs,baseParcelas]=await Promise.all([
-    safeBethaRows(env,tenant,"bi","parcelamentos",{maxPages:5}),
-    safeBethaRows(env,tenant,"bi","parcelamentos-parcelas",{maxPages:5}),
-    safeBethaRows(env,tenant,"bi","parcelamentos-referentes",{maxPages:4}),
-    safeBethaRows(env,tenant,"base","parcelamentos-parcelas",{maxPages:4})
+    safeBethaRows(env,tenant,"bi","parcelamentos"),
+    safeBethaRows(env,tenant,"bi","parcelamentos-parcelas"),
+    safeBethaRows(env,tenant,"bi","parcelamentos-referentes"),
+    safeBethaRows(env,tenant,"base","parcelamentos-parcelas")
   ]);
   const dates=["dtParcelamento","dataParcelamento","dhParcelamento"];
   const rows=par.rows.filter(r=>periodIncludes(r,{periodo,exercicio,datePaths:dates,yearPaths:["ano","exercicio"]}));
@@ -1271,9 +1327,9 @@ async function buildEconomicsDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
   const [eco,ativ,pagdet]=await Promise.all([
-    safeBethaRows(env,tenant,"bi","economicos",{maxPages:5}),
-    safeBethaRows(env,tenant,"bi","economicos-atividades",{maxPages:5}),
-    safeBethaRows(env,tenant,"bi","pagamentos-detalhados",{maxPages:4})
+    safeBethaRows(env,tenant,"bi","economicos"),
+    safeBethaRows(env,tenant,"bi","economicos-atividades"),
+    safeBethaRows(env,tenant,"bi","pagamentos-detalhados")
   ]);
   const openDates=["dtInicioAtiv","dataInicioAtividade","dataAbertura","dtAbertura"];
   const closeDates=["dtFechamento","dataFechamento","dataEncerramento","dtEncerramento"];
@@ -1316,12 +1372,12 @@ async function buildRealEstateDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
   const [imo,resp,trans,baseImo,planta,pagdet]=await Promise.all([
-    safeBethaRows(env,tenant,"bi","imoveis",{maxPages:5}),
-    safeBethaRows(env,tenant,"bi","imoveis-responsaveis",{maxPages:4}),
-    safeBethaRows(env,tenant,"bi","transferencias-imoveis",{maxPages:4}),
-    safeBethaRows(env,tenant,"base","imoveis",{maxPages:4}),
-    safeBethaRows(env,tenant,"base","planta-valores",{maxPages:3}),
-    safeBethaRows(env,tenant,"bi","pagamentos-detalhados",{maxPages:4})
+    safeBethaRows(env,tenant,"bi","imoveis"),
+    safeBethaRows(env,tenant,"bi","imoveis-responsaveis"),
+    safeBethaRows(env,tenant,"bi","transferencias-imoveis"),
+    safeBethaRows(env,tenant,"base","imoveis"),
+    safeBethaRows(env,tenant,"base","planta-valores"),
+    safeBethaRows(env,tenant,"bi","pagamentos-detalhados")
   ]);
   const bairros=groupCount(imo.rows,["nomeBairro","bairro.nome","bairro"],15);
   const setores=groupCount(imo.rows,["setor","setor.codigo","nomeSetor"],15);
@@ -1371,10 +1427,10 @@ async function buildItbiDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
   const [sol,itens,trans,compra]=await Promise.all([
-    safeBethaRows(env,tenant,"bi","solicitacoes-transferencias-imoveis",{maxPages:4}),
-    safeBethaRows(env,tenant,"bi","solicitacoes-transferencias-imoveis-itens",{maxPages:4}),
-    safeBethaRows(env,tenant,"bi","transferencias-imoveis",{maxPages:4}),
-    safeBethaRows(env,tenant,"bi","transferencias-imoveis-compra",{maxPages:4})
+    safeBethaRows(env,tenant,"bi","solicitacoes-transferencias-imoveis"),
+    safeBethaRows(env,tenant,"bi","solicitacoes-transferencias-imoveis-itens"),
+    safeBethaRows(env,tenant,"bi","transferencias-imoveis"),
+    safeBethaRows(env,tenant,"bi","transferencias-imoveis-compra")
   ]);
   const solMon=monthlyCount(sol.rows,["dataHoraSolicitacao","dataSolicitacao","dhSolicitacao"],periodo,exercicio);
   const transMon=monthlyCount(trans.rows,["dataHoraTransferencia","dataTransferencia","dhTransferencia"],periodo,exercicio);
@@ -1440,7 +1496,7 @@ async function buildItbiDashboard(env,tenant,url) {
 async function buildTaxpayersDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
-  const con=await safeBethaRows(env,tenant,"bi","contribuintes",{maxPages:5});
+  const con=await safeBethaRows(env,tenant,"bi","contribuintes");
   const rows=con.rows;
   const tipo=groupCount(rows,["tipoPessoa","tipoPessoa.descricao","pessoa.tipo"],5);
   const simples=groupCount(rows,["optanteSimples","simplesNacional","optanteSimplesNacional"],5);
@@ -1484,8 +1540,8 @@ async function buildClosingDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
   const [lan,div]=await Promise.all([
-    safeBethaRows(env,tenant,"base","encerramento-lancamentos",{maxPages:5}),
-    safeBethaRows(env,tenant,"base","encerramento-dividas",{maxPages:5})
+    safeBethaRows(env,tenant,"base","encerramento-lancamentos"),
+    safeBethaRows(env,tenant,"base","encerramento-dividas")
   ]);
 
   const labelFor=row=>String(firstValue(row,["mesEncerramento","competencia","mes","referencia"])||"Não informado");
@@ -1556,8 +1612,8 @@ async function buildWorksDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
   const [obras,resp]=await Promise.all([
-    safeBethaRows(env,tenant,"base","obras",{maxPages:5}),
-    safeBethaRows(env,tenant,"base","obras-responsaveis",{maxPages:4})
+    safeBethaRows(env,tenant,"base","obras"),
+    safeBethaRows(env,tenant,"base","obras-responsaveis")
   ]);
   const entrada=monthlyCount(obras.rows,["dataEntrada","dtEntrada","dataCadastro"],periodo,exercicio);
   const liber=monthlyCount(obras.rows,["dataLiberacao","dtLiberacao"],periodo,exercicio,r=>Boolean(firstValue(r,["dataLiberacao","dtLiberacao"])));
@@ -1593,11 +1649,11 @@ async function buildQualityDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
   const [con,imo,eco,ativ,campos]=await Promise.all([
-    safeBethaRows(env,tenant,"bi","contribuintes",{maxPages:5}),
-    safeBethaRows(env,tenant,"bi","imoveis",{maxPages:5}),
-    safeBethaRows(env,tenant,"bi","economicos",{maxPages:5}),
-    safeBethaRows(env,tenant,"bi","economicos-atividades",{maxPages:5}),
-    safeBethaRows(env,tenant,"bi","imoveis-campos-adicionais",{maxPages:4})
+    safeBethaRows(env,tenant,"bi","contribuintes"),
+    safeBethaRows(env,tenant,"bi","imoveis"),
+    safeBethaRows(env,tenant,"bi","economicos"),
+    safeBethaRows(env,tenant,"bi","economicos-atividades"),
+    safeBethaRows(env,tenant,"bi","imoveis-campos-adicionais")
   ]);
 
   const ecoWithActivity=new Set(ativ.rows.map(r=>String(firstValue(r,["idEconomico","economico.id"])||"")).filter(Boolean));
@@ -1756,7 +1812,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-01-all-panels-v3",
+        buildVersion:"2026-10-01-full-audit-v4",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
