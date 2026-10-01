@@ -3,13 +3,7 @@
   const dashboards = window.BI_DASHBOARDS || {};
   const bethaApp = document.getElementById("bethaApp");
   const authGate = document.getElementById("authGate");
-  if (window.BI_DEV_NO_AUTH === true) {
-    authGate.hidden = true;
-    authGate.style.display = "none";
-    bethaApp.style.display = "";
-  }
-
-  const authRequired = window.BI_DEV_NO_AUTH === true ? false : (cfg.AUTH_REQUIRED !== false);
+  const authRequired = cfg.AUTH_REQUIRED !== false;
 
   if (authRequired && window.BIAuth && BIAuth.ready) {
     try { await BIAuth.ready; } catch {}
@@ -19,13 +13,36 @@
     bethaApp.style.display = "none";
     authGate.hidden = false;
 
-    const authMessage = document.getElementById("authMessage");
+    const form = document.getElementById("devLoginForm");
+    const message = document.getElementById("authMessage");
     const previousAuthError = window.BIAuth ? BIAuth.getError() : "BIAuth não carregou";
+
     if (previousAuthError) {
-      authMessage.textContent = "Retorno da autenticação: " + previousAuthError;
-    } else if (window.BIAuth && BIAuth.getStatus && BIAuth.getStatus()) {
-      authMessage.textContent = "Estado da autenticação: " + BIAuth.getStatus();
+      message.textContent = "Falha na autenticação: " + previousAuthError;
     }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const username = document.getElementById("devUsername").value.trim();
+      const password = document.getElementById("devPassword").value;
+      const button = document.getElementById("loginButton");
+
+      message.textContent = "";
+      button.disabled = true;
+      button.textContent = "ENTRANDO...";
+
+      try {
+        await BIAuth.login(username, password);
+        location.reload();
+      } catch (error) {
+        message.textContent = error.message === "DEV_LOGIN_INVALID"
+          ? "Usuário ou senha inválidos."
+          : "Falha no login: " + error.message;
+        button.disabled = false;
+        button.textContent = "ENTRAR";
+      }
+    });
 
     return;
   }
@@ -263,7 +280,7 @@
     if (!base) throw new Error("BACKEND_NOT_CONFIGURED");
     const headers = {...(options.headers || {}), Accept:"application/json"};
     const token = BIAuth.getToken();
-    if (token) headers.Authorization = "Session " + token;
+    if (token) headers.Authorization = "DevSession " + token;
     if (tenantId) headers["X-Tenant-Id"] = tenantId;
     const fetchOptions = {...options, headers, credentials:"include"};
     const response = await fetch(base + path, fetchOptions);
