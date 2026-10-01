@@ -224,29 +224,71 @@ function normalizeDevCredential(value) {
   return text;
 }
 
+async function devHmacKey(secret) {
+  if (!secret) throw new Error("DEV_SESSION_SECRET_NOT_CONFIGURED");
+  return crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    {name:"HMAC",hash:"SHA-256"},
+    false,
+    ["sign","verify"]
+  );
+}
+
 async function createDevSession(env, username) {
   const secret=devSessionSecret(env);
   if (!secret) throw new Error("DEV_SESSION_SECRET_NOT_CONFIGURED");
-  const exp=Date.now()+8*60*60*1000;
-  return sealSession({
-    kind:"dev-session",
-    username:String(username||""),
-    accessToken:"dev",
-    exp
-  },secret);
+
+  const payload={
+    v:1,
+    u:String(username||""),
+    exp:Date.now()+8*60*60*1000
+  };
+
+  const encoded=bytesToBase64Url(new TextEncoder().encode(JSON.stringify(payload)));
+  const key=await devHmacKey(secret);
+  const signature=await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(encoded));
+
+  return "d1."+encoded+"."+bytesToBase64Url(new Uint8Array(signature));
 }
 
 async function validateDevSession(request, env) {
   const header=request.headers.get("Authorization") || "";
   const match=header.match(/^DevSession\s+(.+)$/i);
   if (!match) throw new Error("DEV_SESSION_REQUIRED");
+
   const secret=devSessionSecret(env);
   if (!secret) throw new Error("DEV_SESSION_SECRET_NOT_CONFIGURED");
-  const session=await openSession(match[1].trim(),secret);
-  if (!session || session.kind!=="dev-session" || session.accessToken!=="dev") {
+
+  const token=match[1].trim();
+  const parts=token.split(".");
+  if (parts.length!==3 || parts[0]!=="d1") throw new Error("DEV_SESSION_INVALID");
+
+  try {
+    const encoded=parts[1];
+    const signature=base64UrlToBytes(parts[2]);
+    const key=await devHmacKey(secret);
+    const valid=await crypto.subtle.verify(
+      "HMAC",
+      key,
+      signature,
+      new TextEncoder().encode(encoded)
+    );
+    if (!valid) throw new Error("DEV_SESSION_INVALID");
+
+    const payload=JSON.parse(new TextDecoder().decode(base64UrlToBytes(encoded)));
+    if (!payload || payload.v!==1 || !payload.u) throw new Error("DEV_SESSION_INVALID");
+    if (!payload.exp || Date.now()>=Number(payload.exp)) throw new Error("DEV_SESSION_EXPIRED");
+
+    return {
+      kind:"dev-session",
+      username:String(payload.u),
+      exp:Number(payload.exp)
+    };
+  } catch(error) {
+    if (error.message==="DEV_SESSION_EXPIRED") throw error;
     throw new Error("DEV_SESSION_INVALID");
   }
-  return session;
 }
 
 async function getUserToken(request, env) {
@@ -864,6 +906,7 @@ function errorResponse(request,env,error) {
     DEV_SESSION_SECRET_NOT_CONFIGURED:503,
     DEV_SESSION_REQUIRED:401,
     DEV_SESSION_INVALID:401,
+    DEV_SESSION_EXPIRED:401,
     DEV_LOGIN_INVALID:401,
     DEV_LOGIN_USER_INVALID:401,
     DEV_LOGIN_PASSWORD_INVALID:401,
