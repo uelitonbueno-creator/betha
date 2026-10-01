@@ -485,16 +485,16 @@
 
   function overviewProfile(part) {
     const profiles = {
-      parcelamentos:{pages:2,limit:500},
-      contribuintes:{pages:4,limit:500},
-      imoveis:{pages:4,limit:500},
-      economicos:{pages:4,limit:500},
-      pagamentos:{pages:2,limit:100},
-      debitos:{pages:2,limit:100},
-      dividas:{pages:2,limit:100},
+      contribuintes:{pages:1,limit:1000},
+      imoveis:{pages:1,limit:1000},
+      economicos:{pages:1,limit:1000},
+      parcelamentos:{pages:1,limit:1000},
+      pagamentos:{pages:1,limit:100},
+      debitos:{pages:1,limit:100},
+      dividas:{pages:1,limit:100},
       "pagamentos-detalhados":{pages:1,limit:100}
     };
-    return profiles[part] || {pages:2,limit:250};
+    return profiles[part] || {pages:1,limit:250};
   }
 
   async function requestOverviewChunk(part, params, offset, profile) {
@@ -512,12 +512,12 @@
       try {
         return await api(
           "/api/dashboard/visao-geral/part/" + encodeURIComponent(part) + "?" + chunkParams.toString(),
-          {timeoutMs:30000}
+          {timeoutMs:15000}
         );
       } catch(error) {
         lastError=error;
         // Falha de rede/limite: diminui o lote e tenta novamente.
-        pages=Math.max(1,Math.floor(pages/2));
+        pages=1;
         limit=Math.max(50,Math.floor(limit/2));
         await new Promise(resolve=>setTimeout(resolve,350*(attempt+1)));
       }
@@ -597,7 +597,7 @@
             "waiting",
             "Carregando " + (index+1) + "/" + parts.length +
             " · " + partName +
-            " · lote " + iteration +
+            " · página " + iteration +
             (phase==="requesting" ? "..." : "")
           );
 
