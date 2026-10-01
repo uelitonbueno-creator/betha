@@ -880,6 +880,382 @@ async function buildOverviewDashboard(env,tenant,url) {
   };
 }
 
+
+function truthyValue(row,paths) {
+  const raw=firstValue(row,paths);
+  if (raw===undefined || raw===null || raw==="") return false;
+  if (typeof raw==="boolean") return raw;
+  const v=String(raw).trim().toLowerCase();
+  return ["true","1","sim","s","yes","y","ativo","a","principal"].includes(v);
+}
+
+function countWhere(rows,predicate) {
+  let count=0;
+  for (const row of rows) if (predicate(row)) count++;
+  return count;
+}
+
+function countPresent(rows,paths) {
+  return countWhere(rows,row=>firstValue(row,paths)!==undefined);
+}
+
+function groupCount(rows,labelPaths,limit=12,filter=null) {
+  return topGroups(rows,{labelPaths,countOnly:true,limit,filter});
+}
+
+function groupSum(rows,labelPaths,valuePaths,limit=12,filter=null) {
+  return topGroups(rows,{labelPaths,valuePaths,limit,filter});
+}
+
+function chartGroups(groups,label="Quantidade",format="number") {
+  return {
+    format,
+    labels:groups.map(([k])=>String(k)),
+    datasets:[{label,data:groups.map(([,v])=>v)}]
+  };
+}
+
+function chartFixed(labels,values,label="Quantidade",format="number") {
+  return {format,labels,datasets:[{label,data:values}]};
+}
+
+function monthlyCount(rows,datePaths,periodo,exercicio,filter=null) {
+  const selected=filter?rows.filter(filter):rows;
+  const base=monthSeries(selected,{datePaths,valuePaths:["__count__"],periodo,exercicio});
+  const buckets=new Map(base.labels.map((label,i)=>[label,i]));
+  const values=new Array(base.labels.length).fill(0);
+  let months=[];
+  if (periodo==="12m") {
+    const now=new Date();
+    for(let i=11;i>=0;i--) months.push(new Date(now.getFullYear(),now.getMonth()-i,1));
+  } else {
+    for(let m=0;m<12;m++) months.push(new Date(Number(exercicio),m,1));
+  }
+  for(const row of selected){
+    const d=dateValue(row,datePaths);
+    if(!d) continue;
+    if(!periodIncludes(row,{periodo,exercicio,datePaths})) continue;
+    const idx=months.findIndex(m=>m.getFullYear()===d.getFullYear()&&m.getMonth()===d.getMonth());
+    if(idx>=0) values[idx]++;
+  }
+  return {labels:base.labels,values};
+}
+
+function monthlyMulti(rows,datePaths,measures,periodo,exercicio,filter=null) {
+  const selected=filter?rows.filter(filter):rows;
+  const first=monthSeries(selected,{datePaths,valuePaths:measures[0].paths,periodo,exercicio});
+  return {
+    labels:first.labels,
+    datasets:measures.map(m=>({
+      label:m.label,
+      data:monthSeries(selected,{datePaths,valuePaths:m.paths,periodo,exercicio}).values
+    }))
+  };
+}
+
+function dailySeries(rows,datePaths,valuePaths,exercicio) {
+  const grouped=new Map();
+  for(const row of rows){
+    const d=dateValue(row,datePaths);
+    if(!d || d.getFullYear()!==Number(exercicio)) continue;
+    const key=d.toISOString().slice(0,10);
+    grouped.set(key,(grouped.get(key)||0)+numericValue(row,valuePaths));
+  }
+  const entries=[...grouped.entries()].sort((a,b)=>a[0].localeCompare(b[0])).slice(-60);
+  return {
+    labels:entries.map(([k])=>new Date(k+"T12:00:00").toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"})),
+    values:entries.map(([,v])=>v)
+  };
+}
+
+function numberBucket(value,bounds) {
+  const n=Number(value);
+  if(!Number.isFinite(n)) return "Não informado";
+  for(const [max,label] of bounds) if(n<=max) return label;
+  return bounds.length?("Acima de "+bounds[bounds.length-1][0]):String(n);
+}
+
+function dashboardWarnings(entries) {
+  return entries
+    .filter(([,src])=>src && (src.error||src.truncated))
+    .map(([source,src])=>({source,error:src.error,truncated:Boolean(src.truncated)}));
+}
+
+function dashboardMeta(entries,extra={}) {
+  return {
+    generatedAt:new Date().toISOString(),
+    publicAggregateMode:true,
+    warnings:dashboardWarnings(entries),
+    sourceRows:Object.fromEntries(entries.map(([name,src])=>[name,src?src.rows.length:0])),
+    sourceTotals:Object.fromEntries(entries.map(([name,src])=>[name,src?src.total:0])),
+    ...extra
+  };
+}
+
+async function buildRevenueDashboard(env,tenant,url) {
+  const periodo=url.searchParams.get("periodo")||"ano";
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const [pag,det,val]=await Promise.all([
+    safeBethaRows(env,tenant,"bi","pagamentos",{maxPages:5}),
+    safeBethaRows(env,tenant,"bi","pagamentos-detalhados",{maxPages:5}),
+    safeBethaRows(env,tenant,"bi","pagamentos-detalhados-valores",{maxPages:4})
+  ]);
+  const dates=["dataPagamento","dtPagamento","dhPagamento","pagamento.dataPagamento"];
+  const rows=pag.rows.filter(r=>periodIncludes(r,{periodo,exercicio,datePaths:dates,yearPaths:["ano","exercicio"]}));
+  const detRows=det.rows.filter(r=>periodIncludes(r,{periodo,exercicio,datePaths:["pagamento.dataPagamento","dataPagamento","dtPagamento"],yearPaths:["ano","exercicio"]}));
+  const aliases={
+    total:["valorPago","vlPago","valorTotalPago","vlTotalPago","valorArrecadado"],
+    tributo:["valorPagoLancado","vlPagoLancado","valorTributo","vlTributo"],
+    juros:["valorPagoJuro","vlPagoJuro","valorJuros","vlJuros"],
+    multa:["valorPagoMulta","vlPagoMulta","valorMulta","vlMulta"],
+    correcao:["valorPagoCorrecao","vlPagoCorrecao","valorCorrecao","vlCorrecao"],
+    desconto:["valorConcedidoDescontos","vlDesconto","valorDesconto","desconto"]
+  };
+  const day=dailySeries(rows,dates,aliases.total,exercicio);
+  const mon=monthSeries(rows,{datePaths:dates,valuePaths:aliases.total,periodo,exercicio});
+  const credit=groupSum(detRows,["creditoTributario.descricao","descricaoCreditoTributario","creditoTributario.nome","idCreditoTributario"],["valorPagoLancado","vlPagoLancado","valorPago","vlPago"],12);
+  const receita=groupSum(detRows,["receita.descricao","descricaoReceita","receita.nome","idReceita"],["valorPagoLancado","vlPagoLancado","valorPago","vlPago"],12);
+  const tipo=groupSum(rows,["tipoPagamento","tipoPagamento.descricao","formaPagamento"],aliases.total,12);
+  const baixa=groupSum(rows,["tipoBaixa","tipoBaixa.descricao","formaBaixa"],aliases.total,12);
+  const retro=monthSeries(rows.filter(r=>truthyValue(r,["pagamentoRetroativo","retroativo"])),{datePaths:dates,valuePaths:aliases.total,periodo,exercicio});
+  const est=monthlyCount(rows,["dataHoraEstorno","dtEstorno"],periodo,exercicio,r=>Boolean(firstValue(r,["dataHoraEstorno","dtEstorno"])));
+  const acres=monthlyMulti(rows,dates,[
+    {label:"Correção",paths:aliases.correcao},
+    {label:"Juros",paths:aliases.juros},
+    {label:"Multa",paths:aliases.multa}
+  ],periodo,exercicio);
+  const guias=groupSum(rows,["classificacaoGuia","classificacaoGuia.descricao","tipoGuia"],aliases.total,12);
+  return {
+    view:"arrecadacao",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    kpis:{
+      "total-pago":sumRowsOrNull(rows,aliases.total),
+      "tributo-pago":sumRowsOrNull(rows,aliases.tributo),
+      "juros-pagos":sumRowsOrNull(rows,aliases.juros),
+      "multa-paga":sumRowsOrNull(rows,aliases.multa),
+      "correcao-paga":sumRowsOrNull(rows,aliases.correcao),
+      descontos:sumRowsOrNull(rows,aliases.desconto)
+    },
+    charts:{
+      "arrecadacao-dia":{format:"currency",labels:day.labels,datasets:[{label:"Arrecadado",data:day.values}]},
+      "arrecadacao-mes":{format:"currency",labels:mon.labels,datasets:[{label:"Arrecadado",data:mon.values}]},
+      "arrecadacao-credito":chartGroups(credit,"Arrecadado","currency"),
+      "arrecadacao-receita":chartGroups(receita,"Arrecadado","currency"),
+      "composicao-pagamento":chartFixed(["Tributo","Correção","Juros","Multa"],[
+        sumRows(rows,aliases.tributo),sumRows(rows,aliases.correcao),sumRows(rows,aliases.juros),sumRows(rows,aliases.multa)
+      ],"Valor","currency"),
+      "tipo-pagamento":chartGroups(tipo,"Arrecadado","currency"),
+      "tipo-baixa":chartGroups(baixa,"Arrecadado","currency"),
+      retroativos:{format:"currency",labels:retro.labels,datasets:[{label:"Retroativos",data:retro.values}]},
+      estornos:{format:"number",labels:est.labels,datasets:[{label:"Estornos",data:est.values}]},
+      "descontos-anistias":chartFixed(["Descontos","Anistias","Remissões"],[
+        sumRows(val.rows,["valorDesconto","vlDesconto","desconto"]),
+        sumRows(val.rows,["valorAnistia","vlAnistia","anistia"]),
+        sumRows(val.rows,["valorRemissao","vlRemissao","remissao"])
+      ],"Valor","currency"),
+      acrescimos:{format:"currency",labels:acres.labels,datasets:acres.datasets},
+      guias:chartGroups(guias,"Arrecadado","currency")
+    },
+    meta:dashboardMeta([["pagamentos",pag],["pagamentosDetalhados",det],["pagamentosDetalhadosValores",val]])
+  };
+}
+
+async function buildDebtsDashboard(env,tenant,url) {
+  const periodo=url.searchParams.get("periodo")||"ano";
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const [deb,rec]=await Promise.all([
+    safeBethaRows(env,tenant,"bi","debitos",{maxPages:5}),
+    safeBethaRows(env,tenant,"bi","debitos-receitas",{maxPages:4})
+  ]);
+  const dates=["dhDebito","dataDebito","dtDebito","dataLancamento","dtLancamento"];
+  const rows=deb.rows.filter(r=>periodIncludes(r,{periodo,exercicio,datePaths:dates,yearPaths:["ano","anoDebito","exercicio"]}));
+  const amount=["vlLancado","valorLancado","valorDebito","vlDebito","valorOriginal"];
+  const month=monthSeries(rows,{datePaths:dates,valuePaths:amount,periodo,exercicio});
+  const sit=groupSum(rows,["situacao","situacao.descricao","status"],amount,12);
+  const credito=groupSum(rows,["idCredito","creditoTributario.descricao","idCreditoTributario"],amount,12);
+  const now=Date.now();
+  const aging=new Map();
+  for(const row of rows){
+    const d=dateValue(row,["dtVcto","dataVencimento","vencimento"]);
+    let label="Sem vencimento";
+    if(d){
+      const days=Math.floor((now-d.getTime())/86400000);
+      label=days<=0?"A vencer":days<=30?"1–30 dias":days<=90?"31–90 dias":days<=180?"91–180 dias":days<=365?"181–365 dias":"Acima de 1 ano";
+    }
+    aging.set(label,(aging.get(label)||0)+numericValue(row,amount));
+  }
+  const years=groupSum(rows,["ano","anoDebito","exercicio"],amount,20);
+  const unica=groupSum(rows,["unica","parcelaUnica","tipoParcela"],amount,10);
+  const origem=groupSum(rows,["referente.tipo","tipoReferente","referente","origem"],amount,12);
+  const receitaGroups=new Map();
+  for(const row of rec.rows){
+    const label=stringValue(row,["idReceitasCreditos","receita.descricao","idReceita"]);
+    const item=receitaGroups.get(label)||{devido:0,pago:0};
+    item.devido+=numericValue(row,["vlDevido","valorDevido"]);
+    item.pago+=numericValue(row,["vlPago","valorPago"]);
+    receitaGroups.set(label,item);
+  }
+  const topRec=[...receitaGroups.entries()].sort((a,b)=>b[1].devido-a[1].devido).slice(0,12);
+  return {
+    view:"debitos",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    kpis:{
+      "vl-lancado":sumRowsOrNull(rows,amount),
+      "qtd-debitos":rows.length,
+      vencidos:countWhere(rows,r=>{const d=dateValue(r,["dtVcto","dataVencimento","vencimento"]);return d&&d.getTime()<now&&!firstValue(r,["dtPgto","dataPagamento"]);}),
+      pagos:countWhere(rows,r=>Boolean(firstValue(r,["dtPgto","dataPagamento","dataQuitacao"]))),
+      "descontos-debito":sumRowsOrNull(rows,["vlDesconto","valorDesconto","desconto"])
+    },
+    charts:{
+      "lancamentos-mensais":{format:"currency",labels:month.labels,datasets:[{label:"Lançado",data:month.values}]},
+      "debitos-situacao":chartGroups(sit,"Lançado","currency"),
+      "debitos-credito":chartGroups(credito,"Lançado","currency"),
+      "aging-debitos":chartGroups([...aging.entries()],"Saldo","currency"),
+      "debitos-ano":chartGroups(years,"Lançado","currency"),
+      "unica-parcelada":chartGroups(unica,"Lançado","currency"),
+      "origem-cadastro":chartGroups(origem,"Lançado","currency"),
+      "devido-pago-receita":{
+        format:"currency",
+        labels:topRec.map(([k])=>k),
+        datasets:[
+          {label:"Devido",data:topRec.map(([,v])=>v.devido)},
+          {label:"Pago",data:topRec.map(([,v])=>v.pago)}
+        ]
+      }
+    },
+    meta:dashboardMeta([["debitos",deb],["debitosReceitas",rec]])
+  };
+}
+
+async function buildActiveDebtDashboard(env,tenant,url) {
+  const periodo=url.searchParams.get("periodo")||"ano";
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const [div,enc,rec,pagdet,baseDiv]=await Promise.all([
+    safeBethaRows(env,tenant,"bi","dividas",{maxPages:5}),
+    safeBethaRows(env,tenant,"base","encerramento-dividas",{maxPages:4}),
+    safeBethaRows(env,tenant,"bi","dividas-receitas",{maxPages:4}),
+    safeBethaRows(env,tenant,"bi","pagamentos-detalhados",{maxPages:4}),
+    safeBethaRows(env,tenant,"base","dividas",{maxPages:3})
+  ]);
+  const saldoPaths=["valorSaldo","vlSaldo","saldo","saldoCalculado"];
+  const inscritoPaths=["valorInscrito","vlInscrito","valorOriginal","vlOriginal"];
+  const status=groupCount(div.rows,["statusDivida","situacaoDivida","situacao","status"],12);
+  const years=groupSum(enc.rows.length?enc.rows:div.rows,["anoDivida","ano","exercicio"],saldoPaths,20);
+  const credito=groupSum(enc.rows.length?enc.rows:div.rows,["idCreditoTributario","creditoTributario.descricao","idCredito"],saldoPaths,12);
+  const cobranca=chartFixed(["Execução","Protesto","Penhora"],[
+    countWhere(div.rows,r=>truthyValue(r,["sitExecucao","emExecucao","executada"])),
+    countWhere(div.rows,r=>truthyValue(r,["protesto","protestada"])),
+    countWhere(div.rows,r=>truthyValue(r,["penhora","penhorada"]))
+  ],"Dívidas","number");
+  const recup=monthSeries(pagdet.rows.filter(r=>firstValue(r,["idDivida","divida.id"])),{
+    datePaths:["pagamento.dataPagamento","dataPagamento","dtPagamento"],
+    valuePaths:["valorPagoLancado","vlPagoLancado","valorPago","vlPago"],periodo,exercicio
+  });
+  const recGroups=new Map();
+  for(const row of rec.rows){
+    const label=stringValue(row,["idCreditosTributariosRec","receita.descricao","idReceita"]);
+    const x=recGroups.get(label)||{inscrito:0,saldo:0};
+    x.inscrito+=numericValue(row,["vlInscritoCredito","valorInscrito","vlInscrito"]);
+    x.saldo+=numericValue(row,["vlSaldo","valorSaldo","saldo"]);
+    recGroups.set(label,x);
+  }
+  const top=[...recGroups.entries()].sort((a,b)=>b[1].saldo-a[1].saldo).slice(0,12);
+  const cancel=monthlyCount(baseDiv.rows,["dataCancelamento","dataPrescricao","dtCancelamento","dtPrescricao"],periodo,exercicio);
+  const warnings=dashboardMeta([["dividas",div],["encerramentoDividas",enc],["dividasReceitas",rec],["pagamentosDetalhados",pagdet],["baseDividas",baseDiv]],{
+    privacy:["top-devedores ocultado enquanto login oficial estiver desativado"]
+  });
+  return {
+    view:"divida",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    kpis:{
+      "saldo-divida":sumRowsOrNull(enc.rows.length?enc.rows:div.rows,saldoPaths),
+      inscrito:sumRowsOrNull(enc.rows.length?enc.rows:div.rows,inscritoPaths),
+      "qtd-dividas":div.total,
+      executadas:countWhere(div.rows,r=>truthyValue(r,["sitExecucao","emExecucao","executada"])),
+      protestadas:countWhere(div.rows,r=>truthyValue(r,["protesto","protestada"])),
+      cda:countWhere(div.rows,r=>truthyValue(r,["possuiCdaEmitida","cdaEmitida","possuiCda"]))
+    },
+    charts:{
+      "estoque-divida":chartGroups(years,"Saldo","currency"),
+      "inscricoes-mes":chartGroups(years,"Inscrito/Saldo","currency"),
+      "composicao-divida":chartFixed(["Saldo","Correção","Juros","Multa"],[
+        sumRows(enc.rows,saldoPaths),sumRows(enc.rows,["valorCorrecao","vlCorrecao"]),sumRows(enc.rows,["valorJuros","vlJuros"]),sumRows(enc.rows,["valorMulta","vlMulta"])
+      ],"Valor","currency"),
+      "status-divida":chartGroups(status,"Dívidas","number"),
+      "aging-divida":chartGroups(years,"Saldo","currency"),
+      "divida-credito":chartGroups(credito,"Saldo","currency"),
+      cobranca,
+      recuperacao:{format:"currency",labels:recup.labels,datasets:[{label:"Recuperado",data:recup.values}]},
+      "saldo-receitas-divida":{format:"currency",labels:top.map(([k])=>k),datasets:[
+        {label:"Inscrito",data:top.map(([,v])=>v.inscrito)},
+        {label:"Saldo",data:top.map(([,v])=>v.saldo)}
+      ]},
+      cancelamentos:{format:"number",labels:cancel.labels,datasets:[{label:"Cancelamentos/prescrições",data:cancel.values}]},
+      "top-devedores":{format:"currency",labels:[],datasets:[]}
+    },
+    meta:warnings
+  };
+}
+
+async function buildInstallmentsDashboard(env,tenant,url) {
+  const periodo=url.searchParams.get("periodo")||"ano";
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const [par,parcelas,refs,baseParcelas]=await Promise.all([
+    safeBethaRows(env,tenant,"bi","parcelamentos",{maxPages:5}),
+    safeBethaRows(env,tenant,"bi","parcelamentos-parcelas",{maxPages:5}),
+    safeBethaRows(env,tenant,"bi","parcelamentos-referentes",{maxPages:4}),
+    safeBethaRows(env,tenant,"base","parcelamentos-parcelas",{maxPages:4})
+  ]);
+  const dates=["dtParcelamento","dataParcelamento","dhParcelamento"];
+  const rows=par.rows.filter(r=>periodIncludes(r,{periodo,exercicio,datePaths:dates,yearPaths:["ano","exercicio"]}));
+  const mon=monthlyCount(rows,dates,periodo,exercicio);
+  const situ=groupCount(rows,["situacao","situacao.descricao","status"],10);
+  const qtdBuckets=new Map(), vencBuckets=new Map();
+  for(const r of rows){
+    const q=Number(firstValue(r,["qtdParcela","qtdParcelas","quantidadeParcelas"]));
+    const v=Number(firstValue(r,["qtdParcelasVencidas","parcelasVencidas"]));
+    const qb=numberBucket(q,[[1,"1"],[6,"2–6"],[12,"7–12"],[24,"13–24"],[48,"25–48"]]);
+    const vb=numberBucket(v,[[0,"Nenhuma"],[1,"1"],[3,"2–3"],[6,"4–6"],[12,"7–12"]]);
+    qtdBuckets.set(qb,(qtdBuckets.get(qb)||0)+1);
+    vencBuckets.set(vb,(vencBuckets.get(vb)||0)+1);
+  }
+  const parcelSit=groupSum(parcelas.rows,["situacao","situacao.descricao","status"],["vlParcela","valorParcela","valor"],10);
+  const entrada=groupSum(rows,["tipoEntrada","tipoEntrada.descricao"],["vlEntrada","valorEntrada"],10);
+  const cobr=chartFixed(["Executada","Protestada"],[
+    countWhere(rows,r=>truthyValue(r,["dividaExecutada","executada","sitExecucao"])),
+    countWhere(rows,r=>truthyValue(r,["dividaProtestada","protestada","protesto"]))
+  ],"Parcelamentos","number");
+  const origem=groupCount(refs.rows,["tipoReferente","referente.tipo","origem"],12);
+  const canc=monthlyCount(rows,["dtCancelamento","dataCancelamento"],periodo,exercicio,r=>Boolean(firstValue(r,["dtCancelamento","dataCancelamento"])));
+  const pay=monthlyMulti(baseParcelas.rows,["dtQuitacao","dataQuitacao"],[
+    {label:"Tributo",paths:["vlPagoTributo","valorPagoTributo"]},
+    {label:"Correção",paths:["vlPagoCorrecao","valorPagoCorrecao"]},
+    {label:"Juros",paths:["vlPagoJuro","valorPagoJuro"]},
+    {label:"Multa",paths:["vlPagoMulta","valorPagoMulta"]}
+  ],periodo,exercicio);
+  return {
+    view:"parcelamentos",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    kpis:{
+      "qtd-parcelamentos":rows.length,
+      ativos:countWhere(rows,r=>/ativ|abert|vigent/i.test(stringValue(r,["situacao","situacao.descricao","status"],""))),
+      "parcelas-vencidas":rows.reduce((s,r)=>s+numericValue(r,["qtdParcelasVencidas","parcelasVencidas"]),0),
+      entradas:sumRowsOrNull(rows,["vlEntrada","valorEntrada"]),
+      "qtd-parcelas":rows.reduce((s,r)=>s+numericValue(r,["qtdParcela","qtdParcelas","quantidadeParcelas"]),0),
+      cancelados:countWhere(rows,r=>Boolean(firstValue(r,["dtCancelamento","dataCancelamento"])))
+    },
+    charts:{
+      "parcelamentos-mes":{format:"number",labels:mon.labels,datasets:[{label:"Parcelamentos",data:mon.values}]},
+      "situacao-parcelamentos":chartGroups(situ,"Parcelamentos","number"),
+      "faixa-parcelas":chartGroups([...qtdBuckets.entries()],"Parcelamentos","number"),
+      "vencidas-parcelamento":chartGroups([...vencBuckets.entries()],"Parcelamentos","number"),
+      "parcelas-situacao":chartGroups(parcelSit,"Valor","currency"),
+      "entradas-tipo":chartGroups(entrada,"Entrada","currency"),
+      "execucao-protesto":cobr,
+      "origem-parcelamento":chartGroups(origem,"Parcelamentos","number"),
+      "cancelamentos-parcelamento":{format:"number",labels:canc.labels,datasets:[{label:"Cancelamentos",data:canc.values}]},
+      "pagamentos-parcelas":{format:"currency",labels:pay.labels,datasets:pay.datasets}
+    },
+    meta:dashboardMeta([["parcelamentos",par],["parcelas",parcelas],["referentes",refs],["baseParcelas",baseParcelas]])
+  };
+}
+
 async function listContextUsers(userToken, tenant, url) {
   const params=new URLSearchParams();
   params.set("limit",url.searchParams.get("limit") || "100");
