@@ -614,9 +614,11 @@
         pageLimit:audit.pageLimit ?? prev.pageLimit ?? null,
         error:audit.error || prev.error || null,
         errorStatus:audit.errorStatus || prev.errorStatus || null,
-        errorDetail:audit.errorDetail || prev.errorDetail || null
+        errorDetail:audit.errorDetail || prev.errorDetail || null,
+        detectedFields:audit.detectedFields || prev.detectedFields || []
       };
     }
+    target.meta.fieldMapping={...(target.meta.fieldMapping||{}),...(meta.fieldMapping||{})};
     return target;
   }
 
@@ -626,10 +628,10 @@
       imoveis:{pages:1,limit:1000},
       economicos:{pages:1,limit:1000},
       parcelamentos:{pages:1,limit:1000},
-      pagamentos:{pages:1,limit:100},
-      debitos:{pages:1,limit:100},
-      dividas:{pages:1,limit:100},
-      "pagamentos-detalhados":{pages:1,limit:100}
+      pagamentos:{pages:1,limit:500},
+      debitos:{pages:1,limit:500},
+      dividas:{pages:1,limit:500},
+      "pagamentos-detalhados":{pages:1,limit:250}
     };
     return profiles[part] || {pages:1,limit:250};
   }
@@ -704,6 +706,28 @@
     return aggregate;
   }
 
+  function sourceKeyForOverviewPart(part) {
+    return {
+      contribuintes:"contribuintes",
+      imoveis:"imoveis",
+      economicos:"economicos",
+      parcelamentos:"parcelamentos",
+      pagamentos:"pagamentos",
+      debitos:"debitos",
+      dividas:"encerramentoDividas",
+      "pagamentos-detalhados":"pagamentosDetalhados"
+    }[part] || part;
+  }
+
+  function financialPartNeedsRebuild(part,payload) {
+    if (!payload) return false;
+    if (part==="pagamentos") return payload.kpis?.arrecadado===null || payload.kpis?.arrecadado===undefined;
+    if (part==="debitos") return payload.kpis?.lancado===null || payload.kpis?.lancado===undefined;
+    if (part==="dividas") return payload.kpis?.divida===null || payload.kpis?.divida===undefined;
+    if (part==="pagamentos-detalhados") return !payload.charts?.["receita-credito"];
+    return false;
+  }
+
   async function loadOverviewSharded(params) {
     const parts = [
       "contribuintes",
@@ -716,16 +740,62 @@
       "pagamentos-detalhados"
     ];
 
-    const merged = {
-      view:"visao-geral",
-      kpis:{},
-      charts:{},
-      meta:{auditMode:"FULL",warnings:[],sourceRows:{},sourceTotals:{},sourceAudit:{}}
-    };
+    const cachedRecord=readDashboardCache("visao-geral");
+    const canResume=cachedRecord && cachedRecord.state==="partial" && cachedRecord.payload;
+    const merged=canResume
+      ? JSON.parse(JSON.stringify(cachedRecord.payload))
+      : {
+          view:"visao-geral",
+          kpis:{},
+          charts:{},
+          meta:{auditMode:"FULL",warnings:[],sourceRows:{},sourceTotals:{},sourceAudit:{},fieldMapping:{}}
+        };
 
-    // Executa uma fonte por vez para não saturar nem a Betha nem o Worker.
+    // Avisos antigos são recalculados nesta execução.
+    merged.meta=merged.meta||{};
+    merged.meta.warnings=[];
+
     for (let index=0; index<parts.length; index++) {
       const partName=parts[index];
+      const sourceKey=sourceKeyForOverviewPart(partName);
+      const existingAudit=merged.meta?.sourceAudit?.[sourceKey];
+      const needsRebuild=financialPartNeedsRebuild(partName,merged);
+
+      if (canResume && existingAudit?.complete===true && !needsRebuild) {
+        setStatus("waiting","Mantendo " + partName + " do snapshot local");
+        continue;
+      }
+
+      // Quando o mapeamento financeiro mudou, recalculamos a fonte inteira.
+      if (needsRebuild) {
+        if (partName==="pagamentos") {
+          delete merged.kpis.arrecadado;
+          delete merged.charts["receita-mensal"];
+          if (merged.charts["lancado-pago-saldo"]) {
+            merged.charts["lancado-pago-saldo"].datasets=(merged.charts["lancado-pago-saldo"].datasets||[])
+              .filter(ds=>ds.label!=="Pago");
+          }
+        }
+        if (partName==="debitos") {
+          delete merged.kpis.lancado;
+          if (merged.charts["lancado-pago-saldo"]) {
+            merged.charts["lancado-pago-saldo"].datasets=(merged.charts["lancado-pago-saldo"].datasets||[])
+              .filter(ds=>!["Lançado","Saldo"].includes(ds.label));
+          }
+        }
+        if (partName==="dividas") {
+          delete merged.kpis.divida;
+          delete merged.charts["divida-evolucao"];
+          delete merged.charts["situacao-divida"];
+        }
+        if (partName==="pagamentos-detalhados") {
+          delete merged.charts["receita-credito"];
+        }
+        delete merged.meta.sourceRows?.[sourceKey];
+        delete merged.meta.sourceTotals?.[sourceKey];
+        delete merged.meta.sourceAudit?.[sourceKey];
+      }
+
       setStatus("waiting","Carregando " + (index+1) + "/" + parts.length + " · " + partName);
 
       try {
@@ -738,7 +808,6 @@
             (phase==="requesting" ? "..." : "")
           );
 
-          // Atualiza a tela enquanto a própria fonte ainda está sendo percorrida.
           const preview=JSON.parse(JSON.stringify(merged));
           mergeDashboardPart(preview,partial);
           renderPayload(preview);
@@ -746,16 +815,15 @@
         mergeDashboardPart(merged,result);
       } catch(error) {
         merged.meta.warnings.push({
-          source:partName,
-          error:error.message === "REQUEST_TIMEOUT" ? "Tempo limite excedido no lote" : (error.message || "PART_REQUEST_FAILED"),
+          source:sourceKey,
+          error:error.message === "REQUEST_TIMEOUT" ? "Tempo limite excedido na página" : (error.message || "PART_REQUEST_FAILED"),
           errorStatus:error.status || null
         });
-        merged.meta.sourceRows[partName]=0;
-        merged.meta.sourceAudit[partName]={
-          loaded:0,
-          pages:0,
+        if (!merged.meta.sourceRows[sourceKey]) merged.meta.sourceRows[sourceKey]=0;
+        merged.meta.sourceAudit[sourceKey]={
+          ...(merged.meta.sourceAudit[sourceKey]||{}),
           complete:false,
-          error:error.message === "REQUEST_TIMEOUT" ? "Tempo limite excedido no lote" : (error.message || "PART_REQUEST_FAILED"),
+          error:error.message === "REQUEST_TIMEOUT" ? "Tempo limite excedido na página" : (error.message || "PART_REQUEST_FAILED"),
           errorStatus:error.status || null
         };
       }
