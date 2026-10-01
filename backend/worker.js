@@ -166,6 +166,48 @@ async function openSession(token, secret) {
   }
 }
 
+async function oauthStateKey(secret) {
+  if (!secret) throw new Error("LOGIN_CLIENT_SECRET_NOT_CONFIGURED");
+  return crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    {name:"HMAC",hash:"SHA-256"},
+    false,
+    ["sign","verify"]
+  );
+}
+
+async function createOAuthState(secret) {
+  const ts=Date.now().toString(36);
+  const nonce=bytesToBase64Url(crypto.getRandomValues(new Uint8Array(12)));
+  const payload=ts+"."+nonce;
+  const key=await oauthStateKey(secret);
+  const sig=await crypto.subtle.sign("HMAC",key,new TextEncoder().encode(payload));
+  return payload+"."+bytesToBase64Url(new Uint8Array(sig));
+}
+
+async function validateOAuthState(state, secret) {
+  const parts=String(state||"").split(".");
+  if (parts.length!==3) throw new Error("OAUTH_STATE_INVALID");
+
+  const [ts,nonce,signature]=parts;
+  const created=parseInt(ts,36);
+  if (!Number.isFinite(created) || Date.now()-created>10*60*1000 || created>Date.now()+60*1000) {
+    throw new Error("OAUTH_STATE_INVALID");
+  }
+
+  const payload=ts+"."+nonce;
+  const key=await oauthStateKey(secret);
+  const valid=await crypto.subtle.verify(
+    "HMAC",
+    key,
+    base64UrlToBytes(signature),
+    new TextEncoder().encode(payload)
+  );
+  if (!valid) throw new Error("OAUTH_STATE_INVALID");
+  return true;
+}
+
 async function getUserToken(request, env) {
   const header=request.headers.get("Authorization") || "";
   const sessionMatch=header.match(/^Session\s+(.+)$/i);
@@ -453,11 +495,7 @@ export default {
         return json(request,env,503,{error:"LOGIN_CREDENTIAL_NOT_CONFIGURED"});
       }
 
-      const state=await sealSession({
-        kind:"oauth-state",
-        ts:Date.now(),
-        nonce:crypto.randomUUID()
-      },env.BETHA_LOGIN_CLIENT_SECRET);
+      const state=await createOAuthState(env.BETHA_LOGIN_CLIENT_SECRET);
 
       const authorize=new URL(OAUTH_AUTHORIZE_URL);
       authorize.searchParams.set("response_type","code");
@@ -493,10 +531,7 @@ export default {
         }
         if (!code || !state) throw new Error("OAUTH_CALLBACK_INCOMPLETE");
 
-        const statePayload=await openSession(state,env.BETHA_LOGIN_CLIENT_SECRET);
-        if (statePayload.kind!=="oauth-state" || !statePayload.ts || Date.now()-Number(statePayload.ts)>10*60*1000) {
-          throw new Error("OAUTH_STATE_INVALID");
-        }
+        await validateOAuthState(state,env.BETHA_LOGIN_CLIENT_SECRET);
 
         const form=new URLSearchParams();
         form.set("grant_type","authorization_code");
