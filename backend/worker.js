@@ -410,9 +410,6 @@ function matchAccess(accesses, context) {
 }
 
 async function authorizeTenant(request, env, tenant) {
-  if (String(env.ALLOW_UNAUTHENTICATED_DEV || "").toLowerCase()==="true") {
-    return {dev:true,access:null,context:{entity:tenant.entityId||"",database:tenant.databaseId||""},userToken:""};
-  }
   const userToken=await getUserToken(request,env);
   if (!userToken) throw new Error("USER_TOKEN_REQUIRED");
   const [accesses,context]=await Promise.all([
@@ -1145,7 +1142,6 @@ export default {
     const dashboardMatch=url.pathname.match(/^\/api\/dashboard\/([a-z0-9-]+)$/);
     if (dashboardMatch && request.method==="GET") {
       try {
-        await validateDevSession(request,env);
         const tenant=resolveTenant(env,getTenantId(request,url));
         const view=dashboardMatch[1];
 
