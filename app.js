@@ -358,19 +358,43 @@
   async function api(path, options = {}) {
     const base = String(cfg.BACKEND_URL || "").replace(/\/$/, "");
     if (!base) throw new Error("BACKEND_NOT_CONFIGURED");
+
     const headers = {...(options.headers || {}), Accept:"application/json"};
     const token = cfg.AUTH_REQUIRED && window.BIAuth && typeof BIAuth.getToken === "function" ? BIAuth.getToken() : "";
     if (token) headers.Authorization = "DevSession " + token;
     if (tenantId) headers["X-Tenant-Id"] = tenantId;
-    const fetchOptions = {...options, headers, credentials:"omit"};
-    const response = await fetch(base + path, fetchOptions);
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const error = new Error(body.error || ("HTTP " + response.status));
-      error.status = response.status;
+
+    const controller = new AbortController();
+    const timeoutMs = Number(options.timeoutMs || 30000);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const fetchOptions = {
+        ...options,
+        headers,
+        credentials:"omit",
+        signal:controller.signal
+      };
+      delete fetchOptions.timeoutMs;
+
+      const response = await fetch(base + path, fetchOptions);
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const error = new Error(body.error || ("HTTP " + response.status));
+        error.status = response.status;
+        throw error;
+      }
+      return body;
+    } catch(error) {
+      if (error && error.name === "AbortError") {
+        const timeout = new Error("REQUEST_TIMEOUT");
+        timeout.status = 408;
+        throw timeout;
+      }
       throw error;
+    } finally {
+      clearTimeout(timer);
     }
-    return body;
   }
 
   function mergeDashboardPart(target, part) {
@@ -460,13 +484,17 @@
   }
 
   function overviewProfile(part) {
-    const heavy = {
-      pagamentos:{pages:3,limit:250},
-      debitos:{pages:3,limit:250},
-      dividas:{pages:3,limit:250},
-      "pagamentos-detalhados":{pages:2,limit:150}
+    const profiles = {
+      parcelamentos:{pages:2,limit:500},
+      contribuintes:{pages:4,limit:500},
+      imoveis:{pages:4,limit:500},
+      economicos:{pages:4,limit:500},
+      pagamentos:{pages:2,limit:100},
+      debitos:{pages:2,limit:100},
+      dividas:{pages:2,limit:100},
+      "pagamentos-detalhados":{pages:1,limit:100}
     };
-    return heavy[part] || {pages:8,limit:1000};
+    return profiles[part] || {pages:2,limit:250};
   }
 
   async function requestOverviewChunk(part, params, offset, profile) {
@@ -483,7 +511,8 @@
 
       try {
         return await api(
-          "/api/dashboard/visao-geral/part/" + encodeURIComponent(part) + "?" + chunkParams.toString()
+          "/api/dashboard/visao-geral/part/" + encodeURIComponent(part) + "?" + chunkParams.toString(),
+          {timeoutMs:30000}
         );
       } catch(error) {
         lastError=error;
@@ -512,10 +541,12 @@
     while(iterations<500){
       iterations++;
 
+      if (typeof onProgress==="function") onProgress(aggregate,iterations,"requesting");
+
       const payload=await requestOverviewChunk(part,params,offset,profile);
       mergeDashboardPart(aggregate,payload);
 
-      if (typeof onProgress==="function") onProgress(aggregate,iterations);
+      if (typeof onProgress==="function") onProgress(aggregate,iterations,"loaded");
 
       const audits=Object.values(payload?.meta?.sourceAudit||{});
       const audit=audits[0]||null;
@@ -538,10 +569,10 @@
 
   async function loadOverviewSharded(params) {
     const parts = [
-      "parcelamentos",
       "contribuintes",
       "imoveis",
       "economicos",
+      "parcelamentos",
       "pagamentos",
       "debitos",
       "dividas",
@@ -561,7 +592,15 @@
       setStatus("waiting","Carregando " + (index+1) + "/" + parts.length + " · " + partName);
 
       try {
-        const result=await loadOverviewPartFully(partName,params,(partial)=>{
+        const result=await loadOverviewPartFully(partName,params,(partial,iteration,phase)=>{
+          setStatus(
+            "waiting",
+            "Carregando " + (index+1) + "/" + parts.length +
+            " · " + partName +
+            " · lote " + iteration +
+            (phase==="requesting" ? "..." : "")
+          );
+
           // Atualiza a tela enquanto a própria fonte ainda está sendo percorrida.
           const preview=JSON.parse(JSON.stringify(merged));
           mergeDashboardPart(preview,partial);
@@ -571,7 +610,7 @@
       } catch(error) {
         merged.meta.warnings.push({
           source:partName,
-          error:error.message || "PART_REQUEST_FAILED",
+          error:error.message === "REQUEST_TIMEOUT" ? "Tempo limite excedido no lote" : (error.message || "PART_REQUEST_FAILED"),
           errorStatus:error.status || null
         });
         merged.meta.sourceRows[partName]=0;
@@ -579,7 +618,7 @@
           loaded:0,
           pages:0,
           complete:false,
-          error:error.message || "PART_REQUEST_FAILED",
+          error:error.message === "REQUEST_TIMEOUT" ? "Tempo limite excedido no lote" : (error.message || "PART_REQUEST_FAILED"),
           errorStatus:error.status || null
         };
       }
