@@ -786,7 +786,22 @@ function stringValue(obj,paths,fallback="Não informado") {
 function dateValue(obj,paths) {
   const raw=firstValue(obj,paths);
   if (!raw) return null;
-  const d=new Date(raw);
+  if (raw instanceof Date) return Number.isNaN(raw.getTime())?null:raw;
+
+  const text=String(raw).trim();
+
+  // dd/MM/yyyy ou dd/MM/yyyy HH:mm:ss
+  let match=text.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (match) {
+    const d=new Date(
+      Number(match[3]),Number(match[2])-1,Number(match[1]),
+      Number(match[4]||0),Number(match[5]||0),Number(match[6]||0)
+    );
+    return Number.isNaN(d.getTime())?null:d;
+  }
+
+  // yyyy-MM-dd e ISO
+  const d=new Date(text);
   return Number.isNaN(d.getTime())?null:d;
 }
 
@@ -827,10 +842,10 @@ function sumRows(rows,paths) {
 }
 
 function hasAnyValue(rows,paths) {
-  return rows.some(row=>paths.some(path=>{
-    const value=valueAt(row,path);
+  return rows.some(row=>{
+    const value=firstValue(row,paths);
     return value!==undefined && value!==null && value!=="";
-  }));
+  });
 }
 
 function sumRowsOrNull(rows,paths) {
@@ -965,12 +980,17 @@ async function buildOverviewPart(env,tenant,url,part) {
   }
 
   if (part==="dividas") {
-    const src=await loadOverviewSource(env,tenant,"bi","dividas",url);
+    const src=await loadOverviewSource(env,tenant,"base","encerramento-dividas",url);
     const debtStatus=groupCount(src.rows,["statusDivida","situacaoDivida","situacao","status"],12);
-    const debtYears=debtYearSeries(src.rows);
+    const debtYears=groupSum(
+      src.rows,
+      ["anoDivida","ano","exercicio"],
+      ["valorSaldo","vlSaldo","saldo","saldoCalculado"],
+      30
+    );
     return {
       part,kpis:{
-        divida:sumRowsOrNull(src.rows,["vlSaldo","valorSaldo","saldo","saldoCalculado"])
+        divida:sumRowsOrNull(src.rows,["valorSaldo","vlSaldo","saldo","saldoCalculado"])
       },
       charts:{
         "divida-evolucao":{
@@ -980,7 +1000,7 @@ async function buildOverviewPart(env,tenant,url,part) {
         },
         "situacao-divida":chartGroups(debtStatus,"Dívidas","number")
       },
-      meta:dashboardMeta([["dividas",src]])
+      meta:dashboardMeta([["encerramentoDividas",src]])
     };
   }
 
@@ -1245,7 +1265,8 @@ async function buildOverviewDashboard(env,tenant,url) {
         startOffset:src.startOffset!==undefined?src.startOffset:0,
         error:src.error,
         errorStatus:src.errorStatus,
-        errorDetail:src.errorDetail
+        errorDetail:src.errorDetail,
+        detectedFields:diagnosticFieldNames(src.rows)
       }]))
     }
   };
@@ -1359,6 +1380,24 @@ function dashboardWarnings(entries) {
     }));
 }
 
+function diagnosticFieldNames(rows,maxRows=3,maxDepth=3) {
+  const names=new Set();
+
+  function walk(value,prefix,depth) {
+    if (!value || typeof value!=="object" || Array.isArray(value) || depth>maxDepth) return;
+    for (const [key,child] of Object.entries(value)) {
+      const path=prefix ? prefix+"."+key : key;
+      names.add(path);
+      if (child && typeof child==="object" && !Array.isArray(child)) {
+        walk(child,path,depth+1);
+      }
+    }
+  }
+
+  for (const row of rows.slice(0,maxRows)) walk(row,"",0);
+  return [...names].sort().slice(0,160);
+}
+
 function dashboardMeta(entries,extra={}) {
   return {
     generatedAt:new Date().toISOString(),
@@ -1382,7 +1421,8 @@ function dashboardMeta(entries,extra={}) {
       startOffset:src&&src.startOffset!==undefined?src.startOffset:0,
       error:src?src.error:null,
       errorStatus:src?src.errorStatus:null,
-      errorDetail:src?src.errorDetail:null
+      errorDetail:src?src.errorDetail:null,
+      detectedFields:src?diagnosticFieldNames(src.rows):[]
     }])),
     ...extra
   };
@@ -2152,7 +2192,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-01-audit-total-fix-v11",
+        buildVersion:"2026-10-01-fields-resume-v12",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
