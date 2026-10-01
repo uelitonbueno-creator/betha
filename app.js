@@ -7,6 +7,11 @@
   if (!window.BIAuth || !BIAuth.isAuthenticated()) {
     bethaApp.style.display = "none";
     authGate.hidden = false;
+    const previousAuthError = sessionStorage.getItem("betha_bi_auth_error");
+    if (previousAuthError) {
+      document.getElementById("authMessage").textContent = "Retorno da Betha: " + previousAuthError;
+      sessionStorage.removeItem("betha_bi_auth_error");
+    }
     document.getElementById("loginButton").addEventListener("click", async () => {
       const message = document.getElementById("authMessage");
       message.textContent = "";
