@@ -544,17 +544,38 @@
 
     for(const [key,audit] of Object.entries(meta.sourceAudit||{})){
       const prev=target.meta.sourceAudit[key]||{};
+      const prevLoaded=Number(prev.loaded)||0;
+      const currentLoaded=Number(audit.loaded)||0;
+      const accumulatedLoaded=prevLoaded+currentLoaded;
+
+      const prevReported=prev.reportedTotal===null||prev.reportedTotal===undefined
+        ? null : Number(prev.reportedTotal);
+      const currentReported=audit.reportedTotal===null||audit.reportedTotal===undefined
+        ? null : Number(audit.reportedTotal);
+
+      let mergedReported=prevReported;
+      if (currentReported!==null) {
+        if (mergedReported===null) mergedReported=currentReported;
+        else if (currentReported!==mergedReported) mergedReported=null;
+      }
+
+      // Um "total" menor que o acumulado não pode ser total global.
+      if (mergedReported!==null && mergedReported<accumulatedLoaded) mergedReported=null;
+
+      const isComplete=audit.complete===true;
+      const mismatch=isComplete && mergedReported!==null && mergedReported!==accumulatedLoaded;
+
       target.meta.sourceAudit[key]={
-        reportedTotal:audit.reportedTotal ?? prev.reportedTotal ?? null,
-        loaded:(Number(prev.loaded)||0)+(Number(audit.loaded)||0),
+        reportedTotal:mergedReported,
+        loaded:accumulatedLoaded,
         pages:(Number(prev.pages)||0)+(Number(audit.pages)||0),
-        complete:audit.complete===true,
+        complete:isComplete,
         hasMore:audit.hasMore===true,
         nextOffset:audit.nextOffset ?? null,
         startOffset:prev.startOffset ?? audit.startOffset ?? 0,
         truncated:Boolean(prev.truncated||audit.truncated),
         repeatedPage:Boolean(prev.repeatedPage||audit.repeatedPage),
-        totalMismatch:Boolean(prev.totalMismatch||audit.totalMismatch),
+        totalMismatch:mismatch,
         pageLimit:audit.pageLimit ?? prev.pageLimit ?? null,
         error:audit.error || prev.error || null,
         errorStatus:audit.errorStatus || prev.errorStatus || null,
