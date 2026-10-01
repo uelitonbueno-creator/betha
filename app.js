@@ -21,12 +21,13 @@
       message.textContent = "Falha na autenticação: " + previousAuthError;
     }
 
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
+    const button = document.getElementById("loginButton");
+    const usernameInput = document.getElementById("devUsername");
+    const passwordInput = document.getElementById("devPassword");
 
-      const username = document.getElementById("devUsername").value.trim();
-      const password = document.getElementById("devPassword").value;
-      const button = document.getElementById("loginButton");
+    const executeDevLogin = async () => {
+      const username = usernameInput.value.trim();
+      const password = passwordInput.value;
 
       message.textContent = "";
       button.disabled = true;
@@ -34,13 +35,21 @@
 
       try {
         await BIAuth.login(username, password);
-        location.reload();
+        location.replace(location.pathname);
       } catch (error) {
         message.textContent = error.message === "DEV_LOGIN_INVALID"
           ? "Usuário ou senha inválidos."
           : "Falha no login: " + error.message;
         button.disabled = false;
         button.textContent = "ENTRAR";
+      }
+    };
+
+    button.addEventListener("click", executeDevLogin);
+    form.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        executeDevLogin();
       }
     });
 
