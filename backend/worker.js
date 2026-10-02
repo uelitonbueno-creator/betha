@@ -16,6 +16,8 @@ const OAUTH_AUTHORIZE_URL = "https://plataforma-oauth.betha.cloud/auth/oauth2/au
 const OAUTH_TOKEN_URL = "https://plataforma-oauth.betha.cloud/auth/oauth2/token";
 const LOGIN_REDIRECT_DEFAULT = "https://betha-bi-api.ueliton-bueno.workers.dev/api/auth/callback";
 const FRONT_URL_DEFAULT = "https://uelitonbueno-creator.github.io/betha/";
+const FRONT_SOURCE_BASE = "https://uelitonbueno-creator.github.io/betha";
+const SESSION_COOKIE = "betha_bi_session";
 const LOGIN_SCOPES_DEFAULT = "contas-usuarios.suite,user-accounts.suite,licenses.suite";
 const SUPABASE_CACHE_WRITE_URL = "https://mliurxyjznxoafkwwtae.supabase.co/functions/v1/bi-cache-write";
 
@@ -316,11 +318,73 @@ async function validateDevSession(request, env) {
   }
 }
 
+function readCookie(request,name) {
+  const raw=request.headers.get("Cookie") || "";
+  for (const part of raw.split(";")) {
+    const idx=part.indexOf("=");
+    if (idx<0) continue;
+    const key=part.slice(0,idx).trim();
+    if (key!==name) continue;
+    try { return decodeURIComponent(part.slice(idx+1).trim()); }
+    catch { return part.slice(idx+1).trim(); }
+  }
+  return "";
+}
+
+function sessionCookieHeader(session,maxAge) {
+  const seconds=Math.max(0,Number(maxAge)||0);
+  return [
+    SESSION_COOKIE+"="+encodeURIComponent(session||""),
+    "Path=/",
+    "HttpOnly",
+    "Secure",
+    "SameSite=Lax",
+    "Max-Age="+seconds
+  ].join("; ");
+}
+
+async function proxyFront(request) {
+  const incoming=new URL(request.url);
+  const sourcePath=incoming.pathname==="/" ? "/" : incoming.pathname;
+  const target=new URL(FRONT_SOURCE_BASE+sourcePath);
+  target.search=incoming.search;
+
+  const accept=request.headers.get("Accept") || "*/*";
+  const source=await fetch(target.toString(),{
+    method:"GET",
+    headers:{"Accept":accept},
+    redirect:"follow"
+  });
+
+  const headers=new Headers(source.headers);
+  headers.delete("Set-Cookie");
+  headers.set("X-BI-Front-Proxy","cloudflare-worker");
+  if (
+    incoming.pathname==="/" ||
+    incoming.pathname.endsWith(".html") ||
+    incoming.pathname.endsWith(".js")
+  ) {
+    headers.set("Cache-Control","no-store");
+  }
+
+  return new Response(source.body,{
+    status:source.status,
+    statusText:source.statusText,
+    headers
+  });
+}
+
 async function getUserToken(request, env) {
   const header=request.headers.get("Authorization") || "";
   const sessionMatch=header.match(/^Session\s+(.+)$/i);
   if (sessionMatch) {
     const session=await openSession(sessionMatch[1].trim(),env.BETHA_LOGIN_CLIENT_SECRET);
+    return session.accessToken;
+  }
+
+  const cookieSession=readCookie(request,SESSION_COOKIE);
+  if (cookieSession) {
+    const session=await openSession(cookieSession,env.BETHA_LOGIN_CLIENT_SECRET);
     return session.accessToken;
   }
 
@@ -2356,6 +2420,7 @@ export default {
         loginClientSecretConfigured:Boolean(env.BETHA_LOGIN_CLIENT_SECRET),
         loginRedirectUri:env.BETHA_LOGIN_REDIRECT_URI || LOGIN_REDIRECT_DEFAULT,
         frontUrl:env.BETHA_FRONT_URL || FRONT_URL_DEFAULT,
+        sameOriginApp:true,
         devLoginConfigured:Boolean(env.BI_DEV_LOGIN_USER && env.BI_DEV_LOGIN_PASSWORD)
       });
     }
@@ -2371,6 +2436,21 @@ export default {
       } catch(error) {
         return errorResponse(request,env,error);
       }
+    }
+
+    if (url.pathname==="/api/auth/logout" && request.method==="GET") {
+      const target=new URL(request.url);
+      target.pathname="/";
+      target.search="";
+      target.hash="";
+      return new Response(null,{
+        status:302,
+        headers:{
+          "Location":target.toString(),
+          "Set-Cookie":sessionCookieHeader("",0),
+          "Cache-Control":"no-store"
+        }
+      });
     }
 
     if (url.pathname==="/api/dev/login" && request.method==="POST") {
@@ -2454,9 +2534,10 @@ export default {
       const state=url.searchParams.get("state");
 
       if (error) {
-        const target=new URL(front);
+        const target=new URL(request.url);
+        target.pathname="/";
+        target.search="";
         target.searchParams.set("auth_error",error);
-        target.searchParams.set("auth_return","1");
         return Response.redirect(target.toString(),302);
       }
 
@@ -2493,25 +2574,33 @@ export default {
         const oauthSeconds=Number(parsed.body.expires_in || parsed.body.expires || 0);
         const sessionSeconds=oauthSeconds>0 ? Math.min(oauthSeconds,8*60*60) : 8*60*60;
 
-        // Handoff curto e criptografado: evita depender do fragmento (#...)
-        // em navegadores embutidos durante redirecionamentos entre origens.
-        const handoffSeconds=90;
-        const handoff=await sealSession({
-          kind:"auth-handoff",
+        const session=await sealSession({
+          kind:"user-session",
           accessToken:parsed.body.access_token,
-          oauthExp:Date.now()+sessionSeconds*1000,
-          exp:Date.now()+handoffSeconds*1000
+          exp:Date.now()+sessionSeconds*1000
         },env.BETHA_LOGIN_CLIENT_SECRET);
 
-        const target=new URL(front);
-        target.searchParams.set("auth_handoff",handoff);
-        target.searchParams.set("auth_return","1");
-        return Response.redirect(target.toString(),302);
+        // A aplicação passa a ser servida pelo próprio Worker. Assim o cookie é
+        // first-party mesmo em navegação privada/anônima no celular.
+        const appUrl=new URL(request.url);
+        appUrl.pathname="/";
+        appUrl.search="";
+        appUrl.hash="";
+
+        return new Response(null,{
+          status:302,
+          headers:{
+            "Location":appUrl.toString(),
+            "Set-Cookie":sessionCookieHeader(session,sessionSeconds),
+            "Cache-Control":"no-store"
+          }
+        });
       } catch(authError) {
         console.error("oauth callback",authError);
-        const target=new URL(front);
+        const target=new URL(request.url);
+        target.pathname="/";
+        target.search="";
         target.searchParams.set("auth_error",authError.message || "AUTH_CALLBACK_FAILED");
-        target.searchParams.set("auth_return","1");
         return Response.redirect(target.toString(),302);
       }
     }
@@ -2835,6 +2924,10 @@ export default {
       } catch(error) {
         return errorResponse(request,env,error);
       }
+    }
+
+    if (request.method==="GET" && !url.pathname.startsWith("/api/")) {
+      return proxyFront(request);
     }
 
     if (!["GET","POST","DELETE"].includes(request.method)) {
