@@ -2449,12 +2449,14 @@ export default {
 
     if (url.pathname==="/api/auth/callback" && request.method==="GET") {
       const front=env.BETHA_FRONT_URL || FRONT_URL_DEFAULT;
+      const frontBase=String(front).endsWith("/") ? String(front) : String(front)+"/";
+      const callbackFront=new URL("auth/callback.html",frontBase);
       const error=url.searchParams.get("error");
       const code=url.searchParams.get("code");
       const state=url.searchParams.get("state");
 
       if (error) {
-        const target=new URL(front);
+        const target=new URL(callbackFront.toString());
         target.searchParams.set("auth_error",error);
         target.searchParams.set("auth_return","1");
         return Response.redirect(target.toString(),302);
@@ -2503,13 +2505,13 @@ export default {
           exp:Date.now()+handoffSeconds*1000
         },env.BETHA_LOGIN_CLIENT_SECRET);
 
-        const target=new URL(front);
+        const target=new URL(callbackFront.toString());
         target.searchParams.set("auth_handoff",handoff);
         target.searchParams.set("auth_return","1");
         return Response.redirect(target.toString(),302);
       } catch(authError) {
         console.error("oauth callback",authError);
-        const target=new URL(front);
+        const target=new URL(callbackFront.toString());
         target.searchParams.set("auth_error",authError.message || "AUTH_CALLBACK_FAILED");
         target.searchParams.set("auth_return","1");
         return Response.redirect(target.toString(),302);
