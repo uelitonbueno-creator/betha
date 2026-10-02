@@ -31,6 +31,10 @@
       APPLICATION_SESSION_EXPIRED: "Sua sessão do BI expirou. Entre novamente.",
       USER_TOKEN_REQUIRED: "A sessão do usuário não foi encontrada.",
       AUTH_VALIDATION_TIMEOUT: "A validação do login demorou mais que o esperado. Tente novamente.",
+      AUTH_HANDOFF_REQUIRED: "O retorno da Betha chegou sem o código temporário de autenticação.",
+      AUTH_HANDOFF_INVALID: "O código temporário de autenticação não é válido. Entre novamente.",
+      AUTH_HANDOFF_EXPIRED: "O retorno da Betha demorou demais e expirou. Entre novamente.",
+      AUTH_HANDOFF_MISSING: "A Betha retornou ao BI, mas o navegador não entregou o código temporário de autenticação.",
       BACKEND_NOT_CONFIGURED: "O backend do BI não está configurado."
     };
 
