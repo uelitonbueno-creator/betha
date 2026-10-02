@@ -1853,6 +1853,32 @@
       return true;
     } catch (error) {
       console.warn("Falha ao carregar entidades autorizadas:", error);
+
+      const code = error && error.message ? error.message : "UNKNOWN_ERROR";
+      const messages = {
+        PLATFORM_HTTP_401: "Login concluído, mas o token Betha não foi aceito pela API de Autorizações.",
+        PLATFORM_HTTP_403: "Login concluído, mas a credencial ainda não possui permissão para consultar os acessos do usuário (user-accounts.suite).",
+        USER_TOKEN_REQUIRED: "Login concluído, mas a sessão do usuário não chegou ao módulo de autorizações.",
+        TENANT_CONTEXT_UNRESOLVED: "Login concluído, mas não foi possível identificar database/entity da prefeitura.",
+        TENANT_ACCESS_DENIED: "Seu usuário Betha não possui acesso ao contexto configurado para esta prefeitura."
+      };
+
+      const friendly = messages[code] || ("Não foi possível validar as entidades autorizadas: " + code);
+      const entityContext = document.getElementById("entityContext");
+      const entityList = document.getElementById("entityList");
+      const pageTitle = document.getElementById("pageTitle");
+      const pageDescription = document.getElementById("pageDescription");
+      const apiStatus = document.getElementById("apiStatus");
+
+      if (entityContext) entityContext.textContent = "ACESSO BETHA NÃO VALIDADO";
+      if (entityList) entityList.innerHTML = '<div class="table-empty">' + escapeHtml(friendly) + '</div>';
+      if (pageTitle) pageTitle.textContent = "Login Betha concluído";
+      if (pageDescription) pageDescription.textContent = friendly;
+      if (apiStatus) {
+        apiStatus.className = "api-status api-status-error";
+        apiStatus.innerHTML = '<span class="status-dot"></span><span>' + escapeHtml(code) + '</span>';
+      }
+
       return false;
     }
   }
@@ -1882,6 +1908,10 @@
     return String(value).replace(/["\\]/g,"\\$&");
   }
 
+  if (currentView !== "usuarios-admin") {
+    renderDashboard(currentView);
+  }
+
   if (cfg.AUTH_REQUIRED) {
     const tenantReady = await loadTenants();
     if (!tenantReady) return;
@@ -1890,7 +1920,6 @@
   if (currentView === "usuarios-admin") {
     renderUsersAdmin();
   } else {
-    renderDashboard(currentView);
     loadDashboardData(currentView);
   }
 })();
