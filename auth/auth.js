@@ -9,6 +9,9 @@
     "betha_bi_dev_auth_error"
   ];
 
+  let memorySession = "";
+  let memoryExpires = 0;
+
   function stores() {
     const out = [];
     try { if (window.sessionStorage) out.push(window.sessionStorage); } catch {}
@@ -67,14 +70,17 @@
   }
 
   function clearSessionOnly() {
+    memorySession = "";
+    memoryExpires = 0;
     removeItem(KEY_SESSION);
     removeItem(KEY_EXPIRES);
     clearLegacy();
   }
 
   function getToken() {
-    const token = getItem(KEY_SESSION);
-    const expires = Number(getItem(KEY_EXPIRES) || 0);
+    let token = memorySession || getItem(KEY_SESSION);
+    let expires = memoryExpires || Number(getItem(KEY_EXPIRES) || 0);
+
     if (!token) return "";
 
     if (expires && Date.now() >= expires) {
@@ -82,6 +88,9 @@
       setItem(KEY_ERROR, "APPLICATION_SESSION_EXPIRED");
       return "";
     }
+
+    if (!memorySession) memorySession = token;
+    if (!memoryExpires && expires) memoryExpires = expires;
 
     return token;
   }
@@ -114,13 +123,16 @@
   function saveSession(session, seconds) {
     if (!session) throw new Error("APPLICATION_SESSION_INVALID");
 
+    memorySession = session;
     setItem(KEY_SESSION, session);
 
     const ttl = Number(seconds || 0);
     if (ttl > 0) {
       const safeSeconds = Math.max(0, ttl - 30);
-      setItem(KEY_EXPIRES, Date.now() + safeSeconds * 1000);
+      memoryExpires = Date.now() + safeSeconds * 1000;
+      setItem(KEY_EXPIRES, memoryExpires);
     } else {
+      memoryExpires = 0;
       removeItem(KEY_EXPIRES);
     }
 
