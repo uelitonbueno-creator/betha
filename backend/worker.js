@@ -2342,7 +2342,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-02-supabase-cache-v17",
+        buildVersion:"2026-10-02-multitenant-login-v18",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2668,27 +2668,44 @@ export default {
       try {
         const userToken=await getUserToken(request,env);
         if (!userToken) throw new Error("USER_TOKEN_REQUIRED");
+
+        // Consulta os acessos Betha uma única vez e cruza no backend com cada
+        // tenant configurado. O front nunca decide database/entity sozinho.
+        const accesses=await getUserAccesses(userToken);
         const registry=parseJsonObject(env.BETHA_TENANTS_JSON,{});
         const tenants=[];
+
         for (const id of Object.keys(registry)) {
           try {
             const tenant=resolveTenant(env,id);
-            const auth=await authorizeTenant(request,env,tenant);
+            const context=await getTenantContext(userToken,tenant);
+            const access=matchAccess(accesses,context);
+
+            if (!access) continue;
+            if (access.accepted===false) continue;
+            if (access.expiresIn && new Date(access.expiresIn).getTime() < Date.now()) continue;
+
             tenants.push({
               id:tenant.id,
               name:tenant.name,
-              entityId:auth.context.entity,
-              databaseId:auth.context.database,
-              admin:Boolean(auth.access && auth.access.admin),
-              technical:Boolean(auth.access && auth.access.technical)
+              entityId:context.entity,
+              databaseId:context.database,
+              admin:Boolean(access.admin),
+              technical:Boolean(access.technical)
             });
           } catch(error) {
-            if (!["TENANT_ACCESS_DENIED","TENANT_ACCESS_NOT_ACCEPTED","TENANT_ACCESS_EXPIRED"].includes(error.message)) {
-              console.warn("tenant validation",id,error.message);
-            }
+            // Uma entidade mal configurada não derruba a lista inteira.
+            console.warn("tenant validation",id,error.message);
           }
         }
-        return json(request,env,200,{tenants});
+
+        tenants.sort((a,b)=>String(a.name||a.id).localeCompare(String(b.name||b.id),"pt-BR"));
+
+        return json(request,env,200,{
+          tenants,
+          count:tenants.length,
+          selectionRequired:tenants.length>1
+        });
       } catch(error) {
         return errorResponse(request,env,error);
       }
