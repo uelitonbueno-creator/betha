@@ -235,21 +235,72 @@
       chartInstances.delete(chartDef.id);
     }
 
+    const bethaPalette = ["#0b6ff4","#2fa36b","#7c5cff","#f0a202","#00a6a6","#dc5f73","#556070","#9a6dd7"];
+    const chartDatasets = data.datasets.map((dataset,index) => {
+      const color=bethaPalette[index % bethaPalette.length];
+      const base={...dataset};
+
+      if(chartDef.type==="doughnut"){
+        return {
+          ...base,
+          backgroundColor:(dataset.data||[]).map((_,i)=>bethaPalette[i % bethaPalette.length]),
+          borderColor:"#ffffff",
+          borderWidth:2,
+          hoverOffset:5
+        };
+      }
+
+      if(chartDef.type==="line"){
+        return {
+          ...base,
+          borderColor:dataset.borderColor||color,
+          backgroundColor:dataset.backgroundColor||color+"18",
+          pointBackgroundColor:dataset.pointBackgroundColor||color,
+          pointBorderColor:"#ffffff",
+          pointBorderWidth:2,
+          pointRadius:2.5,
+          pointHoverRadius:5,
+          borderWidth:2.25,
+          tension:.32,
+          fill:false
+        };
+      }
+
+      return {
+        ...base,
+        backgroundColor:dataset.backgroundColor||color+"CC",
+        borderColor:dataset.borderColor||color,
+        borderWidth:1,
+        borderRadius:5,
+        maxBarThickness:34
+      };
+    });
+
     const instance = new Chart(canvas, {
       type: chartType(chartDef.type),
       data: {
         labels: data.labels,
-        datasets: data.datasets
+        datasets: chartDatasets
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        interaction: {mode:"nearest", intersect:false},
+        interaction: {mode:"index", intersect:false},
+        animation:{duration:420,easing:"easeOutQuart"},
+        layout:{padding:{top:4,right:4,bottom:0,left:2}},
         plugins: {
           legend: {
             display: data.datasets.length > 1 || chartDef.type === "doughnut",
             position: "bottom",
-            labels: {boxWidth:10, font:{size:10}}
+            labels: {
+              boxWidth:8,
+              boxHeight:8,
+              usePointStyle:true,
+              pointStyle:"circle",
+              padding:16,
+              color:"#596579",
+              font:{size:10,weight:"500"}
+            }
           },
           tooltip: {
             callbacks: {
@@ -265,8 +316,17 @@
           }
         },
         scales: chartDef.type === "doughnut" ? undefined : {
-          x: {ticks:{font:{size:9}, maxRotation:45, minRotation:0}, grid:{display:false}},
-          y: {beginAtZero:true, ticks:{font:{size:9}}}
+          x: {
+            ticks:{font:{size:9},color:"#7b8794",maxRotation:35,minRotation:0},
+            grid:{display:false},
+            border:{display:false}
+          },
+          y: {
+            beginAtZero:true,
+            ticks:{font:{size:9},color:"#7b8794",padding:8},
+            grid:{color:"rgba(80,96,112,.08)"},
+            border:{display:false}
+          }
         },
         onClick(event, elements) {
           if (!elements.length) return;
