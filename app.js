@@ -859,7 +859,7 @@
       const fetchOptions = {
         ...options,
         headers,
-        credentials:"omit",
+        credentials:"include",
         signal:controller.signal
       };
       delete fetchOptions.timeoutMs;
