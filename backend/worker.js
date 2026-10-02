@@ -2357,6 +2357,19 @@ export default {
       });
     }
 
+    if (url.pathname==="/api/auth/session-check" && request.method==="GET") {
+      try {
+        const userToken=await getUserToken(request,env);
+        if (!userToken) throw new Error("USER_TOKEN_REQUIRED");
+        return json(request,env,200,{
+          ok:true,
+          sessionValid:true
+        });
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
     if (url.pathname==="/api/dev/login" && request.method==="POST") {
       try {
         if (!env.BI_DEV_LOGIN_USER || !env.BI_DEV_LOGIN_PASSWORD) {
@@ -2415,7 +2428,11 @@ export default {
       authorize.searchParams.set("response_type","code");
       authorize.searchParams.set("client_id",env.BETHA_LOGIN_CLIENT_ID);
       authorize.searchParams.set("redirect_uri",env.BETHA_LOGIN_REDIRECT_URI || LOGIN_REDIRECT_DEFAULT);
-      authorize.searchParams.set("scope",env.BETHA_LOGIN_SCOPES || LOGIN_SCOPES_DEFAULT);
+      // No Authorization Code de credencial de servidor, os escopos devem estar
+      // vinculados à credencial no Studio Betha. Só envia "scopes" quando
+      // explicitamente configurado no Worker.
+      const requestedScopes=String(env.BETHA_LOGIN_SCOPES || "").trim();
+      if (requestedScopes) authorize.searchParams.set("scopes",requestedScopes);
       authorize.searchParams.set("state",state);
 
       return new Response(null,{
