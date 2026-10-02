@@ -356,6 +356,7 @@
   }
 
   const CACHE_PREFIX = "betha_bi_snapshot_v1";
+  const FINANCIAL_AGGREGATION_VERSION = 2;
 
   function dashboardCacheKey(view) {
     const periodo = document.getElementById("periodo")?.value || "ano";
@@ -388,6 +389,7 @@
     try {
       const record = {
         version:1,
+        aggregationVersion:FINANCIAL_AGGREGATION_VERSION,
         savedAt:new Date().toISOString(),
         state,
         payload:compactPayloadForCache(payload)
@@ -467,7 +469,10 @@
     const stamp = formatCacheTime(cached.savedAt);
     const suffix = cached.state === "partial" ? " · carga parcial" : "";
     const fallback = cached._fallback ? " · snapshot de outra fonte" : "";
-    setStatus("online", "Dados locais · " + stamp + suffix + fallback);
+    const stale = Number(cached.aggregationVersion||0) < FINANCIAL_AGGREGATION_VERSION
+      ? " · financeiro precisa atualizar"
+      : "";
+    setStatus("online", "Dados locais · " + stamp + suffix + fallback + stale);
     return true;
   }
 
@@ -759,6 +764,10 @@
 
     const cachedRecord=readDashboardCache("visao-geral");
     const canResume=cachedRecord && cachedRecord.state==="partial" && cachedRecord.payload;
+    const financialSnapshotStale=Boolean(
+      cachedRecord &&
+      Number(cachedRecord.aggregationVersion||0) < FINANCIAL_AGGREGATION_VERSION
+    );
     const merged=canResume
       ? JSON.parse(JSON.stringify(cachedRecord.payload))
       : {
@@ -777,16 +786,23 @@
       const sourceKey=sourceKeyForOverviewPart(partName);
       const existingAudit=existingAuditForPart(partName,merged);
       const needsRebuild=financialPartNeedsRebuild(partName,merged);
+      const isFinancial=["pagamentos","debitos","dividas","pagamentos-detalhados"].includes(partName);
 
-      if (canResume && existingAudit?.complete===true && !needsRebuild) {
+      // Snapshots anteriores à nova lógica financeira precisam de uma reconstrução única
+      // dessas quatro fontes, pois os agregados antigos não podem ser recalculados
+      // sem reler os registros.
+      const shouldRebuild=Boolean(
+        isFinancial &&
+        (
+          financialSnapshotStale ||
+          (needsRebuild && !(Number(existingAudit?.loaded)||0))
+        )
+      );
+
+      if (canResume && existingAudit?.complete===true && !shouldRebuild && !needsRebuild) {
         setStatus("waiting","Mantendo " + partName + " do snapshot local");
         continue;
       }
-
-      // Só reinicia uma fonte com mapeamento antigo quando ainda não existe
-      // progresso útil. Fontes parciais grandes são retomadas do último offset.
-      const hasUsefulProgress=(Number(existingAudit?.loaded)||0)>0;
-      const shouldRebuild=needsRebuild && !hasUsefulProgress;
 
       if (shouldRebuild) {
         if (partName==="pagamentos") {
@@ -815,12 +831,26 @@
         delete merged.meta.sourceRows?.[sourceKey];
         delete merged.meta.sourceTotals?.[sourceKey];
         delete merged.meta.sourceAudit?.[sourceKey];
+
+        if(partName==="dividas"){
+          delete merged.meta.sourceRows?.dividas;
+          delete merged.meta.sourceTotals?.dividas;
+          delete merged.meta.sourceAudit?.dividas;
+          delete merged.meta.sourceRows?.encerramentoDividas;
+          delete merged.meta.sourceTotals?.encerramentoDividas;
+          delete merged.meta.sourceAudit?.encerramentoDividas;
+        }
       }
 
-      setStatus("waiting","Carregando " + (index+1) + "/" + parts.length + " · " + partName);
+      setStatus(
+        "waiting",
+        (shouldRebuild ? "Reconstruindo " : "Carregando ") +
+        (index+1) + "/" + parts.length + " · " + partName
+      );
 
       try {
         const resumeOffset=(
+          !shouldRebuild &&
           canResume &&
           existingAudit &&
           existingAudit.complete!==true &&
