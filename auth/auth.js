@@ -112,7 +112,7 @@
     const timer = setTimeout(() => controller.abort(), 12000);
 
     try {
-      const response = await fetch(base + "/api/me/access", {
+      const response = await fetch(base + "/api/auth/session-check", {
         headers: {
           "Accept": "application/json",
           "Authorization": "Session " + token
@@ -123,7 +123,7 @@
 
       const payload = await response.json().catch(() => ({}));
 
-      if (!response.ok) {
+      if (!response.ok || payload.sessionValid !== true) {
         throw new Error(payload.error || ("HTTP_" + response.status));
       }
 
