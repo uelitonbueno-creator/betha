@@ -357,6 +357,7 @@
 
   const CACHE_PREFIX = "betha_bi_snapshot_v1";
   const FINANCIAL_AGGREGATION_VERSION = 2;
+  const DEBT_MAPPING_VERSION = 2;
 
   function dashboardCacheKey(view) {
     const periodo = document.getElementById("periodo")?.value || "ano";
@@ -390,6 +391,7 @@
       const record = {
         version:1,
         aggregationVersion:FINANCIAL_AGGREGATION_VERSION,
+        debtMappingVersion:DEBT_MAPPING_VERSION,
         savedAt:new Date().toISOString(),
         state,
         payload:compactPayloadForCache(payload)
@@ -469,9 +471,11 @@
     const stamp = formatCacheTime(cached.savedAt);
     const suffix = cached.state === "partial" ? " · carga parcial" : "";
     const fallback = cached._fallback ? " · snapshot de outra fonte" : "";
-    const stale = Number(cached.aggregationVersion||0) < FINANCIAL_AGGREGATION_VERSION
+    const financeStale = Number(cached.aggregationVersion||0) < FINANCIAL_AGGREGATION_VERSION;
+    const debtStale = Number(cached.debtMappingVersion||0) < DEBT_MAPPING_VERSION;
+    const stale = financeStale
       ? " · financeiro precisa atualizar"
-      : "";
+      : (debtStale ? " · dívida precisa atualizar" : "");
     setStatus("online", "Dados locais · " + stamp + suffix + fallback + stale);
     return true;
   }
@@ -768,6 +772,10 @@
       cachedRecord &&
       Number(cachedRecord.aggregationVersion||0) < FINANCIAL_AGGREGATION_VERSION
     );
+    const debtMappingStale=Boolean(
+      cachedRecord &&
+      Number(cachedRecord.debtMappingVersion||0) < DEBT_MAPPING_VERSION
+    );
     const merged=canResume
       ? JSON.parse(JSON.stringify(cachedRecord.payload))
       : {
@@ -795,6 +803,7 @@
         isFinancial &&
         (
           financialSnapshotStale ||
+          (partName==="dividas" && debtMappingStale) ||
           (needsRebuild && !(Number(existingAudit?.loaded)||0))
         )
       );
