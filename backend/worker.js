@@ -17,6 +17,7 @@ const OAUTH_TOKEN_URL = "https://plataforma-oauth.betha.cloud/auth/oauth2/token"
 const LOGIN_REDIRECT_DEFAULT = "https://betha-bi-api.ueliton-bueno.workers.dev/api/auth/callback";
 const FRONT_URL_DEFAULT = "https://uelitonbueno-creator.github.io/betha/";
 const LOGIN_SCOPES_DEFAULT = "contas-usuarios.suite,user-accounts.suite,licenses.suite";
+const SUPABASE_CACHE_WRITE_URL = "https://mliurxyjznxoafkwwtae.supabase.co/functions/v1/bi-cache-write";
 
 const BI_RESOURCES = Object.freeze({
   contribuintes: "/integracoes-bi/v1/contribuintes",
@@ -69,6 +70,30 @@ const BASE_RESOURCES = Object.freeze({
 });
 
 const FORWARDED_QUERY_PARAMS = new Set(["offset","limit","filter","fields","cpaFields","sort"]);
+
+async function persistSupabaseCache(env,body) {
+  if (!env.SUPABASE_CACHE_KEY) {
+    return {ok:false,skipped:true,error:"SUPABASE_CACHE_KEY_NOT_CONFIGURED"};
+  }
+
+  const response=await fetch(SUPABASE_CACHE_WRITE_URL,{
+    method:"POST",
+    headers:{
+      "content-type":"application/json",
+      "x-bi-cache-key":String(env.SUPABASE_CACHE_KEY)
+    },
+    body:JSON.stringify(body)
+  });
+
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok){
+    const error=new Error(data.error||("SUPABASE_CACHE_HTTP_"+response.status));
+    error.status=response.status;
+    error.detail=data.detail||null;
+    throw error;
+  }
+  return data;
+}
 
 function corsHeaders(request, env) {
   const origin = request.headers.get("Origin") || "";
@@ -2316,7 +2341,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-02-monotonic-cache-v16",
+        buildVersion:"2026-10-02-supabase-cache-v17",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2522,6 +2547,16 @@ export default {
           sessionValid:true,
           accessCount:Array.isArray(accesses)?accesses.length:0
         });
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
+    if (url.pathname==="/api/cache/snapshot" && request.method==="POST") {
+      try {
+        const body=await request.json();
+        const result=await persistSupabaseCache(env,body);
+        return json(request,env,200,result);
       } catch(error) {
         return errorResponse(request,env,error);
       }
