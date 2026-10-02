@@ -388,3 +388,381 @@ button,select{font:inherit}
   .detail-summary-grid { grid-template-columns:1fr; }
   .detail-hero-value { font-size:23px; }
 }
+
+
+/* =========================================================
+   BI Tributos · Modern UI 2026
+   Mantém identidade Betha e prioriza leitura executiva
+   ========================================================= */
+:root{
+  --bth-primary:#0b6ff4;
+  --bth-primary-hover:#0863dc;
+  --bth-primary-soft:#edf5ff;
+  --bth-navy:#172033;
+  --bth-dark:#202027;
+  --bth-bg:#f3f5f8;
+  --bth-surface:#ffffff;
+  --bth-line:#e5eaf0;
+  --bth-line-strong:#d7dee7;
+  --bth-text:#18212f;
+  --bth-muted:#66758a;
+  --bth-soft:#f8fafc;
+  --bth-success:#218b5b;
+  --bth-warning:#ad7600;
+  --bth-danger:#c0362c;
+  --shadow-soft:0 1px 2px rgba(22,34,51,.04),0 8px 24px rgba(22,34,51,.045);
+  --shadow-card:0 1px 2px rgba(22,34,51,.04),0 4px 14px rgba(22,34,51,.04);
+}
+
+html,body{
+  background:var(--bth-bg);
+  color:var(--bth-text);
+}
+
+.workspace{
+  padding:14px 20px 48px;
+  background:
+    radial-gradient(circle at 88% 0%,rgba(11,111,244,.035),transparent 28%),
+    var(--bth-bg);
+}
+
+.surface{
+  max-width:1480px;
+  padding:22px 24px 38px;
+  border:1px solid rgba(215,222,231,.75);
+  border-radius:10px;
+  box-shadow:var(--shadow-soft);
+}
+
+.context-bar{
+  min-height:38px;
+  padding:0 20px;
+  border-bottom:1px solid var(--bth-line);
+  box-shadow:0 1px 4px rgba(22,34,51,.03);
+}
+
+.page-heading{
+  align-items:center;
+  margin-bottom:20px;
+}
+.page-heading h1{
+  margin:3px 0 5px;
+  font-size:27px;
+  line-height:1.15;
+  font-weight:600;
+  letter-spacing:-.025em;
+}
+.page-heading p,.panel-header p{
+  color:var(--bth-muted);
+  font-size:12px;
+}
+.level-label{
+  color:#0b8068;
+  font-size:9px;
+  letter-spacing:.12em;
+}
+
+.api-status{
+  min-height:34px;
+  padding:7px 12px;
+  border-radius:7px;
+  font-size:10px;
+  box-shadow:0 1px 2px rgba(22,34,51,.03);
+}
+.status-dot{width:7px;height:7px;box-shadow:0 0 0 3px currentColor inset}
+
+.filter-row{
+  gap:10px;
+  align-items:flex-end;
+  margin-bottom:16px;
+  padding:12px 14px;
+  background:#fff;
+  border:1px solid var(--bth-line);
+  border-radius:8px;
+  box-shadow:var(--shadow-card);
+}
+.field{min-width:190px}
+.field label{
+  margin-bottom:5px;
+  color:#516074;
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.01em;
+}
+.field select{
+  height:38px;
+  padding:0 34px 0 11px;
+  border:1px solid var(--bth-line-strong);
+  border-radius:6px;
+  color:#1d2735;
+  transition:border-color .15s,box-shadow .15s;
+}
+.field select:focus{
+  outline:none;
+  border-color:var(--bth-primary);
+  box-shadow:0 0 0 3px rgba(11,111,244,.11);
+}
+.btn-primary-betha{
+  height:38px;
+  border-radius:6px;
+  padding:0 16px;
+  background:var(--bth-primary);
+  box-shadow:0 3px 8px rgba(11,111,244,.16);
+  transition:background .15s,transform .15s,box-shadow .15s;
+}
+.btn-primary-betha:hover{
+  background:var(--bth-primary-hover);
+  filter:none;
+  box-shadow:0 5px 12px rgba(11,111,244,.20);
+  transform:translateY(-1px);
+}
+
+.kpi-grid{
+  gap:10px;
+  margin-bottom:14px;
+}
+.kpi-card{
+  min-height:116px;
+  padding:14px 14px 12px;
+  border:1px solid var(--bth-line);
+  border-radius:8px;
+  box-shadow:0 1px 2px rgba(22,34,51,.025);
+  overflow:hidden;
+  transition:border-color .16s,box-shadow .16s,transform .16s;
+}
+.kpi-card::before{
+  content:"";
+  position:absolute;
+  left:0;top:0;bottom:0;
+  width:3px;
+  background:transparent;
+  transition:background .16s;
+}
+.kpi-card:hover{
+  border-color:#c8d5e5;
+  box-shadow:0 8px 20px rgba(22,34,51,.075);
+  transform:translateY(-2px);
+}
+.kpi-card:hover::before{background:var(--bth-primary)}
+.kpi-card small{
+  min-height:24px;
+  padding-right:18px;
+  color:#607087;
+  font-size:10px;
+  font-weight:600;
+}
+.kpi-card strong{
+  margin:5px 0 8px;
+  color:#121a26;
+  font-size:22px;
+  font-weight:650;
+  letter-spacing:-.025em;
+}
+.kpi-card span{
+  color:#96a1af;
+  font-size:8.5px;
+}
+.kpi-card .kpi-more{
+  right:10px;
+  top:10px;
+  color:#9aa6b4;
+  font-size:16px;
+}
+
+.integration-coverage{
+  align-items:flex-start;
+  gap:16px;
+  margin-bottom:16px;
+  padding:14px 16px;
+  border:1px solid var(--bth-line);
+  border-radius:8px;
+  box-shadow:var(--shadow-card);
+}
+.coverage-title{
+  min-width:205px;
+  padding-top:2px;
+}
+.coverage-title strong{
+  font-size:12px;
+  font-weight:700;
+}
+.coverage-title span{
+  margin-top:2px;
+  color:var(--bth-muted);
+}
+.coverage-items{gap:7px}
+.coverage-item{
+  min-height:39px;
+  padding:7px 9px;
+  border:1px solid #e5eaf0;
+  border-radius:6px;
+  background:#f9fbfd;
+}
+.coverage-audit{
+  min-width:205px;
+}
+.coverage-audit small{color:#8390a0}
+
+.drill-hint{
+  gap:12px;
+  margin-bottom:16px;
+  padding:11px 14px;
+  border:1px solid #dcefe9;
+  border-left:3px solid #31c49d;
+  border-radius:7px;
+  background:linear-gradient(90deg,#f1fbf8,#f8fcfb);
+}
+.drill-hint i{font-size:20px}
+.drill-hint strong{font-size:11px}
+.drill-hint span{font-size:10px}
+
+.chart-grid{
+  gap:14px;
+  margin-bottom:16px;
+}
+.chart-card{
+  border:1px solid var(--bth-line);
+  border-radius:9px;
+  box-shadow:var(--shadow-card);
+  overflow:hidden;
+  transition:box-shadow .16s,border-color .16s;
+}
+.chart-card:hover{
+  border-color:#d2dbe6;
+  box-shadow:0 8px 24px rgba(22,34,51,.07);
+}
+.chart-card-header{
+  padding:14px 15px 12px;
+  border-bottom:1px solid #edf0f4;
+  background:linear-gradient(180deg,#fff,#fdfefe);
+}
+.chart-title-block h2{
+  font-size:14px;
+  font-weight:650;
+  color:#172033;
+}
+.chart-title-block p{
+  margin-top:3px;
+  color:#738095;
+  font-size:10px;
+}
+.source-badge{
+  border-radius:999px;
+  padding:4px 7px;
+  background:#edf4fb;
+  color:#526479;
+}
+.source-badge.base{background:#fff5d9;color:#815b00}
+.detail-button{
+  padding:5px 7px;
+  border-radius:4px;
+  color:var(--bth-primary);
+  transition:background .15s;
+}
+.detail-button:hover{background:var(--bth-primary-soft)}
+.chart-body{
+  height:310px;
+  padding:14px 15px 12px;
+}
+.chart-empty{
+  inset:14px 15px 12px;
+  border-radius:7px;
+  background:linear-gradient(180deg,#fbfcfe,#f7f9fc);
+}
+
+.panel,.source-panel{
+  border:1px solid var(--bth-line);
+  border-radius:8px;
+  box-shadow:var(--shadow-card);
+  overflow:hidden;
+}
+.panel-header{
+  padding:14px 16px;
+}
+.source-summary{padding:13px 16px}
+.source-chip{
+  border-radius:999px;
+  padding:6px 9px;
+  background:#f7f9fc;
+}
+
+.detail-drawer{
+  width:min(720px,96vw);
+  border-left:1px solid rgba(215,222,231,.9);
+  box-shadow:-18px 0 42px rgba(21,31,45,.18);
+}
+.drawer-header{
+  padding:18px 20px 16px;
+  background:#fff;
+}
+.drawer-header h2{
+  font-size:21px;
+  font-weight:600;
+  letter-spacing:-.015em;
+}
+.drawer-body{
+  padding:18px 20px 28px;
+  background:#fbfcfe;
+}
+.drawer-section{
+  margin-bottom:16px;
+  padding:15px;
+  border:1px solid var(--bth-line);
+  border-radius:8px;
+  background:#fff;
+}
+.drawer-section h3{
+  font-size:12px;
+  font-weight:700;
+  color:#263246;
+}
+.detail-hero{
+  border-color:#d9e7fb;
+  background:linear-gradient(135deg,#f5f9ff,#fff);
+}
+.detail-hero-value{
+  color:#12213a;
+  font-size:30px;
+}
+.detail-stat{
+  border-radius:6px;
+  background:#f8fafc;
+}
+.detail-table-wrap{
+  border-radius:6px;
+  border-color:#e1e7ee;
+}
+.detail-table th,.detail-table td{
+  padding:9px 10px;
+}
+.detail-table tbody tr:hover{background:#f7faff}
+.detail-security-note{border-radius:5px}
+
+.drawer-backdrop{
+  background:rgba(13,22,36,.36);
+  backdrop-filter:blur(1.5px);
+}
+
+.tool-button{border-radius:6px}
+
+@media(max-width:1100px){
+  .surface{padding:20px 18px 32px}
+  .kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:820px){
+  .workspace{padding:10px 10px 30px}
+  .surface{border-radius:8px;padding:18px 14px 28px}
+  .filter-row{align-items:stretch}
+  .chart-body{height:290px}
+}
+@media(max-width:640px){
+  .workspace{padding:7px 6px 24px}
+  .surface{padding:15px 10px 24px;border-radius:6px}
+  .page-heading h1{font-size:23px}
+  .kpi-grid{grid-template-columns:1fr 1fr;gap:8px}
+  .kpi-card{min-height:108px}
+  .kpi-card strong{font-size:19px}
+  .integration-coverage{padding:12px}
+  .chart-body{height:260px;padding:10px}
+  .detail-drawer{width:100vw}
+}
