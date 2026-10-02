@@ -75,6 +75,7 @@
   let currentView = query.view === "usuarios-admin" ? "usuarios-admin" :
     (query.view && dashboards[query.view] ? query.view : "visao-geral");
   let currentPayload = null;
+  let authorizedTenants = [];
 
   let tenantId = query.tenant || query.entidadeId || query.entityId || "";
   let entityLabel = query.entidade || query.entity || query.entidadeNome || "ENTIDADE NÃO IDENTIFICADA";
@@ -1877,14 +1878,55 @@
     });
   });
 
-  function selectTenantAndReload(tenant) {
-    if (!tenant || !tenant.id) return;
+  function renderAuthorizedTenantMenu() {
+    const list = document.getElementById("entityList");
+    if (!list) return;
+
+    list.innerHTML = "";
+
+    for (const tenant of authorizedTenants) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "entity-option" + (tenant.id === tenantId ? " is-current" : "");
+      button.textContent = tenant.name || tenant.id;
+      button.addEventListener("click", () => applyTenantInPlace(tenant, true));
+      list.appendChild(button);
+    }
+  }
+
+  function applyTenantInPlace(tenant, resumeView = false) {
+    if (!tenant || !tenant.id) return false;
+
+    tenantId = tenant.id;
+    entityLabel = tenant.name || tenant.id;
+
     const url = new URL(location.href);
-    url.searchParams.set("tenant", tenant.id);
+    url.searchParams.set("tenant", tenantId);
     if (tenant.name) url.searchParams.set("entidade", tenant.name);
     else url.searchParams.delete("entidade");
-    // replace evita manter uma URL sem tenant no histórico do navegador.
-    location.replace(url.toString());
+
+    // Atualiza a URL sem navegar/recarregar. Isso preserva a sessão do login
+    // mesmo em navegadores embutidos que descartam storage entre navegações.
+    history.replaceState({}, "", url);
+
+    if (tenantGate) tenantGate.hidden = true;
+    bethaApp.style.display = "";
+
+    document.getElementById("entityContext").textContent =
+      String(entityLabel).toUpperCase();
+
+    renderAuthorizedTenantMenu();
+
+    if (resumeView) {
+      if (currentView === "usuarios-admin") {
+        renderUsersAdmin();
+      } else {
+        renderDashboard(currentView);
+        loadDashboardData(currentView);
+      }
+    }
+
+    return true;
   }
 
   function showTenantSelector(tenants, options = {}) {
@@ -1913,7 +1955,7 @@
         '<span><strong>' + escapeHtml(tenant.name || tenant.id) + '</strong>' +
         '<small>database: ' + escapeHtml(tenant.databaseId || "—") +
         ' · entity: ' + escapeHtml(tenant.entityId || "—") + '</small></span>';
-      button.addEventListener("click", () => selectTenantAndReload(tenant));
+      button.addEventListener("click", () => applyTenantInPlace(tenant, true));
       tenantGateList.appendChild(button);
     }
   }
@@ -1926,6 +1968,7 @@
       if (!Array.isArray(result.tenants)) throw new Error("TENANT_LIST_INVALID");
 
       const tenants = result.tenants;
+      authorizedTenants = tenants.slice();
       const list = document.getElementById("entityList");
       list.innerHTML = "";
 
@@ -1946,8 +1989,7 @@
 
       // Sem tenant na URL: uma entidade entra automaticamente; várias exigem escolha.
       if (!currentTenant && !tenantId && tenants.length === 1) {
-        selectTenantAndReload(tenants[0]);
-        return false;
+        currentTenant = tenants[0];
       }
 
       // Tenant digitado/manipulado ou usuário com várias entidades: nunca escolhe silenciosamente.
@@ -1961,24 +2003,7 @@
         return false;
       }
 
-      tenantId = currentTenant.id;
-      entityLabel = currentTenant.name || currentTenant.id;
-
-      if (tenantGate) tenantGate.hidden = true;
-      bethaApp.style.display = "";
-
-      document.getElementById("entityContext").textContent =
-        String(entityLabel).toUpperCase();
-
-      for (const tenant of tenants) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "entity-option" + (tenant.id === tenantId ? " is-current" : "");
-        button.textContent = tenant.name || tenant.id;
-        button.addEventListener("click", () => selectTenantAndReload(tenant));
-        list.appendChild(button);
-      }
-
+      applyTenantInPlace(currentTenant, false);
       return true;
     } catch (error) {
       console.warn("Falha ao carregar entidades autorizadas:", error);
