@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261002-modern1">
+  <link rel="stylesheet" href="style.css?v=20261002-tenants1">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -38,6 +38,17 @@
         ENTRAR COM BETHA
       </button>
       <div id="authMessage" class="auth-message"></div>
+    </div>
+  </div>
+
+
+  <div id="tenantGate" class="tenant-gate" hidden>
+    <div class="tenant-card">
+      <div class="auth-brand">B</div>
+      <h1 id="tenantGateTitle">Selecione a prefeitura</h1>
+      <p id="tenantGateMessage">Seu acesso Betha está autenticado. Escolha a entidade que deseja consultar.</p>
+      <div id="tenantGateList" class="tenant-gate-list"></div>
+      <button id="tenantLogoutButton" class="tenant-logout" type="button">SAIR DA CONTA</button>
     </div>
   </div>
 
@@ -280,9 +291,9 @@
     </div>
   </aside>
 
-  <script src="config.js?v=20261002-oauth1"></script>
+  <script src="config.js?v=20261002-tenants1"></script>
   <script src="auth/auth.js?v=20261002-oauth2"></script>
   <script src="dashboard-catalog.js"></script>
-  <script src="app.js?v=20261002-modern1"></script>
+  <script src="app.js?v=20261002-tenants1"></script>
 </body>
 </html>
