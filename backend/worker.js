@@ -2455,7 +2455,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-02-cookie-chunks-v19",
+        buildVersion:"2026-10-02-cookie-verify-v20",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2673,12 +2673,97 @@ export default {
         appUrl.hash="";
 
         const responseHeaders=new Headers();
-        responseHeaders.set("Location",appUrl.toString());
+        responseHeaders.set("Content-Type","text/html; charset=utf-8");
         responseHeaders.set("Cache-Control","no-store");
         appendSessionCookies(responseHeaders,session,sessionSeconds);
 
-        return new Response(null,{
-          status:302,
+        const verifyHtml=`<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Validando sessão • BI Tributos</title>
+<style>
+*{box-sizing:border-box}body{font-family:Arial,sans-serif;background:#eff0f2;margin:0;min-height:100vh;display:grid;place-items:center;padding:20px;color:#24272c}
+.box{background:#fff;border:1px solid #dfe3e8;max-width:560px;width:100%;padding:30px;text-align:center;box-shadow:0 8px 28px rgba(0,0,0,.08)}
+.brand{width:58px;height:58px;margin:0 auto 14px;border-radius:10px;background:#202b84;color:#fff;display:grid;place-items:center;font-size:30px;font-weight:700;font-style:italic}
+h1{font-size:21px;font-weight:500;margin:0 0 8px}p{font-size:13px;line-height:1.55;color:#626b75}
+pre{display:none;text-align:left;white-space:pre-wrap;word-break:break-word;background:#f6f7f8;border:1px solid #e1e4e8;padding:12px;font-size:12px}
+.err{color:#a62d2d}
+button{display:none;width:100%;height:38px;border:0;background:#4263eb;color:white;font-weight:600;cursor:pointer;margin-top:12px}
+</style>
+</head>
+<body>
+<main class="box">
+<div class="brand">B</div>
+<h1 id="title">Login Betha concluído</h1>
+<p id="status">Validando a sessão segura do BI…</p>
+<pre id="diag"></pre>
+<button id="retry" type="button">ENTRAR NOVAMENTE</button>
+</main>
+<script>
+(async()=>{
+  const title=document.getElementById("title");
+  const status=document.getElementById("status");
+  const diag=document.getElementById("diag");
+  const retry=document.getElementById("retry");
+
+  retry.onclick=()=>location.replace("/api/auth/login");
+
+  try{
+    await new Promise(r=>setTimeout(r,120));
+    const check=await fetch("/api/auth/session-check",{
+      method:"GET",
+      credentials:"include",
+      headers:{"Accept":"application/json"},
+      cache:"no-store"
+    });
+    const body=await check.json().catch(()=>({}));
+
+    if(check.ok && body.sessionValid===true){
+      status.textContent="Sessão confirmada. Abrindo o BI Tributos…";
+      location.replace("/");
+      return;
+    }
+
+    const debugResponse=await fetch("/api/auth/session-debug",{
+      method:"GET",
+      credentials:"include",
+      headers:{"Accept":"application/json"},
+      cache:"no-store"
+    });
+    const debug=await debugResponse.json().catch(()=>({}));
+
+    title.textContent="Sessão não foi gravada";
+    status.className="err";
+    status.textContent="A autenticação Betha funcionou, mas o navegador não devolveu a sessão ao Worker.";
+    diag.style.display="block";
+    diag.textContent=JSON.stringify({
+      checkStatus:check.status,
+      checkError:body.error||"",
+      cookiePresent:debug.cookiePresent||false,
+      chunks:debug.chunks||[],
+      combinedLength:debug.combinedLength||0,
+      sessionOpenable:debug.sessionOpenable||false,
+      sessionKind:debug.sessionKind||"",
+      debugError:debug.error||""
+    },null,2);
+    retry.style.display="block";
+  }catch(error){
+    title.textContent="Falha ao validar a sessão";
+    status.className="err";
+    status.textContent="O navegador não conseguiu concluir a validação local do BI.";
+    diag.style.display="block";
+    diag.textContent=String(error&&error.message||error);
+    retry.style.display="block";
+  }
+})();
+</script>
+</body>
+</html>`;
+
+        return new Response(verifyHtml,{
+          status:200,
           headers:responseHeaders
         });
       } catch(authError) {
