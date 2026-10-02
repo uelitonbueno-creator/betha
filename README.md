@@ -14,7 +14,9 @@ Front-end de BI tributário no padrão visual Betha, preparado para operar de fo
 - API **Dados do Tributos** como fonte complementar.
 - Endpoints de leitura em allowlist.
 - Nenhuma credencial no GitHub Pages.
-- Rotas de dados protegidas até a integração da sessão/SSO Betha.
+- Sessão OAuth Betha integrada no front/Worker.
+- Pós-login multi-entidade: uma entidade entra automaticamente; múltiplas exibem seletor.
+- Rotas de dados protegidas por validação de database + entity no backend.
 
 ## Visões
 
@@ -89,11 +91,10 @@ Esses valores pertencem exclusivamente ao backend.
 
 Para transformar a estrutura em dados reais:
 
-1. integrar a sessão/contexto do usuário Betha;
-2. cadastrar a primeira entidade no cofre do backend;
-3. publicar o backend;
-4. implementar/cachear as agregações dos dashboards;
-5. validar os números contra o Tributos;
-6. liberar progressivamente as demais entidades.
+1. publicar a versão atual do Worker no Cloudflare;
+2. validar o login real e os acessos retornados por `/api/me/tenants`;
+3. cadastrar/confirmar as entidades no cofre do backend;
+4. validar os números dos dashboards contra o Tributos;
+5. liberar progressivamente as demais entidades.
 
 Nenhum gráfico do front utiliza valores fictícios: enquanto a fonte real não estiver conectada, o componente permanece em estado **aguardando dados**.
