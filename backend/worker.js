@@ -331,16 +331,62 @@ function readCookie(request,name) {
   return "";
 }
 
-function sessionCookieHeader(session,maxAge) {
+function sessionCookieValue(name,value,maxAge) {
   const seconds=Math.max(0,Number(maxAge)||0);
   return [
-    SESSION_COOKIE+"="+encodeURIComponent(session||""),
+    name+"="+encodeURIComponent(value||""),
     "Path=/",
     "HttpOnly",
     "Secure",
     "SameSite=Lax",
     "Max-Age="+seconds
   ].join("; ");
+}
+
+function sessionCookieHeaders(session,maxAge) {
+  const value=String(session||"");
+  const chunkSize=2800;
+  const chunks=[];
+  for (let i=0;i<value.length;i+=chunkSize) chunks.push(value.slice(i,i+chunkSize));
+
+  // Mantém margem para tokens maiores sem ultrapassar o limite por cookie.
+  if (chunks.length>6) throw new Error("APPLICATION_SESSION_TOO_LARGE");
+
+  const out=[];
+  if (!chunks.length) {
+    out.push(sessionCookieValue(SESSION_COOKIE,"",0));
+    for (let i=0;i<6;i++) out.push(sessionCookieValue(SESSION_COOKIE+"_"+i,"",0));
+    return out;
+  }
+
+  // Limpa o formato antigo e grava o novo em partes.
+  out.push(sessionCookieValue(SESSION_COOKIE,"",0));
+  chunks.forEach((chunk,index)=>{
+    out.push(sessionCookieValue(SESSION_COOKIE+"_"+index,chunk,maxAge));
+  });
+  for (let i=chunks.length;i<6;i++) {
+    out.push(sessionCookieValue(SESSION_COOKIE+"_"+i,"",0));
+  }
+  return out;
+}
+
+function readSessionCookie(request) {
+  const legacy=readCookie(request,SESSION_COOKIE);
+  if (legacy) return legacy;
+
+  let combined="";
+  for (let i=0;i<6;i++) {
+    const chunk=readCookie(request,SESSION_COOKIE+"_"+i);
+    if (!chunk) break;
+    combined+=chunk;
+  }
+  return combined;
+}
+
+function appendSessionCookies(headers,session,maxAge) {
+  for (const cookie of sessionCookieHeaders(session,maxAge)) {
+    headers.append("Set-Cookie",cookie);
+  }
 }
 
 async function proxyFront(request) {
@@ -382,7 +428,7 @@ async function getUserToken(request, env) {
     return session.accessToken;
   }
 
-  const cookieSession=readCookie(request,SESSION_COOKIE);
+  const cookieSession=readSessionCookie(request);
   if (cookieSession) {
     const session=await openSession(cookieSession,env.BETHA_LOGIN_CLIENT_SECRET);
     return session.accessToken;
@@ -2409,7 +2455,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-02-multitenant-login-v18",
+        buildVersion:"2026-10-02-cookie-chunks-v19",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2438,18 +2484,57 @@ export default {
       }
     }
 
+    if (url.pathname==="/api/auth/session-debug" && request.method==="GET") {
+      const legacy=readCookie(request,SESSION_COOKIE);
+      const chunks=[];
+      for (let i=0;i<6;i++) {
+        const value=readCookie(request,SESSION_COOKIE+"_"+i);
+        if (value) chunks.push({index:i,length:value.length});
+      }
+
+      const combined=readSessionCookie(request);
+      let sessionOpenable=false;
+      let sessionKind="";
+      let expiresAt=null;
+      let error="";
+
+      if (combined) {
+        try {
+          const payload=await openSession(combined,env.BETHA_LOGIN_CLIENT_SECRET);
+          sessionOpenable=Boolean(payload && payload.accessToken);
+          sessionKind=String(payload && payload.kind || "");
+          expiresAt=payload && payload.exp ? Number(payload.exp) : null;
+        } catch(e) {
+          error=e && e.message ? e.message : "SESSION_OPEN_FAILED";
+        }
+      }
+
+      return json(request,env,200,{
+        ok:true,
+        cookiePresent:Boolean(combined),
+        legacyCookieLength:legacy.length,
+        chunks,
+        combinedLength:combined.length,
+        sessionOpenable,
+        sessionKind,
+        expiresAt,
+        error
+      });
+    }
+
     if (url.pathname==="/api/auth/logout" && request.method==="GET") {
       const target=new URL(request.url);
       target.pathname="/";
       target.search="";
       target.hash="";
+      const responseHeaders=new Headers();
+      responseHeaders.set("Location",target.toString());
+      responseHeaders.set("Cache-Control","no-store");
+      appendSessionCookies(responseHeaders,"",0);
+
       return new Response(null,{
         status:302,
-        headers:{
-          "Location":target.toString(),
-          "Set-Cookie":sessionCookieHeader("",0),
-          "Cache-Control":"no-store"
-        }
+        headers:responseHeaders
       });
     }
 
@@ -2587,13 +2672,14 @@ export default {
         appUrl.search="";
         appUrl.hash="";
 
+        const responseHeaders=new Headers();
+        responseHeaders.set("Location",appUrl.toString());
+        responseHeaders.set("Cache-Control","no-store");
+        appendSessionCookies(responseHeaders,session,sessionSeconds);
+
         return new Response(null,{
           status:302,
-          headers:{
-            "Location":appUrl.toString(),
-            "Set-Cookie":sessionCookieHeader(session,sessionSeconds),
-            "Cache-Control":"no-store"
-          }
+          headers:responseHeaders
         });
       } catch(authError) {
         console.error("oauth callback",authError);
