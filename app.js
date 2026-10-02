@@ -1288,73 +1288,257 @@
     el.lastElementChild.textContent = text;
   }
 
-  function drillChainFor(source, drill) {
-    const nodes = ["Visão consolidada"];
-    if (source && source.includes("pagamentos")) nodes.push("Composição do pagamento");
-    else if (source && source.includes("dividas")) nodes.push("Composição da dívida");
-    else if (source && source.includes("parcel")) nodes.push("Composição do parcelamento");
-    else if (source && source.includes("imoveis")) nodes.push("Composição cadastral");
-    else nodes.push("Composição do indicador");
-    nodes.push(drill ? "Registros: " + drill : "Registros individuais");
-    return nodes;
+  function sourceKeyCandidates(source) {
+    const raw=String(source||"");
+    const parts=raw.split("|").map(x=>x.trim()).filter(Boolean);
+    const out=[];
+
+    for(const part of parts){
+      const resource=part.includes(":") ? part.split(":").slice(1).join(":") : part;
+      const camel=resource.replace(/-([a-z])/g,(_,c)=>c.toUpperCase());
+      out.push(resource,camel);
+
+      if(resource==="pagamentos-detalhados") out.push("pagamentosDetalhados");
+      if(resource==="encerramento-dividas") out.push("encerramentoDividas","dividas");
+      if(resource==="encerramento-lancamentos") out.push("encerramentoLancamentos","debitos");
+    }
+
+    return [...new Set(out)];
+  }
+
+  function auditForSource(source) {
+    const audits=currentPayload?.meta?.sourceAudit||{};
+    for(const key of sourceKeyCandidates(source)){
+      if(audits[key]) return {key,audit:audits[key]};
+    }
+    return null;
+  }
+
+  function coverageForSource(source) {
+    const found=auditForSource(source);
+    if(!found) return null;
+    const a=found.audit||{};
+    return {
+      key:found.key,
+      loaded:Number(a.loaded||0),
+      pages:Number(a.pages||0),
+      complete:a.complete===true,
+      reportedTotal:a.reportedTotal===null||a.reportedTotal===undefined ? null : Number(a.reportedTotal),
+      error:a.error||null
+    };
+  }
+
+  function relatedChartIdsForKpi(kpi) {
+    const map={
+      arrecadado:["receita-mensal","receita-credito"],
+      lancado:["lancado-pago-saldo"],
+      divida:["divida-evolucao","situacao-divida"],
+      parcelado:[],
+      contribuintes:["cadastros"],
+      imoveis:["cadastros"]
+    };
+    return map[kpi.id]||[];
+  }
+
+  function datasetAllowedForKpi(kpi,dataset) {
+    const label=String(dataset?.label||"").toLowerCase();
+    if(kpi.id==="contribuintes") return label.includes("contrib");
+    if(kpi.id==="imoveis") return label.includes("imó") || label.includes("imov");
+    if(kpi.id==="arrecadado") return label.includes("pago") || label.includes("arrecad");
+    if(kpi.id==="lancado") return label.includes("lanç") || label.includes("lanc");
+    if(kpi.id==="divida") return label.includes("dívida") || label.includes("divida") || label.includes("saldo");
+    return true;
+  }
+
+  function valueDisplay(value,format) {
+    if(value===null || value===undefined || value==="") return "—";
+    if(format==="currency") return Number(value||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+    if(format==="percent") return Number(value||0).toLocaleString("pt-BR",{maximumFractionDigits:2})+"%";
+    return Number.isFinite(Number(value)) ? Number(value).toLocaleString("pt-BR") : String(value);
+  }
+
+  function chartSeriesTable(chartDef,data,kpi=null) {
+    if(!data || !Array.isArray(data.labels) || !Array.isArray(data.datasets)) return "";
+    const datasets=(data.datasets||[]).filter(ds=>!kpi || datasetAllowedForKpi(kpi,ds));
+    if(!datasets.length) return "";
+
+    const totals=datasets.map(ds=>(ds.data||[]).reduce((sum,v)=>sum+(Number(v)||0),0));
+    const grand=totals.reduce((a,b)=>a+b,0);
+    const rows=data.labels.map((label,index)=>{
+      const cells=datasets.map((ds,di)=>{
+        const value=Number(ds.data?.[index]||0);
+        const percent=grand>0 ? (value/grand)*100 : null;
+        return `<td><strong>${escapeHtml(valueDisplay(value,data.format))}</strong>${percent!==null ? `<small class="detail-percent">${percent.toLocaleString("pt-BR",{maximumFractionDigits:1})}%</small>` : ""}</td>`;
+      }).join("");
+      return `<tr><td>${escapeHtml(String(label))}</td>${cells}</tr>`;
+    }).join("");
+
+    return `
+      <div class="detail-table-wrap">
+        <table class="detail-table detail-series-table">
+          <thead>
+            <tr><th>${escapeHtml(chartDef.dimension ? chartDef.dimension.replace(/:.*$/,"") : "Período / categoria")}</th>${datasets.map(ds=>`<th>${escapeHtml(ds.label||chartDef.title)}</th>`).join("")}</tr>
+          </thead>
+          <tbody>${rows}</tbody>
+          <tfoot>
+            <tr><th>Total exibido</th>${datasets.map((ds,i)=>`<th>${escapeHtml(valueDisplay(totals[i],data.format))}</th>`).join("")}</tr>
+          </tfoot>
+        </table>
+      </div>
+    `;
+  }
+
+  function sourceOriginHtml(source,field) {
+    const coverage=coverageForSource(source);
+    const sourceUsed=currentPayload?.meta?.sourceUsed||{};
+    const mapping=currentPayload?.meta?.fieldMapping||{};
+    const sourceUsedText=Object.values(sourceUsed).filter(Boolean).join(", ");
+    const mappingText=Object.entries(mapping).map(([k,v])=>v ? k+": "+v : "").filter(Boolean).join(" · ");
+
+    return `
+      <section class="drawer-section">
+        <h3>Origem e cobertura</h3>
+        <div class="detail-summary-grid">
+          <div class="detail-stat"><span>Fonte declarada</span><strong>${escapeHtml(source||"—")}</strong></div>
+          <div class="detail-stat"><span>Campo / expressão</span><strong>${escapeHtml(field||"—")}</strong></div>
+          ${coverage ? `
+            <div class="detail-stat"><span>Registros lidos</span><strong>${coverage.loaded.toLocaleString("pt-BR")}</strong></div>
+            <div class="detail-stat"><span>Páginas</span><strong>${coverage.pages.toLocaleString("pt-BR")}</strong></div>
+            <div class="detail-stat"><span>Situação da fonte</span><strong>${coverage.complete ? "COMPLETO" : "PARCIAL"}</strong></div>
+          ` : ""}
+        </div>
+        ${sourceUsedText ? `<div class="data-path">Fonte efetivamente utilizada: ${escapeHtml(sourceUsedText)}</div>` : ""}
+        ${mappingText ? `<div class="data-path">Mapeamento detectado: ${escapeHtml(mappingText)}</div>` : ""}
+      </section>
+    `;
+  }
+
+  function drillProgressHtml(source,drill) {
+    const nodes=[
+      {label:"Visão consolidada",state:"done"},
+      {label:"Composição",state:"done"},
+      {label:"Origem / cadastro",state:"done"},
+      {label:drill ? "Registro individual · "+drill : "Registro individual",state:"locked"}
+    ];
+    return `
+      <section class="drawer-section">
+        <h3>Caminho macro → micro</h3>
+        <div class="drill-chain drill-chain-rich">
+          ${nodes.map((node,index)=>`
+            ${index ? '<i class="mdi mdi-chevron-right"></i>' : ''}
+            <span class="drill-node ${node.state==="locked" ? "is-locked" : "is-ready"}">
+              ${node.state==="locked" ? '<i class="mdi mdi-lock-outline"></i>' : '<i class="mdi mdi-check-circle-outline"></i>'}
+              ${escapeHtml(node.label)}
+            </span>
+          `).join("")}
+        </div>
+        <p class="detail-security-note"><i class="mdi mdi-shield-lock-outline"></i> O nível de registro individual será liberado quando o login oficial Betha estiver vinculado à entidade. Até lá, o BI exibe somente composição e origem sem expor dados pessoais.</p>
+      </section>
+    `;
+  }
+
+  function compositionForKpi(kpi) {
+    const ids=relatedChartIdsForKpi(kpi);
+    const pieces=[];
+    for(const id of ids){
+      const def=(dashboards[currentView]?.charts||[]).find(x=>x.id===id);
+      const data=currentPayload?.charts?.[id];
+      if(!def || !data) continue;
+      const table=chartSeriesTable(def,data,kpi);
+      if(!table) continue;
+      pieces.push(`
+        <div class="detail-composition-block">
+          <div class="detail-composition-head">
+            <strong>${escapeHtml(def.title)}</strong>
+            <span>${escapeHtml(def.subtitle||"")}</span>
+          </div>
+          ${table}
+        </div>
+      `);
+    }
+    return pieces.join("");
   }
 
   function openKpiDetail(kpi) {
-    const raw = currentPayload && currentPayload.kpis ? currentPayload.kpis[kpi.id] : undefined;
+    const raw=currentPayload?.kpis?.[kpi.id];
+    const composition=compositionForKpi(kpi);
+    const coverage=coverageForSource(kpi.source);
+
     openDrawer(kpi.label, `
-      <section class="drawer-section">
-        <h3>Indicador</h3>
-        <p>Valor atual: <strong>${escapeHtml(formatValue(raw, kpi.format))}</strong></p>
-        <div class="data-path">Fonte: ${escapeHtml(kpi.source)}<br>Campo/expressão: ${escapeHtml(kpi.field)}</div>
+      <section class="drawer-section detail-hero">
+        <small>VALOR CONSOLIDADO</small>
+        <strong class="detail-hero-value">${escapeHtml(formatValue(raw,kpi.format))}</strong>
+        <span>Período: ${escapeHtml(document.getElementById("periodo")?.selectedOptions?.[0]?.textContent||"—")} · Exercício: ${escapeHtml(document.getElementById("exercicio")?.value||"—")}</span>
       </section>
-      ${drillHtml(drillChainFor(kpi.source, null))}
+
       <section class="drawer-section">
-        <h3>Detalhamento</h3>
-        <p>Quando os dados estiverem conectados, esta área exibirá os registros que formam o total, com filtros preservados da visão atual.</p>
+        <h3>Composição do indicador</h3>
+        ${composition || `
+          <div class="detail-empty-state">
+            <i class="mdi mdi-database-check-outline"></i>
+            <strong>Indicador consolidado disponível</strong>
+            <span>${coverage ? coverage.loaded.toLocaleString("pt-BR")+" registros processados na fonte." : "A fonte foi consolidada, mas este indicador ainda não possui uma dimensão armazenada no snapshot."}</span>
+          </div>
+        `}
       </section>
+
+      ${sourceOriginHtml(kpi.source,kpi.field)}
+      ${drillProgressHtml(kpi.source,sourceKeyCandidates(kpi.source)[0])}
     `);
   }
 
   function openChartDetail(chartDef, selected) {
-    let selectedHtml = "";
-    if (selected) {
-      selectedHtml = `
-        <section class="drawer-section">
+    const data=currentPayload?.charts?.[chartDef.id];
+    let selectedHtml="";
+    if(selected){
+      selectedHtml=`
+        <section class="drawer-section detail-selected-point">
           <h3>Ponto selecionado</h3>
-          <p><strong>${escapeHtml(String(selected.label))}</strong></p>
-          <table class="detail-table"><tbody>
-          ${selected.datasets.map(x => `<tr><td>${escapeHtml(x.label)}</td><td>${escapeHtml(String(x.value ?? "—"))}</td></tr>`).join("")}
-          </tbody></table>
+          <strong>${escapeHtml(String(selected.label))}</strong>
+          <div class="detail-summary-grid">
+            ${selected.datasets.map(x=>`<div class="detail-stat"><span>${escapeHtml(x.label)}</span><strong>${escapeHtml(valueDisplay(x.value,data?.format))}</strong></div>`).join("")}
+          </div>
         </section>
       `;
     }
 
-    const rows = currentPayload && currentPayload.details && currentPayload.details[chartDef.id];
-    const rowsHtml = Array.isArray(rows) && rows.length ? buildRowsTable(rows) :
-      "<p>A listagem de registros aparecerá aqui quando o motor analítico estiver conectado.</p>";
-
-    openDrawer(chartDef.title, `
+    const series=chartSeriesTable(chartDef,data);
+    openDrawer(chartDef.title,`
       <section class="drawer-section">
         <h3>Definição analítica</h3>
-        <div class="data-path">Fonte: ${escapeHtml(chartDef.source)}<br>Dimensão: ${escapeHtml(chartDef.dimension || "—")}<br>Medidas: ${escapeHtml((chartDef.measures || []).join(", "))}</div>
+        <div class="detail-summary-grid">
+          <div class="detail-stat"><span>Dimensão</span><strong>${escapeHtml(chartDef.dimension||"—")}</strong></div>
+          <div class="detail-stat"><span>Medidas</span><strong>${escapeHtml((chartDef.measures||[]).join(", ")||"—")}</strong></div>
+          <div class="detail-stat"><span>Fonte</span><strong>${escapeHtml(chartDef.source||"—")}</strong></div>
+        </div>
       </section>
+
       ${selectedHtml}
-      ${drillHtml(drillChainFor(chartDef.source, chartDef.drill))}
+
       <section class="drawer-section">
-        <h3>Registros que compõem o gráfico</h3>
-        ${rowsHtml}
+        <h3>Composição completa</h3>
+        ${series || `
+          <div class="detail-empty-state">
+            <i class="mdi mdi-chart-box-outline"></i>
+            <strong>Composição ainda não disponível no snapshot</strong>
+            <span>O gráfico continuará aparecendo assim que sua fonte terminar a carga.</span>
+          </div>
+        `}
       </section>
+
+      ${sourceOriginHtml(chartDef.source,(chartDef.measures||[]).join(", "))}
+      ${drillProgressHtml(chartDef.source,chartDef.drill)}
     `);
   }
 
   function buildRowsTable(rows) {
-    const keys = [...new Set(rows.flatMap(row => Object.keys(row)))].slice(0,8);
+    const keys=[...new Set(rows.flatMap(row=>Object.keys(row)))].slice(0,8);
     return `
-      <div style="overflow:auto">
+      <div class="detail-table-wrap">
         <table class="detail-table">
-          <thead><tr>${keys.map(k => `<th>${escapeHtml(k)}</th>`).join("")}</tr></thead>
+          <thead><tr>${keys.map(k=>`<th>${escapeHtml(k)}</th>`).join("")}</tr></thead>
           <tbody>
-            ${rows.slice(0,100).map(row => `<tr>${keys.map(k => `<td>${escapeHtml(String(row[k] ?? ""))}</td>`).join("")}</tr>`).join("")}
+            ${rows.slice(0,100).map(row=>`<tr>${keys.map(k=>`<td>${escapeHtml(String(row[k]??""))}</td>`).join("")}</tr>`).join("")}
           </tbody>
         </table>
       </div>
