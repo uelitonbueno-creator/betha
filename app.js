@@ -5,6 +5,10 @@
   const dashboards = window.BI_DASHBOARDS || {};
   const bethaApp = document.getElementById("bethaApp");
   const authGate = document.getElementById("authGate");
+  const tenantGate = document.getElementById("tenantGate");
+  const tenantGateList = document.getElementById("tenantGateList");
+  const tenantGateTitle = document.getElementById("tenantGateTitle");
+  const tenantGateMessage = document.getElementById("tenantGateMessage");
   const authRequired = cfg.AUTH_REQUIRED !== false;
 
   if (authRequired && window.BIAuth && BIAuth.ready) {
@@ -52,7 +56,10 @@
   }
 
   authGate.hidden = true;
-  bethaApp.style.display = "";
+  // Com autenticação ativa, o app só aparece depois que /api/me/tenants
+  // confirmar que a entidade solicitada pertence ao usuário.
+  bethaApp.style.display = authRequired ? "none" : "";
+  if (tenantGate) tenantGate.hidden = true;
   // O componente Betha é registrado de forma assíncrona pelo loader.
   // Aguarda o upgrade antes de chamar métodos como setMenuAtivo().
   if (window.customElements && customElements.whenDefined) {
@@ -65,8 +72,8 @@
     (query.view && dashboards[query.view] ? query.view : "visao-geral");
   let currentPayload = null;
 
-  const tenantId = query.tenant || query.entidadeId || query.entityId || cfg.DEFAULT_TENANT || "";
-  const entityLabel = query.entidade || query.entity || query.entidadeNome || cfg.ENTITY_LABEL || "ENTIDADE NÃO IDENTIFICADA";
+  let tenantId = query.tenant || query.entidadeId || query.entityId || "";
+  let entityLabel = query.entidade || query.entity || query.entidadeNome || "ENTIDADE NÃO IDENTIFICADA";
 
   document.getElementById("entityContext").textContent = String(entityLabel).toUpperCase();
 
@@ -417,7 +424,7 @@
     const fonte = document.getElementById("fontePreferencial")?.value || "auto";
     return [
       CACHE_PREFIX,
-      tenantId || "default",
+      tenantId || "no-tenant",
       view || currentView || "visao-geral",
       periodo,
       exercicio,
@@ -643,7 +650,7 @@
     const exercicio = document.getElementById("exercicio")?.value || "";
     const prefix = [
       CACHE_PREFIX,
-      tenantId || "default",
+      tenantId || "no-tenant",
       view || currentView || "visao-geral",
       periodo,
       exercicio
@@ -704,11 +711,12 @@
   }
 
   async function loadDashboardFromSupabase(view) {
+    if (!tenantId) return false;
     try {
       const periodo=document.getElementById("periodo")?.value || "ano";
       const exercicio=document.getElementById("exercicio")?.value || String(new Date().getFullYear());
       const params=new URLSearchParams({
-        tenant_id:"eq."+(tenantId||"agudosdosul"),
+        tenant_id:"eq."+(tenantId),
         painel:"eq."+(view||"visao-geral"),
         periodo:"eq."+periodo,
         exercicio:"eq."+exercicio,
@@ -755,11 +763,12 @@
   }
 
   function progressRowsFromPayload(view,payload) {
+    if (!tenantId) return [];
     const periodo=document.getElementById("periodo")?.value || "ano";
     const exercicio=Number(document.getElementById("exercicio")?.value || new Date().getFullYear());
     const audits=payload?.meta?.sourceAudit||{};
     return Object.entries(audits).map(([fonte,audit])=>({
-      tenant_id:tenantId||"agudosdosul",
+      tenant_id:tenantId,
       painel:view||"visao-geral",
       periodo,
       exercicio,
@@ -779,7 +788,7 @@
   }
 
   async function persistDashboardToSupabase(view,payload,state) {
-    if(!cfg.BACKEND_URL || !payload) return;
+    if(!cfg.BACKEND_URL || !payload || !tenantId) return;
     const periodo=document.getElementById("periodo")?.value || "ano";
     const exercicio=Number(document.getElementById("exercicio")?.value || new Date().getFullYear());
 
@@ -790,7 +799,7 @@
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({
           snapshot:{
-            tenant_id:tenantId||"agudosdosul",
+            tenant_id:tenantId,
             painel:view||"visao-geral",
             periodo,
             exercicio,
@@ -1864,49 +1873,105 @@
     });
   });
 
+  function selectTenantAndReload(tenant) {
+    if (!tenant || !tenant.id) return;
+    const url = new URL(location.href);
+    url.searchParams.set("tenant", tenant.id);
+    if (tenant.name) url.searchParams.set("entidade", tenant.name);
+    else url.searchParams.delete("entidade");
+    // replace evita manter uma URL sem tenant no histórico do navegador.
+    location.replace(url.toString());
+  }
+
+  function showTenantSelector(tenants, options = {}) {
+    bethaApp.style.display = "none";
+    if (!tenantGate || !tenantGateList) return;
+
+    tenantGate.hidden = false;
+    if (tenantGateTitle) tenantGateTitle.textContent = options.title || "Selecione a prefeitura";
+    if (tenantGateMessage) tenantGateMessage.textContent =
+      options.message || "Seu acesso Betha está autenticado. Escolha a entidade que deseja consultar.";
+
+    tenantGateList.innerHTML = "";
+
+    if (!Array.isArray(tenants) || !tenants.length) {
+      tenantGateList.innerHTML =
+        '<div class="tenant-gate-empty">' + escapeHtml(options.empty || "Nenhuma entidade autorizada para este usuário.") + '</div>';
+      return;
+    }
+
+    for (const tenant of tenants) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "tenant-gate-option";
+      button.innerHTML =
+        '<i class="mdi mdi-office-building"></i>' +
+        '<span><strong>' + escapeHtml(tenant.name || tenant.id) + '</strong>' +
+        '<small>database: ' + escapeHtml(tenant.databaseId || "—") +
+        ' · entity: ' + escapeHtml(tenant.entityId || "—") + '</small></span>';
+      button.addEventListener("click", () => selectTenantAndReload(tenant));
+      tenantGateList.appendChild(button);
+    }
+  }
+
   async function loadTenants() {
     if (!cfg.BACKEND_URL) return false;
 
     try {
       const result = await api("/api/me/tenants");
-      if (!Array.isArray(result.tenants)) return false;
+      if (!Array.isArray(result.tenants)) throw new Error("TENANT_LIST_INVALID");
 
       const tenants = result.tenants;
       const list = document.getElementById("entityList");
       list.innerHTML = "";
 
       if (!tenants.length) {
-        list.innerHTML = '<div class="table-empty">Nenhuma entidade autorizada para este usuário.</div>';
         document.getElementById("entityContext").textContent = "SEM ENTIDADE AUTORIZADA";
+        list.innerHTML = '<div class="table-empty">Nenhuma entidade autorizada para este usuário.</div>';
+        showTenantSelector([], {
+          title:"Nenhuma prefeitura disponível",
+          message:"O login Betha foi concluído, mas nenhuma entidade configurada no BI corresponde aos acessos deste usuário.",
+          empty:"Verifique o acesso do usuário na Central Betha ou o cadastro da entidade no backend."
+        });
         return false;
       }
 
-      const currentTenant = tenants.find((tenant) => tenant.id === tenantId);
+      let currentTenant = tenantId
+        ? tenants.find((tenant) => tenant.id === tenantId)
+        : null;
 
-      // Nunca abre um tenant que não esteja na lista devolvida pelo backend.
+      // Sem tenant na URL: uma entidade entra automaticamente; várias exigem escolha.
+      if (!currentTenant && !tenantId && tenants.length === 1) {
+        selectTenantAndReload(tenants[0]);
+        return false;
+      }
+
+      // Tenant digitado/manipulado ou usuário com várias entidades: nunca escolhe silenciosamente.
       if (!currentTenant) {
-        const first = tenants[0];
-        const url = new URL(location.href);
-        url.searchParams.set("tenant", first.id);
-        if (first.name) url.searchParams.set("entidade", first.name);
-        location.replace(url.toString());
+        showTenantSelector(tenants, {
+          title: tenants.length > 1 ? "Selecione a prefeitura" : "Confirme a prefeitura",
+          message: tenantId
+            ? "A entidade informada não pertence aos acessos autorizados deste usuário. Selecione uma opção válida."
+            : "Seu usuário possui acesso a mais de uma entidade. Escolha qual deseja consultar."
+        });
         return false;
       }
+
+      tenantId = currentTenant.id;
+      entityLabel = currentTenant.name || currentTenant.id;
+
+      if (tenantGate) tenantGate.hidden = true;
+      bethaApp.style.display = "";
 
       document.getElementById("entityContext").textContent =
-        String(currentTenant.name || currentTenant.id).toUpperCase();
+        String(entityLabel).toUpperCase();
 
       for (const tenant of tenants) {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "entity-option" + (tenant.id === tenantId ? " is-current" : "");
         button.textContent = tenant.name || tenant.id;
-        button.addEventListener("click", () => {
-          const url = new URL(location.href);
-          url.searchParams.set("tenant", tenant.id);
-          if (tenant.name) url.searchParams.set("entidade", tenant.name);
-          location.assign(url.toString());
-        });
+        button.addEventListener("click", () => selectTenantAndReload(tenant));
         list.appendChild(button);
       }
 
@@ -1920,27 +1985,31 @@
         PLATFORM_HTTP_403: "Login concluído, mas a credencial ainda não possui permissão para consultar os acessos do usuário (user-accounts.suite).",
         USER_TOKEN_REQUIRED: "Login concluído, mas a sessão do usuário não chegou ao módulo de autorizações.",
         TENANT_CONTEXT_UNRESOLVED: "Login concluído, mas não foi possível identificar database/entity da prefeitura.",
-        TENANT_ACCESS_DENIED: "Seu usuário Betha não possui acesso ao contexto configurado para esta prefeitura."
+        TENANT_ACCESS_DENIED: "Seu usuário Betha não possui acesso ao contexto configurado para esta prefeitura.",
+        TENANT_LIST_INVALID: "O backend retornou uma lista de entidades em formato inválido."
       };
 
       const friendly = messages[code] || ("Não foi possível validar as entidades autorizadas: " + code);
       const entityContext = document.getElementById("entityContext");
       const entityList = document.getElementById("entityList");
-      const pageTitle = document.getElementById("pageTitle");
-      const pageDescription = document.getElementById("pageDescription");
-      const apiStatus = document.getElementById("apiStatus");
 
       if (entityContext) entityContext.textContent = "ACESSO BETHA NÃO VALIDADO";
       if (entityList) entityList.innerHTML = '<div class="table-empty">' + escapeHtml(friendly) + '</div>';
-      if (pageTitle) pageTitle.textContent = "Login Betha concluído";
-      if (pageDescription) pageDescription.textContent = friendly;
-      if (apiStatus) {
-        apiStatus.className = "api-status api-status-error";
-        apiStatus.innerHTML = '<span class="status-dot"></span><span>' + escapeHtml(code) + '</span>';
-      }
 
+      showTenantSelector([], {
+        title:"Não foi possível carregar as prefeituras",
+        message:friendly,
+        empty:"Código: " + code
+      });
       return false;
     }
+  }
+
+  const tenantLogoutButton = document.getElementById("tenantLogoutButton");
+  if (tenantLogoutButton) {
+    tenantLogoutButton.addEventListener("click", () => {
+      if (window.BIAuth) BIAuth.logout();
+    });
   }
 
   document.getElementById("refreshButton").addEventListener("click", () => loadDashboardData(currentView, {force:true}));
@@ -1968,18 +2037,17 @@
     return String(value).replace(/["\\]/g,"\\$&");
   }
 
-  if (currentView !== "usuarios-admin") {
-    renderDashboard(currentView);
-  }
-
   if (cfg.AUTH_REQUIRED) {
     const tenantReady = await loadTenants();
     if (!tenantReady) return;
+  } else {
+    bethaApp.style.display = "";
   }
 
   if (currentView === "usuarios-admin") {
     renderUsersAdmin();
   } else {
+    renderDashboard(currentView);
     loadDashboardData(currentView);
   }
 })();
