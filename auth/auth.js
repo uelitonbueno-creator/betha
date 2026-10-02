@@ -63,6 +63,8 @@
   }
 
   function clear() {
+    memorySession = "";
+    memoryExpires = 0;
     removeItem(KEY_SESSION);
     removeItem(KEY_EXPIRES);
     removeItem(KEY_ERROR);
