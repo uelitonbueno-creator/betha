@@ -2,12 +2,5 @@
   "name": "betha-bi-api",
   "main": "backend/worker.js",
   "compatibility_date": "2026-10-01",
-  "keep_vars": true,
-  "secrets": {
-    "required": [
-      "BETHA_ACCESS_TOKEN",
-      "BETHA_TENANTS_JSON",
-      "BETHA_LOGIN_CLIENT_SECRET"
-    ]
-  }
+  "keep_vars": true
 }
