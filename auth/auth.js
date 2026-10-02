@@ -17,16 +17,22 @@
   }
 
   function setItem(key, value) {
+    let written = false;
     let lastError = null;
+
+    // Grava em todos os armazenamentos disponíveis. Alguns navegadores
+    // embutidos descartam sessionStorage após redirecionamentos entre origens,
+    // enquanto localStorage permanece disponível para a mesma origem.
     for (const store of stores()) {
       try {
         store.setItem(key, String(value));
-        return;
+        written = true;
       } catch (error) {
         lastError = error;
       }
     }
-    if (lastError) throw lastError;
+
+    if (!written && lastError) throw lastError;
   }
 
   function getItem(key) {
