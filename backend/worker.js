@@ -605,7 +605,15 @@ async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=nu
       break;
     }
 
-    if (!pageRows.length || !newRows) {
+    // Alguns endpoints da Betha mantêm hasNext=true mesmo na página seguinte ao fim.
+    // Página vazia é tratada como encerramento normal da paginação.
+    if (!pageRows.length) {
+      reachedEnd=true;
+      offset=meta.nextOffset;
+      break;
+    }
+
+    if (!newRows) {
       repeatedPage=true;
       truncated=true;
       break;
@@ -1077,14 +1085,28 @@ async function buildOverviewPart(env,tenant,url,part) {
 
     const saldoPath=resolveNumericPath(
       src.rows,
-      ["valorSaldo","vlSaldo","saldo","saldoCalculado"],
-      [["saldo"]]
+      [
+        "valorSaldo","vlSaldo","saldo","saldoCalculado","saldoDevedor",
+        "valorAtualizado","vlAtualizado","valorAtual","valorPendente",
+        "valorRestante","valorAberto","valorDevido","vlDevido",
+        "valorDivida","vlDivida","valorInscrito","vlInscrito"
+      ],
+      [
+        ["saldo"],
+        ["valor","atualiz"],
+        ["valor","pendente"],
+        ["valor","restante"],
+        ["valor","aberto"],
+        ["valor","devido"],
+        ["valor","divida"],
+        ["valor","inscrito"]
+      ]
     );
     const debtStatus=groupCount(src.rows,["statusDivida","situacaoDivida","situacao","status"],12);
     const debtYears=groupSum(
       src.rows,
       ["anoDivida","ano","exercicio","dataInscricao"],
-      saldoPath?[saldoPath]:["valorSaldo","vlSaldo","saldo","saldoCalculado"],
+      saldoPath?[saldoPath]:["valorSaldo","vlSaldo","saldo","saldoCalculado","valorAtualizado","valorPendente","valorDevido","valorDivida"],
       30
     );
     return {
@@ -2294,7 +2316,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-01-resume-fallback-v14",
+        buildVersion:"2026-10-02-divida-finalizacao-v15",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
