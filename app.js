@@ -357,7 +357,7 @@
 
   const CACHE_PREFIX = "betha_bi_snapshot_v1";
   const FINANCIAL_AGGREGATION_VERSION = 2;
-  const DEBT_MAPPING_VERSION = 2;
+  const DEBT_MAPPING_VERSION = 3;
 
   function dashboardCacheKey(view) {
     const periodo = document.getElementById("periodo")?.value || "ano";
@@ -386,15 +386,195 @@
     return clone;
   }
 
+  const SNAPSHOT_PARTS = [
+    "contribuintes","imoveis","economicos","parcelamentos",
+    "pagamentos","debitos","dividas","pagamentos-detalhados"
+  ];
+
+  function auditKeysForPart(part) {
+    return {
+      contribuintes:["contribuintes"],
+      imoveis:["imoveis"],
+      economicos:["economicos"],
+      parcelamentos:["parcelamentos"],
+      pagamentos:["pagamentos"],
+      debitos:["debitos"],
+      dividas:["dividas","encerramentoDividas"],
+      "pagamentos-detalhados":["pagamentosDetalhados","pagamentos-detalhados"]
+    }[part] || [part];
+  }
+
+  function auditForPartFromPayload(part,payload) {
+    const audits=payload?.meta?.sourceAudit||{};
+    for(const key of auditKeysForPart(part)){
+      if(audits[key]) return {key,audit:audits[key]};
+    }
+    return null;
+  }
+
+  function financialKpiForPart(part,payload) {
+    if(part==="pagamentos") return payload?.kpis?.arrecadado;
+    if(part==="debitos") return payload?.kpis?.lancado;
+    if(part==="dividas") return payload?.kpis?.divida;
+    return undefined;
+  }
+
+  function fragmentQuality(part,payload) {
+    const found=auditForPartFromPayload(part,payload);
+    if(!found) return -1;
+
+    const audit=found.audit||{};
+    const loaded=Number(audit.loaded)||0;
+    const complete=audit.complete===true;
+    const kpi=financialKpiForPart(part,payload);
+    const hasFinancialKpi=["pagamentos","debitos","dividas"].includes(part)
+      ? (kpi!==null && kpi!==undefined && Number.isFinite(Number(kpi)))
+      : false;
+
+    let score=loaded;
+    if(complete) score+=1e12;
+    if(hasFinancialKpi) score+=1e15;
+
+    if(part==="pagamentos-detalhados" && payload?.charts?.["receita-credito"]) score+=1e15;
+    return score;
+  }
+
+  function extractPartFragment(part,payload) {
+    const found=auditForPartFromPayload(part,payload);
+    if(!found) return null;
+
+    const fragment={
+      part,
+      kpis:{},
+      charts:{},
+      meta:{
+        auditMode:payload?.meta?.auditMode||"FULL",
+        warnings:[],
+        sourceRows:{},
+        sourceTotals:{},
+        sourceAudit:{},
+        fieldMapping:{...(payload?.meta?.fieldMapping||{})},
+        sourceUsed:{...(payload?.meta?.sourceUsed||{})}
+      }
+    };
+
+    const {key,audit}=found;
+    fragment.meta.sourceAudit[key]=JSON.parse(JSON.stringify(audit));
+    if(payload?.meta?.sourceRows?.[key]!==undefined) fragment.meta.sourceRows[key]=payload.meta.sourceRows[key];
+    if(payload?.meta?.sourceTotals?.[key]!==undefined) fragment.meta.sourceTotals[key]=payload.meta.sourceTotals[key];
+
+    if(part==="contribuintes"){
+      if(payload?.kpis?.contribuintes!==undefined) fragment.kpis.contribuintes=payload.kpis.contribuintes;
+      const chart=payload?.charts?.cadastros;
+      if(chart){
+        const ds=(chart.datasets||[]).filter(x=>x.label==="Contribuintes");
+        if(ds.length) fragment.charts.cadastros={...chart,datasets:JSON.parse(JSON.stringify(ds))};
+      }
+    }
+
+    if(part==="imoveis"){
+      if(payload?.kpis?.imoveis!==undefined) fragment.kpis.imoveis=payload.kpis.imoveis;
+      const chart=payload?.charts?.cadastros;
+      if(chart){
+        const ds=(chart.datasets||[]).filter(x=>x.label==="Imóveis");
+        if(ds.length) fragment.charts.cadastros={...chart,datasets:JSON.parse(JSON.stringify(ds))};
+      }
+    }
+
+    if(part==="economicos"){
+      const chart=payload?.charts?.cadastros;
+      if(chart){
+        const ds=(chart.datasets||[]).filter(x=>x.label==="Econômicos");
+        if(ds.length) fragment.charts.cadastros={...chart,datasets:JSON.parse(JSON.stringify(ds))};
+      }
+    }
+
+    if(part==="parcelamentos" && payload?.kpis?.parcelado!==undefined){
+      fragment.kpis.parcelado=payload.kpis.parcelado;
+    }
+
+    if(part==="pagamentos"){
+      if(payload?.kpis?.arrecadado!==undefined) fragment.kpis.arrecadado=payload.kpis.arrecadado;
+      if(payload?.charts?.["receita-mensal"]) {
+        fragment.charts["receita-mensal"]=JSON.parse(JSON.stringify(payload.charts["receita-mensal"]));
+      }
+      const lps=payload?.charts?.["lancado-pago-saldo"];
+      if(lps){
+        const ds=(lps.datasets||[]).filter(x=>x.label==="Pago");
+        if(ds.length) fragment.charts["lancado-pago-saldo"]={...lps,datasets:JSON.parse(JSON.stringify(ds))};
+      }
+    }
+
+    if(part==="debitos"){
+      if(payload?.kpis?.lancado!==undefined) fragment.kpis.lancado=payload.kpis.lancado;
+      const lps=payload?.charts?.["lancado-pago-saldo"];
+      if(lps){
+        const ds=(lps.datasets||[]).filter(x=>["Lançado","Saldo"].includes(x.label));
+        if(ds.length) fragment.charts["lancado-pago-saldo"]={...lps,datasets:JSON.parse(JSON.stringify(ds))};
+      }
+    }
+
+    if(part==="dividas"){
+      if(payload?.kpis?.divida!==undefined) fragment.kpis.divida=payload.kpis.divida;
+      if(payload?.charts?.["divida-evolucao"]) fragment.charts["divida-evolucao"]=JSON.parse(JSON.stringify(payload.charts["divida-evolucao"]));
+      if(payload?.charts?.["situacao-divida"]) fragment.charts["situacao-divida"]=JSON.parse(JSON.stringify(payload.charts["situacao-divida"]));
+    }
+
+    if(part==="pagamentos-detalhados" && payload?.charts?.["receita-credito"]){
+      fragment.charts["receita-credito"]=JSON.parse(JSON.stringify(payload.charts["receita-credito"]));
+    }
+
+    return fragment;
+  }
+
+  function composeBestPayload(payloads) {
+    const valid=(payloads||[]).filter(Boolean);
+    if(!valid.length) return null;
+
+    const base={
+      view:"visao-geral",
+      kpis:{},
+      charts:{},
+      meta:{auditMode:"FULL",warnings:[],sourceRows:{},sourceTotals:{},sourceAudit:{},fieldMapping:{},sourceUsed:{}}
+    };
+
+    for(const part of SNAPSHOT_PARTS){
+      let best=null;
+      let bestScore=-1;
+      for(const payload of valid){
+        const score=fragmentQuality(part,payload);
+        if(score>bestScore){
+          bestScore=score;
+          best=payload;
+        }
+      }
+      if(best && bestScore>=0){
+        const fragment=extractPartFragment(part,best);
+        if(fragment) mergeDashboardPart(base,fragment);
+      }
+    }
+
+    return base;
+  }
+
   function saveDashboardCache(view, payload, state="complete") {
     try {
+      const existingRecords=readAllDashboardCacheRecords(view);
+      const existingPayloads=existingRecords.map(item=>item.record?.payload).filter(Boolean);
+      const consolidated=composeBestPayload([...existingPayloads,payload]) || payload;
+
+      const allAudits=Object.values(consolidated?.meta?.sourceAudit||{});
+      const calculatedState=allAudits.length>0 && allAudits.every(a=>a&&a.complete===true)
+        ? "complete"
+        : "partial";
+
       const record = {
-        version:1,
+        version:2,
         aggregationVersion:FINANCIAL_AGGREGATION_VERSION,
         debtMappingVersion:DEBT_MAPPING_VERSION,
         savedAt:new Date().toISOString(),
-        state,
-        payload:compactPayloadForCache(payload)
+        state:state==="complete" ? calculatedState : "partial",
+        payload:compactPayloadForCache(consolidated)
       };
       localStorage.setItem(dashboardCacheKey(view), JSON.stringify(record));
       return record;
@@ -404,47 +584,56 @@
     }
   }
 
+  function readAllDashboardCacheRecords(view) {
+    const periodo = document.getElementById("periodo")?.value || "ano";
+    const exercicio = document.getElementById("exercicio")?.value || "";
+    const prefix = [
+      CACHE_PREFIX,
+      tenantId || "default",
+      view || currentView || "visao-geral",
+      periodo,
+      exercicio
+    ].join(":") + ":";
+
+    const items=[];
+    for(let i=0;i<localStorage.length;i++){
+      const key=localStorage.key(i);
+      if(!key || !key.startsWith(prefix)) continue;
+      try{
+        const record=JSON.parse(localStorage.getItem(key));
+        if(record && record.payload){
+          items.push({key,record,time:new Date(record.savedAt||0).getTime()});
+        }
+      }catch{}
+    }
+    return items;
+  }
+
   function readDashboardCache(view) {
     try {
-      // 1) tenta o snapshot exato da fonte selecionada
-      const exactKey=dashboardCacheKey(view);
-      const raw = localStorage.getItem(exactKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.payload) {
-          parsed._cacheKey=exactKey;
-          parsed._fallback=false;
-          return parsed;
-        }
-      }
+      const items=readAllDashboardCacheRecords(view);
+      if(!items.length) return null;
 
-      // 2) fallback: usa o snapshot mais recente da mesma entidade/painel/período/exercício,
-      // independentemente da fonte selecionada.
-      const periodo = document.getElementById("periodo")?.value || "ano";
-      const exercicio = document.getElementById("exercicio")?.value || "";
-      const prefix = [
-        CACHE_PREFIX,
-        tenantId || "default",
-        view || currentView || "visao-geral",
-        periodo,
-        exercicio
-      ].join(":") + ":";
+      const payload=composeBestPayload(items.map(item=>item.record.payload));
+      if(!payload) return null;
 
-      let newest=null;
-      for(let i=0;i<localStorage.length;i++){
-        const key=localStorage.key(i);
-        if(!key || !key.startsWith(prefix)) continue;
-        try{
-          const candidate=JSON.parse(localStorage.getItem(key));
-          if(!candidate || !candidate.payload) continue;
-          const time=new Date(candidate.savedAt||0).getTime();
-          if(!newest || time>newest.time){
-            newest={...candidate,time,_cacheKey:key,_fallback:true};
-          }
-        }catch{}
-      }
+      const newest=items.slice().sort((a,b)=>b.time-a.time)[0];
+      const allAudits=Object.values(payload?.meta?.sourceAudit||{});
+      const state=allAudits.length>0 && allAudits.every(a=>a&&a.complete===true)
+        ? "complete"
+        : "partial";
 
-      return newest;
+      return {
+        version:2,
+        aggregationVersion:Math.max(...items.map(x=>Number(x.record.aggregationVersion||0))),
+        debtMappingVersion:Math.max(...items.map(x=>Number(x.record.debtMappingVersion||0))),
+        savedAt:newest.record.savedAt,
+        state,
+        payload,
+        _cacheKey:newest.key,
+        _fallback:items.length>1,
+        _composed:items.length>1
+      };
     } catch (error) {
       console.warn("Snapshot local inválido:", error);
       return null;
@@ -470,7 +659,9 @@
     renderPayload(cached.payload);
     const stamp = formatCacheTime(cached.savedAt);
     const suffix = cached.state === "partial" ? " · carga parcial" : "";
-    const fallback = cached._fallback ? " · snapshot de outra fonte" : "";
+    const fallback = cached._composed
+      ? " · snapshot consolidado"
+      : (cached._fallback ? " · snapshot de outra fonte" : "");
     const financeStale = Number(cached.aggregationVersion||0) < FINANCIAL_AGGREGATION_VERSION;
     const debtStale = Number(cached.debtMappingVersion||0) < DEBT_MAPPING_VERSION;
     const stale = financeStale
@@ -803,7 +994,7 @@
         isFinancial &&
         (
           financialSnapshotStale ||
-          (partName==="dividas" && debtMappingStale) ||
+          (partName==="dividas" && (debtMappingStale || needsRebuild)) ||
           (needsRebuild && !(Number(existingAudit?.loaded)||0))
         )
       );
