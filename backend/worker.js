@@ -2309,6 +2309,7 @@ function errorResponse(request,env,error) {
     USER_TOKEN_REQUIRED:401,
     APPLICATION_SESSION_INVALID:401,
     APPLICATION_SESSION_EXPIRED:401,
+    LOGIN_CLIENT_ID_NOT_CONFIGURED:503,
     LOGIN_CLIENT_SECRET_NOT_CONFIGURED:503,
     DEV_LOGIN_NOT_CONFIGURED:503,
     DEV_SESSION_SECRET_NOT_CONFIGURED:503,
@@ -2348,6 +2349,10 @@ export default {
         tenantsConfigured:Boolean(env.BETHA_TENANTS_JSON),
         userAuthorizationRequired:String(env.ALLOW_UNAUTHENTICATED_DEV || "").toLowerCase()!=="true",
         loginCredentialConfigured:Boolean(env.BETHA_LOGIN_CLIENT_ID && env.BETHA_LOGIN_CLIENT_SECRET),
+        loginClientIdConfigured:Boolean(env.BETHA_LOGIN_CLIENT_ID),
+        loginClientSecretConfigured:Boolean(env.BETHA_LOGIN_CLIENT_SECRET),
+        loginRedirectUri:env.BETHA_LOGIN_REDIRECT_URI || LOGIN_REDIRECT_DEFAULT,
+        frontUrl:env.BETHA_FRONT_URL || FRONT_URL_DEFAULT,
         devLoginConfigured:Boolean(env.BI_DEV_LOGIN_USER && env.BI_DEV_LOGIN_PASSWORD)
       });
     }
@@ -2397,8 +2402,11 @@ export default {
     }
 
     if (url.pathname==="/api/auth/login" && request.method==="GET") {
-      if (!env.BETHA_LOGIN_CLIENT_ID || !env.BETHA_LOGIN_CLIENT_SECRET) {
-        return json(request,env,503,{error:"LOGIN_CREDENTIAL_NOT_CONFIGURED"});
+      if (!env.BETHA_LOGIN_CLIENT_ID) {
+        return json(request,env,503,{error:"LOGIN_CLIENT_ID_NOT_CONFIGURED"});
+      }
+      if (!env.BETHA_LOGIN_CLIENT_SECRET) {
+        return json(request,env,503,{error:"LOGIN_CLIENT_SECRET_NOT_CONFIGURED"});
       }
 
       const state=await createOAuthState(env.BETHA_LOGIN_CLIENT_SECRET);
@@ -2432,8 +2440,11 @@ export default {
       }
 
       try {
-        if (!env.BETHA_LOGIN_CLIENT_ID || !env.BETHA_LOGIN_CLIENT_SECRET) {
-          throw new Error("LOGIN_CREDENTIAL_NOT_CONFIGURED");
+        if (!env.BETHA_LOGIN_CLIENT_ID) {
+          throw new Error("LOGIN_CLIENT_ID_NOT_CONFIGURED");
+        }
+        if (!env.BETHA_LOGIN_CLIENT_SECRET) {
+          throw new Error("LOGIN_CLIENT_SECRET_NOT_CONFIGURED");
         }
         if (!code || !state) throw new Error("OAUTH_CALLBACK_INCOMPLETE");
 
