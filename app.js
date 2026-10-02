@@ -1,5 +1,7 @@
 (async () => {
   const cfg = window.BI_CONFIG || {};
+  const SUPABASE_URL = "https://mliurxyjznxoafkwwtae.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1saXVyeHlqem54b2Fma3d3dGFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA5NjA2MjMsImV4cCI6MjEwNjUzNjYyM30.bxZPsSSLpiZTFvXD2yZjtuc-5sniwDfV5D7UMAsB9ec";
   const dashboards = window.BI_DASHBOARDS || {};
   const bethaApp = document.getElementById("bethaApp");
   const authGate = document.getElementById("authGate");
@@ -577,6 +579,8 @@
         payload:compactPayloadForCache(consolidated)
       };
       localStorage.setItem(dashboardCacheKey(view), JSON.stringify(record));
+      // gravação persistente é assíncrona; não bloqueia a interface
+      persistDashboardToSupabase(view,record.payload,record.state);
       return record;
     } catch (error) {
       console.warn("Não foi possível salvar snapshot local:", error);
@@ -647,6 +651,109 @@
       day:"2-digit", month:"2-digit", year:"numeric",
       hour:"2-digit", minute:"2-digit"
     });
+  }
+
+  async function loadDashboardFromSupabase(view) {
+    try {
+      const periodo=document.getElementById("periodo")?.value || "ano";
+      const exercicio=document.getElementById("exercicio")?.value || String(new Date().getFullYear());
+      const params=new URLSearchParams({
+        tenant_id:"eq."+(tenantId||"agudosdosul"),
+        painel:"eq."+(view||"visao-geral"),
+        periodo:"eq."+periodo,
+        exercicio:"eq."+exercicio,
+        select:"payload_json,status,updated_at,fonte",
+        order:"updated_at.desc",
+        limit:"1"
+      });
+
+      const response=await fetch(SUPABASE_URL+"/rest/v1/bi_snapshots?"+params.toString(),{
+        headers:{
+          apikey:SUPABASE_ANON_KEY,
+          Authorization:"Bearer "+SUPABASE_ANON_KEY,
+          Accept:"application/json"
+        }
+      });
+
+      if(!response.ok) return false;
+      const rows=await response.json();
+      const row=Array.isArray(rows)?rows[0]:null;
+      if(!row || !row.payload_json) return false;
+
+      renderPayload(row.payload_json);
+
+      // mantém cópia local para funcionamento offline/fallback
+      try{
+        localStorage.setItem(dashboardCacheKey(view),JSON.stringify({
+          version:2,
+          aggregationVersion:FINANCIAL_AGGREGATION_VERSION,
+          debtMappingVersion:DEBT_MAPPING_VERSION,
+          savedAt:row.updated_at,
+          state:row.status||"partial",
+          payload:row.payload_json
+        }));
+      }catch{}
+
+      const stamp=formatCacheTime(row.updated_at);
+      const suffix=row.status==="partial"?" · carga parcial":"";
+      setStatus("online","Supabase · "+stamp+suffix);
+      return true;
+    } catch(error) {
+      console.warn("Falha ao ler snapshot do Supabase:",error);
+      return false;
+    }
+  }
+
+  function progressRowsFromPayload(view,payload) {
+    const periodo=document.getElementById("periodo")?.value || "ano";
+    const exercicio=Number(document.getElementById("exercicio")?.value || new Date().getFullYear());
+    const audits=payload?.meta?.sourceAudit||{};
+    return Object.entries(audits).map(([fonte,audit])=>({
+      tenant_id:tenantId||"agudosdosul",
+      painel:view||"visao-geral",
+      periodo,
+      exercicio,
+      fonte,
+      registros_carregados:Number(audit?.loaded||0),
+      paginas:Number(audit?.pages||0),
+      next_offset:audit?.nextOffset ?? null,
+      completo:audit?.complete===true,
+      reported_total:audit?.reportedTotal ?? null,
+      status:audit?.complete===true?"complete":"partial",
+      detalhe:{
+        error:audit?.error||null,
+        sourceUsed:payload?.meta?.sourceUsed||{},
+        fieldMapping:payload?.meta?.fieldMapping||{}
+      }
+    }));
+  }
+
+  async function persistDashboardToSupabase(view,payload,state) {
+    if(!cfg.BACKEND_URL || !payload) return;
+    const periodo=document.getElementById("periodo")?.value || "ano";
+    const exercicio=Number(document.getElementById("exercicio")?.value || new Date().getFullYear());
+
+    try{
+      await api("/api/cache/snapshot",{
+        method:"POST",
+        timeoutMs:15000,
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          snapshot:{
+            tenant_id:tenantId||"agudosdosul",
+            painel:view||"visao-geral",
+            periodo,
+            exercicio,
+            fonte:"auto",
+            payload_json:compactPayloadForCache(payload),
+            status:state||"partial"
+          },
+          progress:progressRowsFromPayload(view,payload)
+        })
+      });
+    }catch(error){
+      console.warn("Snapshot Supabase não gravado:",error);
+    }
   }
 
   function loadDashboardFromCache(view) {
@@ -1117,7 +1224,8 @@
     const force = options.force === true;
 
     if (!force) {
-      loadDashboardFromCache(view);
+      const loadedFromSupabase=await loadDashboardFromSupabase(view);
+      if(!loadedFromSupabase) loadDashboardFromCache(view);
       return;
     }
 
