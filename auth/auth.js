@@ -11,6 +11,7 @@
 
   let memorySession = "";
   let memoryExpires = 0;
+  let cookieAuthenticated = false;
 
   function stores() {
     const out = [];
@@ -212,11 +213,11 @@
 
   async function validate() {
     const token = getToken();
-    if (!token) return false;
-
     const base = backendBase();
+
     if (!base) {
       setItem(KEY_ERROR, "BACKEND_NOT_CONFIGURED");
+      cookieAuthenticated = false;
       return false;
     }
 
@@ -224,12 +225,12 @@
     const timer = setTimeout(() => controller.abort(), 12000);
 
     try {
+      const headers = {"Accept":"application/json"};
+      if (token) headers.Authorization = "Session " + token;
+
       const response = await fetch(base + "/api/auth/session-check", {
-        headers: {
-          "Accept": "application/json",
-          "Authorization": "Session " + token
-        },
-        credentials: "omit",
+        headers,
+        credentials: "include",
         signal: controller.signal
       });
 
@@ -241,9 +242,12 @@
         throw error;
       }
 
+      cookieAuthenticated = true;
       removeItem(KEY_ERROR);
       return true;
     } catch (error) {
+      cookieAuthenticated = false;
+
       const code = error && error.name === "AbortError"
         ? "AUTH_VALIDATION_TIMEOUT"
         : (error.message || "APPLICATION_SESSION_INVALID");
@@ -275,6 +279,12 @@
 
   function logout() {
     clear();
+    cookieAuthenticated = false;
+    const base = backendBase();
+    if (base) {
+      location.assign(base + "/api/auth/logout");
+      return;
+    }
     location.replace(location.pathname + location.search);
   }
 
@@ -287,7 +297,7 @@
     ready,
     getToken,
     getError,
-    isAuthenticated: () => Boolean(getToken()),
+    isAuthenticated: () => cookieAuthenticated || Boolean(getToken()),
     login,
     logout,
     clear,
