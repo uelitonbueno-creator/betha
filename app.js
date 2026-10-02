@@ -15,46 +15,36 @@
     bethaApp.style.display = "none";
     authGate.hidden = false;
 
-    const form = document.getElementById("devLoginForm");
     const message = document.getElementById("authMessage");
+    const button = document.getElementById("loginButton");
     const previousAuthError = window.BIAuth ? BIAuth.getError() : "BIAuth não carregou";
 
-    if (previousAuthError) {
-      message.textContent = "Falha na autenticação: " + previousAuthError;
-    }
-
-    const button = document.getElementById("loginButton");
-    const usernameInput = document.getElementById("devUsername");
-    const passwordInput = document.getElementById("devPassword");
-
-    const executeDevLogin = async () => {
-      const username = usernameInput.value.trim();
-      const password = passwordInput.value;
-
-      message.textContent = "";
-      button.disabled = true;
-      button.textContent = "ENTRANDO...";
-
-      try {
-        await BIAuth.login(username, password);
-        location.replace(location.pathname);
-      } catch (error) {
-        message.textContent =
-          error.message === "DEV_LOGIN_USER_INVALID" ? "Usuário divergente da configuração do Worker." :
-          error.message === "DEV_LOGIN_PASSWORD_INVALID" ? "Senha divergente da configuração do Worker." :
-          error.message === "DEV_LOGIN_INVALID" ? "Usuário ou senha inválidos." :
-          error.message === "DEV_LOGIN_TIMEOUT" ? "O Worker não respondeu ao login em 12 segundos." :
-          "Falha no login: " + error.message;
-        button.disabled = false;
-        button.textContent = "ENTRAR";
-      }
+    const authMessages = {
+      OAUTH_STATE_INVALID: "A validação de segurança do login expirou ou ficou inválida. Inicie o login novamente.",
+      OAUTH_CALLBACK_INCOMPLETE: "A Betha não devolveu todos os dados necessários para concluir o login.",
+      OAUTH_TOKEN_EXCHANGE_FAILED: "A Betha recusou a troca do código de autenticação pelo token.",
+      APPLICATION_SESSION_INVALID: "A sessão do BI não é mais válida. Entre novamente.",
+      APPLICATION_SESSION_EXPIRED: "Sua sessão do BI expirou. Entre novamente.",
+      USER_TOKEN_REQUIRED: "A sessão do usuário não foi encontrada.",
+      AUTH_VALIDATION_TIMEOUT: "A validação do login demorou mais que o esperado. Tente novamente.",
+      BACKEND_NOT_CONFIGURED: "O backend do BI não está configurado."
     };
 
-    button.addEventListener("click", executeDevLogin);
-    form.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        executeDevLogin();
+    if (previousAuthError) {
+      message.textContent = authMessages[previousAuthError] || ("Falha na autenticação: " + previousAuthError);
+    }
+
+    button.addEventListener("click", () => {
+      message.textContent = "Redirecionando para a Betha…";
+      button.disabled = true;
+      button.textContent = "REDIRECIONANDO…";
+
+      try {
+        BIAuth.login();
+      } catch (error) {
+        message.textContent = authMessages[error.message] || ("Falha no login: " + error.message);
+        button.disabled = false;
+        button.textContent = "ENTRAR COM BETHA";
       }
     });
 
@@ -784,7 +774,7 @@
 
     const headers = {...(options.headers || {}), Accept:"application/json"};
     const token = cfg.AUTH_REQUIRED && window.BIAuth && typeof BIAuth.getToken === "function" ? BIAuth.getToken() : "";
-    if (token) headers.Authorization = "DevSession " + token;
+    if (token) headers.Authorization = "Session " + token;
     if (tenantId) headers["X-Tenant-Id"] = tenantId;
 
     const controller = new AbortController();
@@ -1815,13 +1805,38 @@
   });
 
   async function loadTenants() {
-    if (!cfg.BACKEND_URL) return;
+    if (!cfg.BACKEND_URL) return false;
+
     try {
       const result = await api("/api/me/tenants");
-      if (!Array.isArray(result.tenants)) return;
+      if (!Array.isArray(result.tenants)) return false;
+
+      const tenants = result.tenants;
       const list = document.getElementById("entityList");
       list.innerHTML = "";
-      for (const tenant of result.tenants) {
+
+      if (!tenants.length) {
+        list.innerHTML = '<div class="table-empty">Nenhuma entidade autorizada para este usuário.</div>';
+        document.getElementById("entityContext").textContent = "SEM ENTIDADE AUTORIZADA";
+        return false;
+      }
+
+      const currentTenant = tenants.find((tenant) => tenant.id === tenantId);
+
+      // Nunca abre um tenant que não esteja na lista devolvida pelo backend.
+      if (!currentTenant) {
+        const first = tenants[0];
+        const url = new URL(location.href);
+        url.searchParams.set("tenant", first.id);
+        if (first.name) url.searchParams.set("entidade", first.name);
+        location.replace(url.toString());
+        return false;
+      }
+
+      document.getElementById("entityContext").textContent =
+        String(currentTenant.name || currentTenant.id).toUpperCase();
+
+      for (const tenant of tenants) {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "entity-option" + (tenant.id === tenantId ? " is-current" : "");
@@ -1830,11 +1845,16 @@
           const url = new URL(location.href);
           url.searchParams.set("tenant", tenant.id);
           if (tenant.name) url.searchParams.set("entidade", tenant.name);
-          location.href = url.toString();
+          location.assign(url.toString());
         });
         list.appendChild(button);
       }
-    } catch {}
+
+      return true;
+    } catch (error) {
+      console.warn("Falha ao carregar entidades autorizadas:", error);
+      return false;
+    }
   }
 
   document.getElementById("refreshButton").addEventListener("click", () => loadDashboardData(currentView, {force:true}));
@@ -1862,12 +1882,15 @@
     return String(value).replace(/["\\]/g,"\\$&");
   }
 
+  if (cfg.AUTH_REQUIRED) {
+    const tenantReady = await loadTenants();
+    if (!tenantReady) return;
+  }
+
   if (currentView === "usuarios-admin") {
     renderUsersAdmin();
   } else {
     renderDashboard(currentView);
-    loadDashboardData(currentView); // abre o snapshot local sem consultar a Betha
+    loadDashboardData(currentView);
   }
-  // Lista de entidades não é necessária enquanto o login oficial estiver desativado.
-  if (cfg.AUTH_REQUIRED) loadTenants();
 })();
