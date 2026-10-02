@@ -2311,6 +2311,9 @@ function errorResponse(request,env,error) {
     APPLICATION_SESSION_EXPIRED:401,
     LOGIN_CLIENT_ID_NOT_CONFIGURED:503,
     LOGIN_CLIENT_SECRET_NOT_CONFIGURED:503,
+    AUTH_HANDOFF_REQUIRED:400,
+    AUTH_HANDOFF_INVALID:401,
+    AUTH_HANDOFF_EXPIRED:401,
     DEV_LOGIN_NOT_CONFIGURED:503,
     DEV_SESSION_SECRET_NOT_CONFIGURED:503,
     DEV_SESSION_REQUIRED:401,
@@ -2452,7 +2455,8 @@ export default {
 
       if (error) {
         const target=new URL(front);
-        target.hash="auth_error="+encodeURIComponent(error);
+        target.searchParams.set("auth_error",error);
+        target.searchParams.set("auth_return","1");
         return Response.redirect(target.toString(),302);
       }
 
@@ -2489,20 +2493,72 @@ export default {
         const oauthSeconds=Number(parsed.body.expires_in || parsed.body.expires || 0);
         const sessionSeconds=oauthSeconds>0 ? Math.min(oauthSeconds,8*60*60) : 8*60*60;
 
-        const session=await sealSession({
-          kind:"user-session",
+        // Handoff curto e criptografado: evita depender do fragmento (#...)
+        // em navegadores embutidos durante redirecionamentos entre origens.
+        const handoffSeconds=90;
+        const handoff=await sealSession({
+          kind:"auth-handoff",
           accessToken:parsed.body.access_token,
-          exp:Date.now()+sessionSeconds*1000
+          oauthExp:Date.now()+sessionSeconds*1000,
+          exp:Date.now()+handoffSeconds*1000
         },env.BETHA_LOGIN_CLIENT_SECRET);
 
         const target=new URL(front);
-        target.hash="session="+encodeURIComponent(session)+"&expires_in="+sessionSeconds;
+        target.searchParams.set("auth_handoff",handoff);
+        target.searchParams.set("auth_return","1");
         return Response.redirect(target.toString(),302);
       } catch(authError) {
         console.error("oauth callback",authError);
         const target=new URL(front);
-        target.hash="auth_error="+encodeURIComponent(authError.message || "AUTH_CALLBACK_FAILED");
+        target.searchParams.set("auth_error",authError.message || "AUTH_CALLBACK_FAILED");
+        target.searchParams.set("auth_return","1");
         return Response.redirect(target.toString(),302);
+      }
+    }
+
+    if (url.pathname==="/api/auth/session-exchange" && request.method==="POST") {
+      try {
+        if (!env.BETHA_LOGIN_CLIENT_SECRET) throw new Error("LOGIN_CLIENT_SECRET_NOT_CONFIGURED");
+
+        const body=await request.json().catch(()=>({}));
+        const handoff=String(body.handoff || "").trim();
+        if (!handoff) return json(request,env,400,{error:"AUTH_HANDOFF_REQUIRED"});
+
+        const payload=await openSession(handoff,env.BETHA_LOGIN_CLIENT_SECRET);
+        if (!payload || payload.kind!=="auth-handoff" || !payload.accessToken) {
+          return json(request,env,401,{error:"AUTH_HANDOFF_INVALID"});
+        }
+
+        const oauthExp=Number(payload.oauthExp || 0);
+        const remaining=oauthExp>0
+          ? Math.floor((oauthExp-Date.now())/1000)
+          : 8*60*60;
+
+        if (remaining<=0) {
+          return json(request,env,401,{error:"AUTH_HANDOFF_EXPIRED"});
+        }
+
+        const sessionSeconds=Math.max(60,Math.min(remaining,8*60*60));
+        const session=await sealSession({
+          kind:"user-session",
+          accessToken:payload.accessToken,
+          exp:Date.now()+sessionSeconds*1000
+        },env.BETHA_LOGIN_CLIENT_SECRET);
+
+        return json(request,env,200,{
+          ok:true,
+          session,
+          expires_in:sessionSeconds
+        });
+      } catch(error) {
+        const code=error && error.message ? error.message : "AUTH_HANDOFF_INVALID";
+        if (code==="APPLICATION_SESSION_EXPIRED") {
+          return json(request,env,401,{error:"AUTH_HANDOFF_EXPIRED"});
+        }
+        if (code==="APPLICATION_SESSION_INVALID") {
+          return json(request,env,401,{error:"AUTH_HANDOFF_INVALID"});
+        }
+        return errorResponse(request,env,error);
       }
     }
 
