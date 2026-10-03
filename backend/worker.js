@@ -2545,7 +2545,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-03-license-check-v32",
+        buildVersion:"2026-10-03-database-probe-v33",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2639,7 +2639,35 @@ export default {
           const ctx=extractTenantContext(parsed.body,tenant);
           result.entityPresent=Boolean(ctx.entity);
           result.databasePresent=Boolean(ctx.database);
-          result.contextResolved=Boolean(ctx.entity && ctx.database);
+
+          if (ctx.entity && !ctx.database) {
+            const dbResponse=await fetch(
+              LICENSES_BASE+"/licenses/v0.1/api/databases?entity="+encodeURIComponent(ctx.entity),
+              {
+                method:"GET",
+                headers:{
+                  "Accept":"application/json",
+                  "Authorization":"Bearer "+tenant.accessToken,
+                  "User-Access":tenant.userAccess
+                }
+              }
+            );
+
+            const dbParsed=await readJsonResponse(dbResponse);
+            result.databaseLookupStatus=dbResponse.status;
+
+            if (dbResponse.ok) {
+              const rows=Array.isArray(dbParsed.body)
+                ? dbParsed.body
+                : (dbParsed.body && Array.isArray(dbParsed.body.content) ? dbParsed.body.content : [dbParsed.body].filter(Boolean));
+
+              const first=rows[0] || {};
+              const dbValue=scalar(first.databaseId) || scalar(first.database) || scalar(first.id) || scalar(first.codigo);
+              result.databasePresent=Boolean(dbValue);
+            }
+          }
+
+          result.contextResolved=Boolean(result.entityPresent && result.databasePresent);
         } else if (parsed.body && typeof parsed.body==="object") {
           result.error=String(parsed.body.code || parsed.body.error || parsed.body.message || ("HTTP_"+response.status)).slice(0,120);
         } else {
