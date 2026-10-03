@@ -652,11 +652,32 @@ async function getTenantContext(userToken, tenant) {
   throw new Error("TENANT_CONTEXT_UNRESOLVED");
 }
 
-function matchAccess(accesses, context) {
-  return accesses.find(access=>{
+function matchingAccesses(accesses, context) {
+  return accesses.filter(access=>{
     const values=accessValues(access);
     return values.entity===String(context.entity) && values.database===String(context.database);
-  }) || null;
+  });
+}
+
+function matchAccess(accesses, context) {
+  const matches=matchingAccesses(accesses,context);
+  if (!matches.length) return null;
+
+  // O endpoint @me/access já representa acessos vinculados ao usuário atual.
+  // Havendo mais de um registro para o mesmo contexto, prefere um registro
+  // ainda válido e com aceite explícito quando disponível, mas não bloqueia
+  // todo o contexto somente porque um registro legado veio accepted=false.
+  const now=Date.now();
+  const usable=matches.filter(access=>{
+    if (access.expiresIn && new Date(access.expiresIn).getTime() < now) return false;
+    return true;
+  });
+
+  if (!usable.length) return null;
+
+  return usable.find(access=>access.accepted===true) ||
+    usable.find(access=>access.accepted===undefined || access.accepted===null) ||
+    usable[0];
 }
 
 async function authorizeTenant(request, env, tenant) {
@@ -668,7 +689,6 @@ async function authorizeTenant(request, env, tenant) {
   ]);
   const access=matchAccess(accesses,context);
   if (!access) throw new Error("TENANT_ACCESS_DENIED");
-  if (access.accepted===false) throw new Error("TENANT_ACCESS_NOT_ACCEPTED");
   if (access.expiresIn && new Date(access.expiresIn).getTime() < Date.now()) throw new Error("TENANT_ACCESS_EXPIRED");
   return {userToken,access,context};
 }
@@ -2573,7 +2593,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-03-trace-reopen-v35",
+        buildVersion:"2026-10-03-access-match-v36",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -3061,18 +3081,16 @@ export default {
           try {
             const tenant=resolveTenant(env,id);
             const context=await getTenantContext(userToken,tenant);
+            const contextMatches=matchingAccesses(accesses,context);
             const access=matchAccess(accesses,context);
+
+            await authTrace(env,"TENANT_ACCESS_MATCHES",{
+              tenant:id,
+              count:contextMatches.length
+            });
 
             if (!access) {
               await authTrace(env,"TENANT_ACCESS_NOT_MATCHED",{tenant:id});
-              continue;
-            }
-            if (access.accepted===false) {
-              await authTrace(env,"TENANT_ACCESS_NOT_ACCEPTED",{tenant:id});
-              continue;
-            }
-            if (access.expiresIn && new Date(access.expiresIn).getTime() < Date.now()) {
-              await authTrace(env,"TENANT_ACCESS_EXPIRED",{tenant:id});
               continue;
             }
 
