@@ -2470,7 +2470,8 @@ function errorResponse(request,env,error) {
     APPLICATION_SESSION_INVALID:401,
     APPLICATION_SESSION_EXPIRED:401,
     LOGIN_CLIENT_ID_NOT_CONFIGURED:503,
-    LOGIN_CLIENT_SECRET_NOT_CONFIGURED:503,\n    SESSION_STORE_NOT_CONFIGURED:503,
+    LOGIN_CLIENT_SECRET_NOT_CONFIGURED:503,
+    SESSION_STORE_NOT_CONFIGURED:503,
     AUTH_HANDOFF_REQUIRED:400,
     AUTH_HANDOFF_INVALID:401,
     AUTH_HANDOFF_EXPIRED:401,
@@ -2516,7 +2517,8 @@ export default {
         loginClientSecretConfigured:Boolean(env.BETHA_LOGIN_CLIENT_SECRET),
         loginRedirectUri:env.BETHA_LOGIN_REDIRECT_URI || LOGIN_REDIRECT_DEFAULT,
         frontUrl:env.BETHA_FRONT_URL || FRONT_URL_DEFAULT,
-        sameOriginApp:true,\n        sessionStoreConfigured:Boolean(env.BI_SESSIONS),
+        sameOriginApp:true,
+        sessionStoreConfigured:Boolean(env.BI_SESSIONS),
         devLoginConfigured:Boolean(env.BI_DEV_LOGIN_USER && env.BI_DEV_LOGIN_PASSWORD)
       });
     }
