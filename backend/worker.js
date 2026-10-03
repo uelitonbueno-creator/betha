@@ -2419,6 +2419,223 @@ async function buildWorksDashboard(env,tenant,url) {
   };
 }
 
+
+async function buildRevenueCodesDashboard(env,tenant,url) {
+  const periodo=url.searchParams.get("periodo")||"ano";
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+
+  const [receitas,creditos,vinculos,det]=await Promise.all([
+    safeBethaRows(env,tenant,"bi","receitas"),
+    safeBethaRows(env,tenant,"base","creditos-tributarios"),
+    safeBethaRows(env,tenant,"base","creditos-tributarios-receitas"),
+    safeBethaRows(env,tenant,"bi","pagamentos-detalhados")
+  ]);
+
+  const detRows=det.rows.filter(r=>periodIncludes(r,{
+    periodo,exercicio,
+    datePaths:["pagamento.dataPagamento","dataPagamento","dtPagamento"],
+    yearPaths:["ano","exercicio"]
+  }));
+
+  const paymentPaths=["valorPagoLancado","vlPagoLancado","valorPago","vlPago"];
+
+  return {
+    view:"receitas-creditos",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    kpis:{
+      "receitas-total":receitas.loaded,
+      "creditos-total":creditos.loaded,
+      "vinculos-total":vinculos.loaded,
+      "arrecadado-creditos":sumRows(detRows,paymentPaths)
+    },
+    charts:{
+      "receitas-classificacao":chartGroups(
+        groupCount(receitas.rows,["classificacao","classificacao.descricao","tipo","tipoReceita","natureza"],12),
+        "Receitas","number"
+      ),
+      "creditos-situacao":chartGroups(
+        groupCount(creditos.rows,["situacao","situacao.descricao","status"],10),
+        "Créditos","number"
+      ),
+      "creditos-tipo":chartGroups(
+        groupCount(creditos.rows,["tipo","tipoCredito","abreviatura","descricao","nome"],12),
+        "Créditos","number"
+      ),
+      "vinculos-receita":chartGroups(
+        groupCount(vinculos.rows,["receita.descricao","descricaoReceita","receita.nome","idReceita","receita"],12),
+        "Vínculos","number"
+      ),
+      "arrecadacao-credito":chartGroups(
+        groupSum(detRows,["creditoTributario.descricao","creditoTributario.nome","descricaoCreditoTributario","idCreditoTributario"],paymentPaths,12),
+        "Arrecadado","currency"
+      ),
+      "arrecadacao-receita":chartGroups(
+        groupSum(detRows,["receita.descricao","receita.nome","descricaoReceita","idReceita"],paymentPaths,12),
+        "Arrecadado","currency"
+      )
+    },
+    meta:dashboardMeta([
+      ["receitas",receitas],["creditos",creditos],["vinculos",vinculos],["pagamentosDetalhados",det]
+    ])
+  };
+}
+
+async function buildGuidesDashboard(env,tenant,url) {
+  const periodo=url.searchParams.get("periodo")||"ano";
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+
+  const guias=await safeBethaRows(env,tenant,"base","guias-unificadas");
+  const datePaths=["dataEmissao","dtEmissao","dataHoraEmissao","emissao"];
+  const duePaths=["dataVencimento","dtVencimento","vencimento"];
+  const amountPaths=["valor","valorGuia","vlGuia","valorTotal","vlTotal","valorOriginal"];
+
+  const rows=guias.rows.filter(r=>periodIncludes(r,{
+    periodo,exercicio,datePaths,yearPaths:["ano","exercicio"]
+  }));
+
+  const now=Date.now();
+  const paid=countWhere(rows,r=>/pag|quit|baix/i.test(stringValue(r,["situacao","situacao.descricao","status"],"")));
+  const overdue=countWhere(rows,r=>{
+    const d=dateValue(r,duePaths);
+    if(!d || d.getTime()>=now) return false;
+    const status=stringValue(r,["situacao","situacao.descricao","status"],"");
+    return !/pag|quit|baix|cancel/i.test(status);
+  });
+
+  const issue=monthlyCount(guias.rows,datePaths,periodo,exercicio);
+  const due=monthlyCount(guias.rows,duePaths,periodo,exercicio);
+
+  return {
+    view:"guias",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    kpis:{
+      "guias-total":rows.length || guias.loaded,
+      "guias-valor":sumRows(rows,amountPaths),
+      "guias-pagas":paid,
+      "guias-vencidas":overdue
+    },
+    charts:{
+      "guias-emissao":{format:"number",labels:issue.labels,datasets:[{label:"Guias emitidas",data:issue.values}]},
+      "guias-situacao":chartGroups(
+        groupCount(rows,["situacao","situacao.descricao","status"],10),
+        "Guias","number"
+      ),
+      "guias-classificacao":chartGroups(
+        groupCount(rows,["classificacao","classificacao.descricao","tipoGuia","tipo","descricao"],12),
+        "Guias","number"
+      ),
+      "guias-valor-classificacao":chartGroups(
+        groupSum(rows,["classificacao","classificacao.descricao","tipoGuia","tipo","descricao"],amountPaths,12),
+        "Valor","currency"
+      ),
+      "guias-vencimento":{format:"number",labels:due.labels,datasets:[{label:"Vencimentos",data:due.values}]}
+    },
+    meta:dashboardMeta([["guias",guias]])
+  };
+}
+
+async function buildIndexersDashboard(env,tenant,url) {
+  const periodo=url.searchParams.get("periodo")||"ano";
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+
+  const [idx,val]=await Promise.all([
+    safeBethaRows(env,tenant,"bi","indexadores"),
+    safeBethaRows(env,tenant,"bi","indexadores-valores")
+  ]);
+
+  const datePaths=["data","dataValor","dtValor","dataReferencia","competencia"];
+  const valRows=val.rows.filter(r=>periodIncludes(r,{
+    periodo,exercicio,datePaths,yearPaths:["ano","exercicio"]
+  }));
+
+  const monthly=monthSeries(val.rows,{
+    datePaths,
+    valuePaths:["valor","valorIndice","indice","percentual","vlIndice"],
+    periodo,exercicio
+  });
+
+  const active=countWhere(idx.rows,r=>{
+    const s=stringValue(r,["situacao","situacao.descricao","status"],"");
+    if(s) return !/inativ|desativ|cancel/i.test(s);
+    return !truthyValue(r,["desativado","inativo"]);
+  });
+
+  return {
+    view:"indexadores",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    kpis:{
+      "indexadores-total":idx.loaded,
+      "indexadores-ativos":active,
+      "valores-indexadores":val.loaded,
+      "valores-periodo":valRows.length
+    },
+    charts:{
+      "indexadores-tipo":chartGroups(
+        groupCount(idx.rows,["tipo","tipoIndexador","descricao","nome","sigla"],12),
+        "Indexadores","number"
+      ),
+      "indexadores-situacao":chartGroups(
+        groupCount(idx.rows,["situacao","situacao.descricao","status"],10),
+        "Indexadores","number"
+      ),
+      "valores-por-indexador":chartGroups(
+        groupCount(val.rows,["indexador.descricao","indexador.nome","descricaoIndexador","idIndexador","indexador"],12),
+        "Registros","number"
+      ),
+      "evolucao-indexadores":{
+        format:"number",
+        labels:monthly.labels,
+        datasets:[{label:"Valor/índice",data:monthly.values}]
+      }
+    },
+    meta:dashboardMeta([["indexadores",idx],["indexadoresValores",val]])
+  };
+}
+
+async function buildTerritoryDashboard(env,tenant,url) {
+  const [bairros,distritos,logradouros,loteamentos,imoveis]=await Promise.all([
+    safeBethaRows(env,tenant,"base","bairros"),
+    safeBethaRows(env,tenant,"base","distritos"),
+    safeBethaRows(env,tenant,"base","logradouros"),
+    safeBethaRows(env,tenant,"base","loteamentos"),
+    safeBethaRows(env,tenant,"bi","imoveis")
+  ]);
+
+  return {
+    view:"territorio",tenant:{id:tenant.id,name:tenant.name},
+    kpis:{
+      "bairros-total":bairros.loaded,
+      "distritos-total":distritos.loaded,
+      "logradouros-total":logradouros.loaded,
+      "loteamentos-total":loteamentos.loaded,
+      "territorio-imoveis":imoveis.loaded
+    },
+    charts:{
+      "imoveis-bairro":chartGroups(
+        groupCount(imoveis.rows,["nomeBairro","bairro.nome","bairro.descricao","idBairro"],15),
+        "Imóveis","number"
+      ),
+      "imoveis-setor":chartGroups(
+        groupCount(imoveis.rows,["setor","setor.codigo","setor.descricao"],15),
+        "Imóveis","number"
+      ),
+      "logradouros-tipo":chartGroups(
+        groupCount(logradouros.rows,["tipo","tipoLogradouro.descricao","tipoLogradouro","abreviatura"],12),
+        "Logradouros","number"
+      ),
+      "loteamentos-situacao":chartGroups(
+        groupCount(loteamentos.rows,["situacao","situacao.descricao","status"],10),
+        "Loteamentos","number"
+      ),
+      "cadastros-territoriais":chartFixed(
+        ["Bairros","Distritos","Logradouros","Loteamentos"],
+        [bairros.loaded,distritos.loaded,logradouros.loaded,loteamentos.loaded],
+        "Cadastros","number"
+      )
+    },
+    meta:dashboardMeta([
+      ["bairros",bairros],["distritos",distritos],["logradouros",logradouros],["loteamentos",loteamentos],["imoveis",imoveis]
+    ])
+  };
+}
+
 async function buildQualityDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
@@ -2593,7 +2810,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-03-access-match-v36",
+        buildVersion:"2026-10-03-more-dashboards-v37",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -3017,7 +3234,11 @@ export default {
           contribuintes:buildTaxpayersDashboard,
           encerramento:buildClosingDashboard,
           obras:buildWorksDashboard,
-          qualidade:buildQualityDashboard
+          qualidade:buildQualityDashboard,
+          "receitas-creditos":buildRevenueCodesDashboard,
+          guias:buildGuidesDashboard,
+          indexadores:buildIndexersDashboard,
+          territorio:buildTerritoryDashboard
         };
 
         const builder=builders[view];
