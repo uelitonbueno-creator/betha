@@ -389,7 +389,29 @@ function appendSessionCookies(headers,session,maxAge) {
   }
 }
 
-async function proxyFront(request) {
+async function serverAuthState(request,env) {
+  const session=readSessionCookie(request);
+  if (!session) {
+    return {authenticated:false,reason:"NO_SESSION_COOKIE"};
+  }
+
+  try {
+    const payload=await openSession(session,env.BETHA_LOGIN_CLIENT_SECRET);
+    return {
+      authenticated:Boolean(payload && payload.accessToken),
+      reason:"",
+      kind:String(payload && payload.kind || "")
+    };
+  } catch(error) {
+    return {
+      authenticated:false,
+      reason:error && error.message ? error.message : "SESSION_OPEN_FAILED",
+      kind:""
+    };
+  }
+}
+
+async function proxyFront(request,env) {
   const incoming=new URL(request.url);
   const sourcePath=incoming.pathname==="/" ? "/" : incoming.pathname;
   const target=new URL(FRONT_SOURCE_BASE+sourcePath);
@@ -405,11 +427,39 @@ async function proxyFront(request) {
   const headers=new Headers(source.headers);
   headers.delete("Set-Cookie");
   headers.set("X-BI-Front-Proxy","cloudflare-worker");
-  if (
+
+  const isHtml=
     incoming.pathname==="/" ||
     incoming.pathname.endsWith(".html") ||
-    incoming.pathname.endsWith(".js")
-  ) {
+    String(source.headers.get("Content-Type")||"").includes("text/html");
+
+  if (isHtml) {
+    headers.set("Cache-Control","no-store");
+    headers.delete("Content-Length");
+
+    let html=await source.text();
+    const auth=await serverAuthState(request,env);
+    const marker=
+      '<script>window.__BI_SERVER_AUTH='+JSON.stringify({
+        authenticated:auth.authenticated,
+        reason:auth.reason,
+        kind:auth.kind
+      })+';<\/script>';
+
+    if (html.includes("</head>")) {
+      html=html.replace("</head>",marker+"</head>");
+    } else {
+      html=marker+html;
+    }
+
+    return new Response(html,{
+      status:source.status,
+      statusText:source.statusText,
+      headers
+    });
+  }
+
+  if (incoming.pathname.endsWith(".js")) {
     headers.set("Cache-Control","no-store");
   }
 
@@ -2455,7 +2505,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-02-cookie-verify-v20",
+        buildVersion:"2026-10-02-server-auth-v21",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2722,7 +2772,23 @@ button{display:none;width:100%;height:38px;border:0;background:#4263eb;color:whi
 
     if(check.ok && body.sessionValid===true){
       status.textContent="Sessão confirmada. Abrindo o BI Tributos…";
-      location.replace("/");
+
+      const appResponse=await fetch("/",{
+        method:"GET",
+        credentials:"include",
+        headers:{"Accept":"text/html"},
+        cache:"no-store"
+      });
+
+      const appHtml=await appResponse.text();
+      if(!appResponse.ok){
+        throw new Error("APP_HTML_HTTP_"+appResponse.status);
+      }
+
+      history.replaceState({},"","/");
+      document.open();
+      document.write(appHtml);
+      document.close();
       return;
     }
 
@@ -3098,7 +3164,7 @@ button{display:none;width:100%;height:38px;border:0;background:#4263eb;color:whi
     }
 
     if (request.method==="GET" && !url.pathname.startsWith("/api/")) {
-      return proxyFront(request);
+      return proxyFront(request,env);
     }
 
     if (!["GET","POST","DELETE"].includes(request.method)) {
