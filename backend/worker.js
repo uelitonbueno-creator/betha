@@ -2573,7 +2573,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-03-tenant-context-v34",
+        buildVersion:"2026-10-03-trace-reopen-v35",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2602,6 +2602,32 @@ export default {
       } catch(error) {
         return errorResponse(request,env,error);
       }
+    }
+
+    if (url.pathname==="/api/internal/trace-last-safe" && request.method==="GET") {
+      let events=[];
+      let error="";
+      try {
+        const raw=env.BI_SESSIONS ? await env.BI_SESSIONS.get("debug:auth:last") : "";
+        const parsed=raw ? JSON.parse(raw) : [];
+        if (Array.isArray(parsed)) {
+          events=parsed.slice(-30).map(item=>({
+            ts:String(item && item.ts || ""),
+            stage:String(item && item.stage || ""),
+            meta:item && item.meta && typeof item.meta==="object"
+              ? Object.fromEntries(
+                  Object.entries(item.meta).filter(([key,value])=>
+                    ["path","hasCode","hasState","hasError","expiresIn","ttl","sidLength","cookiePresent","code","count","tenant","userAccountsScope","licensesScope","scopeReported"].includes(key) &&
+                    ["string","number","boolean"].includes(typeof value)
+                  )
+                )
+              : {}
+          }));
+        }
+      } catch(e) {
+        error=e && e.message ? e.message : "TRACE_READ_FAILED";
+      }
+      return json(request,env,200,{ok:true,events,error});
     }
 
     if (url.pathname==="/api/auth/session-debug" && request.method==="GET") {
