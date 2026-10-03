@@ -12,6 +12,7 @@
   let memorySession = "";
   let memoryExpires = 0;
   let cookieAuthenticated = false;
+  const serverAuth = window.__BI_SERVER_AUTH || {authenticated:false,reason:""};
 
   function stores() {
     const out = [];
@@ -212,6 +213,12 @@
   }
 
   async function validate() {
+    if (serverAuth && serverAuth.authenticated === true) {
+      cookieAuthenticated = true;
+      removeItem(KEY_ERROR);
+      return true;
+    }
+
     const token = getToken();
     const base = backendBase();
 
@@ -290,7 +297,13 @@
 
   const ready = (async () => {
     await handleCallback();
-    return validate();
+    const valid = await validate();
+
+    if (!valid && serverAuth && serverAuth.reason && !getError()) {
+      setItem(KEY_ERROR, serverAuth.reason);
+    }
+
+    return valid;
   })();
 
   window.BIAuth = {
