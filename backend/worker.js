@@ -2810,7 +2810,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-03-more-dashboards-v37",
+        buildVersion:"2026-10-03-more-dashboards-secure-v38",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2839,57 +2839,6 @@ export default {
       } catch(error) {
         return errorResponse(request,env,error);
       }
-    }
-
-    if (url.pathname==="/api/internal/trace-last-safe" && request.method==="GET") {
-      let events=[];
-      let error="";
-      try {
-        const raw=env.BI_SESSIONS ? await env.BI_SESSIONS.get("debug:auth:last") : "";
-        const parsed=raw ? JSON.parse(raw) : [];
-        if (Array.isArray(parsed)) {
-          events=parsed.slice(-30).map(item=>({
-            ts:String(item && item.ts || ""),
-            stage:String(item && item.stage || ""),
-            meta:item && item.meta && typeof item.meta==="object"
-              ? Object.fromEntries(
-                  Object.entries(item.meta).filter(([key,value])=>
-                    ["path","hasCode","hasState","hasError","expiresIn","ttl","sidLength","cookiePresent","code","count","tenant","userAccountsScope","licensesScope","scopeReported"].includes(key) &&
-                    ["string","number","boolean"].includes(typeof value)
-                  )
-                )
-              : {}
-          }));
-        }
-      } catch(e) {
-        error=e && e.message ? e.message : "TRACE_READ_FAILED";
-      }
-      return json(request,env,200,{ok:true,events,error});
-    }
-
-    if (url.pathname==="/api/auth/session-debug" && request.method==="GET") {
-      const sid=readCookie(request,SESSION_COOKIE);
-      let stored=null;
-      let error="";
-
-      if (sid) {
-        try {
-          stored=await readStoredSession(request,env);
-        } catch(e) {
-          error=e && e.message ? e.message : "SESSION_STORE_FAILED";
-        }
-      }
-
-      return json(request,env,200,{
-        ok:true,
-        sessionCookiePresent:Boolean(sid),
-        sessionIdLength:sid.length,
-        sessionStoreConfigured:Boolean(env.BI_SESSIONS),
-        sessionFound:Boolean(stored),
-        sessionKind:stored ? String(stored.kind||"") : "",
-        expiresAt:stored && stored.exp ? Number(stored.exp) : null,
-        error
-      });
     }
 
     if (url.pathname==="/api/auth/logout" && request.method==="GET") {
@@ -3195,6 +3144,8 @@ export default {
 
     if (url.pathname==="/api/cache/snapshot" && request.method==="POST") {
       try {
+        const tenant=resolveTenant(env,getTenantId(request,url));
+        await authorizeTenant(request,env,tenant);
         const body=await request.json();
         const result=await persistSupabaseCache(env,body);
         return json(request,env,200,result);
@@ -3207,6 +3158,7 @@ export default {
     if (overviewPartMatch && request.method==="GET") {
       try {
         const tenant=resolveTenant(env,getTenantId(request,url));
+        await authorizeTenant(request,env,tenant);
         const body=await buildOverviewPart(env,tenant,url,overviewPartMatch[1]);
         return json(request,env,200,body);
       } catch(error) {
@@ -3218,10 +3170,11 @@ export default {
     if (dashboardMatch && request.method==="GET") {
       try {
         const tenant=resolveTenant(env,getTenantId(request,url));
+        await authorizeTenant(request,env,tenant);
         const view=dashboardMatch[1];
 
-        // Enquanto o login está desativado, estas rotas devolvem apenas agregados.
-        // Nenhum registro individual ou dado cadastral é exposto.
+        // Dashboard autorizado por sessão Betha + contexto entity/database.
+        // O navegador recebe apenas agregados do tenant validado.
         const builders={
           "visao-geral":buildOverviewDashboard,
           arrecadacao:buildRevenueDashboard,
