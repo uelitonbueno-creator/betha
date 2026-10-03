@@ -2533,7 +2533,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-03-trace-safe-v24",
+        buildVersion:"2026-10-03-tenant-trace-v25",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2581,7 +2581,7 @@ export default {
               meta:item && item.meta && typeof item.meta==="object"
                 ? Object.fromEntries(
                     Object.entries(item.meta).filter(([key,value])=>
-                      ["path","hasCode","hasState","hasError","expiresIn","ttl","sidLength","cookiePresent","code"].includes(key) &&
+                      ["path","hasCode","hasState","hasError","expiresIn","ttl","sidLength","cookiePresent","code","count","tenant"].includes(key) &&
                       ["string","number","boolean"].includes(typeof value)
                     )
                   )
@@ -3006,13 +3006,18 @@ export default {
     }
 
     if (url.pathname==="/api/me/tenants" && request.method==="GET") {
+      await authTrace(env,"TENANTS_START",{cookiePresent:Boolean(readCookie(request,SESSION_COOKIE))});
+
       try {
         const userToken=await getUserToken(request,env);
         if (!userToken) throw new Error("USER_TOKEN_REQUIRED");
+        await authTrace(env,"TENANTS_TOKEN_OK",{});
 
         // Consulta os acessos Betha uma única vez e cruza no backend com cada
         // tenant configurado. O front nunca decide database/entity sozinho.
         const accesses=await getUserAccesses(userToken);
+        await authTrace(env,"TENANTS_ACCESSES_OK",{count:Array.isArray(accesses)?accesses.length:0});
+
         const registry=parseJsonObject(env.BETHA_TENANTS_JSON,{});
         const tenants=[];
 
@@ -3022,9 +3027,18 @@ export default {
             const context=await getTenantContext(userToken,tenant);
             const access=matchAccess(accesses,context);
 
-            if (!access) continue;
-            if (access.accepted===false) continue;
-            if (access.expiresIn && new Date(access.expiresIn).getTime() < Date.now()) continue;
+            if (!access) {
+              await authTrace(env,"TENANT_ACCESS_NOT_MATCHED",{tenant:id});
+              continue;
+            }
+            if (access.accepted===false) {
+              await authTrace(env,"TENANT_ACCESS_NOT_ACCEPTED",{tenant:id});
+              continue;
+            }
+            if (access.expiresIn && new Date(access.expiresIn).getTime() < Date.now()) {
+              await authTrace(env,"TENANT_ACCESS_EXPIRED",{tenant:id});
+              continue;
+            }
 
             tenants.push({
               id:tenant.id,
@@ -3034,13 +3048,18 @@ export default {
               admin:Boolean(access.admin),
               technical:Boolean(access.technical)
             });
+            await authTrace(env,"TENANT_AUTHORIZED",{tenant:id});
           } catch(error) {
-            // Uma entidade mal configurada não derruba a lista inteira.
+            await authTrace(env,"TENANT_VALIDATION_ERROR",{
+              tenant:id,
+              code:error && error.message ? error.message : "TENANT_VALIDATION_FAILED"
+            });
             console.warn("tenant validation",id,error.message);
           }
         }
 
         tenants.sort((a,b)=>String(a.name||a.id).localeCompare(String(b.name||b.id),"pt-BR"));
+        await authTrace(env,"TENANTS_RESULT",{count:tenants.length});
 
         return json(request,env,200,{
           tenants,
@@ -3048,6 +3067,9 @@ export default {
           selectionRequired:tenants.length>1
         });
       } catch(error) {
+        await authTrace(env,"TENANTS_ERROR",{
+          code:error && error.message ? error.message : "TENANTS_FAILED"
+        });
         return errorResponse(request,env,error);
       }
     }
