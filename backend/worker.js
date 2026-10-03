@@ -2541,7 +2541,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-03-service-context-v27",
+        buildVersion:"2026-10-03-license-probe-v28",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2614,30 +2614,81 @@ export default {
       const results=[];
 
       for (const id of Object.keys(registry)) {
+        const tenant=resolveTenant(env,id);
+        const target=LICENSES_BASE+"/licenses/v0.1/api/entidades/atual/";
+
+        let status=0;
+        let ok=false;
+        let bodyKeys=[];
+        let errorCode="";
+        let errorMessage="";
+
         try {
-          const tenant=resolveTenant(env,id);
-          const context=await getTenantContext("",tenant);
+          const response=await fetch(target,{
+            method:"GET",
+            headers:{
+              "Accept":"application/json",
+              "Content-Type":"application/json",
+              "Authorization":"Bearer "+tenant.accessToken,
+              "User-Access":tenant.userAccess
+            }
+          });
+
+          status=response.status;
+          ok=response.ok;
+          const parsed=await readJsonResponse(response);
+
+          if (parsed.body && typeof parsed.body==="object" && !Array.isArray(parsed.body)) {
+            bodyKeys=Object.keys(parsed.body).slice(0,20);
+            errorCode=String(
+              parsed.body.error ||
+              parsed.body.code ||
+              parsed.body.errorCode ||
+              ""
+            ).slice(0,120);
+            errorMessage=String(
+              parsed.body.message ||
+              parsed.body.error_description ||
+              parsed.body.detail ||
+              ""
+            ).slice(0,240);
+          } else if (!response.ok && typeof parsed.body==="string") {
+            errorMessage=parsed.body.replace(/Bearer\s+[A-Za-z0-9._=-]+/gi,"Bearer [redacted]").slice(0,240);
+          }
+
+          const ctx=response.ok ? extractTenantContext(parsed.body,tenant) : {entity:"",database:""};
+
           results.push({
             tenant:id,
-            resolved:Boolean(context && context.entity && context.database),
-            entityPresent:Boolean(context && context.entity),
-            databasePresent:Boolean(context && context.database)
+            serviceTokenPresent:Boolean(tenant.accessToken),
+            userAccessPresent:Boolean(tenant.userAccess),
+            status,
+            ok,
+            bodyKeys,
+            resolved:Boolean(ctx.entity && ctx.database),
+            entityPresent:Boolean(ctx.entity),
+            databasePresent:Boolean(ctx.database),
+            errorCode,
+            errorMessage
           });
         } catch(error) {
           results.push({
             tenant:id,
+            serviceTokenPresent:Boolean(tenant.accessToken),
+            userAccessPresent:Boolean(tenant.userAccess),
+            status,
+            ok:false,
+            bodyKeys,
             resolved:false,
             entityPresent:false,
             databasePresent:false,
-            error:error && error.message ? error.message : "TENANT_CONTEXT_FAILED"
+            errorCode:error && error.message ? error.message : "PROBE_FAILED",
+            errorMessage:""
           });
         }
       }
 
-      return json(request,env,200,{
-        ok:true,
-        results
-      });
+      return json(request,env,200,{ok:true,results});
     }
 
     if (url.pathname==="/api/auth/session-debug" && request.method==="GET") {
