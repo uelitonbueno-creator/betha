@@ -282,6 +282,86 @@ window.BI_DASHBOARDS = {
   }
 };
 
+
+Object.assign(window.BI_DASHBOARDS, {
+  "receitas-creditos": {
+    title: "Receitas e créditos tributários",
+    description: "Estrutura dos créditos e receitas, vínculos contábeis e participação na arrecadação municipal.",
+    level: "macro-micro",
+    kpis: [
+      {id:"receitas-total",label:"Receitas cadastradas",format:"number",source:"bi:receitas",field:"id"},
+      {id:"creditos-total",label:"Créditos tributários",format:"number",source:"base:creditos-tributarios",field:"id"},
+      {id:"vinculos-total",label:"Vínculos crédito × receita",format:"number",source:"base:creditos-tributarios-receitas",field:"id"},
+      {id:"arrecadado-creditos",label:"Arrecadação vinculada",format:"currency",source:"bi:pagamentos-detalhados",field:"valorPagoLancado"}
+    ],
+    charts: [
+      {id:"receitas-classificacao",title:"Receitas por classificação",subtitle:"Distribuição das receitas cadastradas por classificação/tipo.",type:"bar",source:"bi:receitas",dimension:"classificação",measures:["count"],drill:"receitas"},
+      {id:"creditos-situacao",title:"Créditos por situação",subtitle:"Composição dos créditos tributários por situação cadastral.",type:"doughnut",source:"base:creditos-tributarios",dimension:"situação",measures:["count"],drill:"creditos-tributarios"},
+      {id:"creditos-tipo",title:"Créditos por tipo",subtitle:"Distribuição por espécie, abreviatura ou grupo do crédito.",type:"bar",source:"base:creditos-tributarios",dimension:"tipo",measures:["count"],drill:"creditos-tributarios"},
+      {id:"vinculos-receita",title:"Vínculos por receita",subtitle:"Quantidade de vínculos entre créditos tributários e receitas.",type:"bar",source:"base:creditos-tributarios-receitas",dimension:"receita",measures:["count"],drill:"creditos-tributarios-receitas"},
+      {id:"arrecadacao-credito",title:"Arrecadação por crédito tributário",subtitle:"Ranking financeiro dos créditos no período.",type:"bar",source:"bi:pagamentos-detalhados",dimension:"creditoTributario",measures:["valorPagoLancado"],drill:"pagamentos-detalhados"},
+      {id:"arrecadacao-receita",title:"Arrecadação por receita",subtitle:"Participação das receitas no valor efetivamente pago.",type:"bar",source:"bi:pagamentos-detalhados",dimension:"receita",measures:["valorPagoLancado"],drill:"pagamentos-detalhados"}
+    ]
+  },
+
+  "guias": {
+    title: "Guias e documentos",
+    description: "Emissão, vencimento, situação, classificação e valores das guias tributárias.",
+    level: "macro-micro",
+    kpis: [
+      {id:"guias-total",label:"Guias",format:"number",source:"base:guias-unificadas",field:"id"},
+      {id:"guias-valor",label:"Valor das guias",format:"currency",source:"base:guias-unificadas",field:"valor"},
+      {id:"guias-pagas",label:"Guias pagas/quitadas",format:"number",source:"base:guias-unificadas",field:"situacao"},
+      {id:"guias-vencidas",label:"Guias vencidas",format:"number",source:"base:guias-unificadas",field:"vencimento"}
+    ],
+    charts: [
+      {id:"guias-emissao",title:"Guias emitidas por mês",subtitle:"Evolução mensal da emissão de documentos.",type:"line",source:"base:guias-unificadas",dimension:"dataEmissao:mês",measures:["count"],drill:"guias-unificadas"},
+      {id:"guias-situacao",title:"Situação das guias",subtitle:"Pagas, abertas, canceladas, vencidas e demais situações.",type:"doughnut",source:"base:guias-unificadas",dimension:"situacao",measures:["count"],drill:"guias-unificadas"},
+      {id:"guias-classificacao",title:"Classificação das guias",subtitle:"Quantidade de guias por classificação ou tipo.",type:"bar",source:"base:guias-unificadas",dimension:"classificacao",measures:["count"],drill:"guias-unificadas"},
+      {id:"guias-valor-classificacao",title:"Valor por classificação",subtitle:"Montante emitido por grupo de guia.",type:"bar",source:"base:guias-unificadas",dimension:"classificacao",measures:["valor"],drill:"guias-unificadas"},
+      {id:"guias-vencimento",title:"Vencimentos por mês",subtitle:"Distribuição temporal dos vencimentos.",type:"line",source:"base:guias-unificadas",dimension:"vencimento:mês",measures:["count"],drill:"guias-unificadas"}
+    ]
+  },
+
+  "indexadores": {
+    title: "Indexadores e atualização monetária",
+    description: "Cadastro de indexadores, histórico de valores e evolução das referências de atualização.",
+    level: "macro-micro",
+    kpis: [
+      {id:"indexadores-total",label:"Indexadores",format:"number",source:"bi:indexadores",field:"id"},
+      {id:"indexadores-ativos",label:"Indexadores ativos",format:"number",source:"bi:indexadores",field:"situacao"},
+      {id:"valores-indexadores",label:"Valores históricos",format:"number",source:"bi:indexadores-valores",field:"id"},
+      {id:"valores-periodo",label:"Registros no período",format:"number",source:"bi:indexadores-valores",field:"data"}
+    ],
+    charts: [
+      {id:"indexadores-tipo",title:"Indexadores por tipo",subtitle:"Distribuição dos indexadores cadastrados.",type:"bar",source:"bi:indexadores",dimension:"tipo",measures:["count"],drill:"indexadores"},
+      {id:"indexadores-situacao",title:"Situação dos indexadores",subtitle:"Ativos, inativos e demais situações cadastrais.",type:"doughnut",source:"bi:indexadores",dimension:"situacao",measures:["count"],drill:"indexadores"},
+      {id:"valores-por-indexador",title:"Histórico por indexador",subtitle:"Quantidade de referências históricas por indexador.",type:"bar",source:"bi:indexadores-valores",dimension:"indexador",measures:["count"],drill:"indexadores-valores"},
+      {id:"evolucao-indexadores",title:"Evolução dos valores",subtitle:"Valores registrados ao longo do período selecionado.",type:"line",source:"bi:indexadores-valores",dimension:"data:mês",measures:["valor"],drill:"indexadores-valores"}
+    ]
+  },
+
+  "territorio": {
+    title: "Território cadastral",
+    description: "Bairros, distritos, logradouros, loteamentos e distribuição territorial dos imóveis.",
+    level: "macro-micro",
+    kpis: [
+      {id:"bairros-total",label:"Bairros",format:"number",source:"base:bairros",field:"id"},
+      {id:"distritos-total",label:"Distritos",format:"number",source:"base:distritos",field:"id"},
+      {id:"logradouros-total",label:"Logradouros",format:"number",source:"base:logradouros",field:"id"},
+      {id:"loteamentos-total",label:"Loteamentos",format:"number",source:"base:loteamentos",field:"id"},
+      {id:"territorio-imoveis",label:"Imóveis georreferenciáveis",format:"number",source:"bi:imoveis",field:"id"}
+    ],
+    charts: [
+      {id:"imoveis-bairro",title:"Imóveis por bairro",subtitle:"Concentração da base imobiliária por bairro.",type:"bar",source:"bi:imoveis",dimension:"bairro",measures:["count"],drill:"imoveis"},
+      {id:"imoveis-setor",title:"Imóveis por setor",subtitle:"Distribuição por setor cadastral.",type:"bar",source:"bi:imoveis",dimension:"setor",measures:["count"],drill:"imoveis"},
+      {id:"logradouros-tipo",title:"Logradouros por tipo",subtitle:"Composição da malha de logradouros.",type:"bar",source:"base:logradouros",dimension:"tipo",measures:["count"],drill:"logradouros"},
+      {id:"loteamentos-situacao",title:"Loteamentos por situação",subtitle:"Distribuição dos loteamentos conforme situação cadastral.",type:"doughnut",source:"base:loteamentos",dimension:"situacao",measures:["count"],drill:"loteamentos"},
+      {id:"cadastros-territoriais",title:"Cobertura territorial",subtitle:"Comparativo entre bairros, distritos, logradouros e loteamentos.",type:"bar",source:"base:bairros|distritos|logradouros|loteamentos",dimension:"cadastro",measures:["count"],drill:"territorio"}
+    ]
+  }
+});
+
 window.BI_MENU = [
   { id:"visao-geral", descricao:"Visão geral", icone:"view-dashboard", rota:"visao-geral", possuiPermissao:true },
   { id:"financeiro", descricao:"Financeiro", icone:"cash-multiple", possuiPermissao:true, submenus:[
@@ -289,12 +369,16 @@ window.BI_MENU = [
     {id:"debitos",descricao:"Lançamentos e débitos",rota:"debitos",possuiPermissao:true},
     {id:"divida",descricao:"Dívida ativa",rota:"divida",possuiPermissao:true},
     {id:"parcelamentos",descricao:"Parcelamentos",rota:"parcelamentos",possuiPermissao:true},
+    {id:"receitas-creditos",descricao:"Receitas e créditos",rota:"receitas-creditos",possuiPermissao:true},
+    {id:"guias",descricao:"Guias e documentos",rota:"guias",possuiPermissao:true},
+    {id:"indexadores",descricao:"Indexadores",rota:"indexadores",possuiPermissao:true},
     {id:"encerramento",descricao:"Encerramento mensal",rota:"encerramento",possuiPermissao:true}
   ]},
   { id:"cadastros", descricao:"Cadastros", icone:"database", possuiPermissao:true, submenus:[
     {id:"economicos",descricao:"Econômicos e ISS",rota:"economicos",possuiPermissao:true},
     {id:"imobiliario",descricao:"Imobiliário e IPTU",rota:"imobiliario",possuiPermissao:true},
     {id:"contribuintes",descricao:"Contribuintes",rota:"contribuintes",possuiPermissao:true},
+    {id:"territorio",descricao:"Território cadastral",rota:"territorio",possuiPermissao:true},
     {id:"obras",descricao:"Obras",rota:"obras",possuiPermissao:true}
   ]},
   { id:"itbi", descricao:"Transferências e ITBI", icone:"home-switch", rota:"itbi", possuiPermissao:true },
