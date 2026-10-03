@@ -2533,7 +2533,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-03-tenant-trace-v25",
+        buildVersion:"2026-10-03-scope-tenant-trace-v26",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2581,7 +2581,7 @@ export default {
               meta:item && item.meta && typeof item.meta==="object"
                 ? Object.fromEntries(
                     Object.entries(item.meta).filter(([key,value])=>
-                      ["path","hasCode","hasState","hasError","expiresIn","ttl","sidLength","cookiePresent","code","count","tenant"].includes(key) &&
+                      ["path","hasCode","hasState","hasError","expiresIn","ttl","sidLength","cookiePresent","code","count","tenant","userAccountsScope","licensesScope","scopeReported"].includes(key) &&
                       ["string","number","boolean"].includes(typeof value)
                     )
                   )
@@ -2764,7 +2764,13 @@ export default {
           throw new Error("OAUTH_TOKEN_EXCHANGE_FAILED");
         }
 
-        await authTrace(env,"TOKEN_OK",{expiresIn:Number(parsed.body.expires_in || parsed.body.expires || 0)});
+        const returnedScope=String(parsed.body.scope || parsed.body.scopes || "");
+        await authTrace(env,"TOKEN_OK",{
+          expiresIn:Number(parsed.body.expires_in || parsed.body.expires || 0),
+          userAccountsScope:returnedScope.includes("user-accounts.suite"),
+          licensesScope:returnedScope.includes("licenses.suite"),
+          scopeReported:Boolean(returnedScope)
+        });
 
         const oauthSeconds=Number(parsed.body.expires_in || parsed.body.expires || 0);
         const sessionSeconds=oauthSeconds>0 ? Math.min(oauthSeconds,8*60*60) : 8*60*60;
