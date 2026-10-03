@@ -399,17 +399,44 @@ async function destroyStoredSession(request,env) {
 
 async function serverAuthState(request,env) {
   try {
+    const sid=readCookie(request,SESSION_COOKIE);
     const session=await readStoredSession(request,env);
-    return session
-      ? {authenticated:true,reason:"",kind:String(session.kind||"user-session")}
-      : {authenticated:false,reason:"NO_SESSION_COOKIE",kind:""};
+
+    if (session) {
+      await authTrace(env,"ROOT_SESSION_FOUND",{cookiePresent:Boolean(sid),sidLength:sid.length});
+      return {authenticated:true,reason:"",kind:String(session.kind||"user-session")};
+    }
+
+    await authTrace(env,"ROOT_SESSION_MISSING",{cookiePresent:Boolean(sid),sidLength:sid.length});
+    return {authenticated:false,reason:"NO_SESSION_COOKIE",kind:""};
   } catch(error) {
+    await authTrace(env,"ROOT_SESSION_ERROR",{code:error && error.message ? error.message : "SESSION_STORE_FAILED"});
     return {
       authenticated:false,
       reason:error && error.message ? error.message : "SESSION_STORE_FAILED",
       kind:""
     };
   }
+}
+
+async function authTrace(env,stage,meta={}) {
+  if (!env.BI_SESSIONS) return;
+  try {
+    const key="debug:auth:last";
+    const raw=await env.BI_SESSIONS.get(key);
+    let events=[];
+    if (raw) {
+      try { events=JSON.parse(raw); } catch {}
+    }
+    if (!Array.isArray(events)) events=[];
+    events.push({
+      ts:new Date().toISOString(),
+      stage:String(stage||""),
+      meta:meta && typeof meta==="object" ? meta : {}
+    });
+    events=events.slice(-25);
+    await env.BI_SESSIONS.put(key,JSON.stringify(events),{expirationTtl:3600});
+  } catch {}
 }
 
 async function proxyFront(request,env) {
@@ -2506,7 +2533,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-02-kv-session-v22",
+        buildVersion:"2026-10-02-kv-trace-v23",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2524,6 +2551,7 @@ export default {
     }
 
     if (url.pathname==="/api/auth/session-check" && request.method==="GET") {
+      await authTrace(env,"SESSION_CHECK_START",{});
       try {
         const userToken=await getUserToken(request,env);
         if (!userToken) throw new Error("USER_TOKEN_REQUIRED");
@@ -2624,6 +2652,7 @@ export default {
     }
 
     if (url.pathname==="/api/auth/login" && request.method==="GET") {
+      await authTrace(env,"LOGIN_START",{path:url.pathname});
       if (!env.BETHA_LOGIN_CLIENT_ID) {
         return json(request,env,503,{error:"LOGIN_CLIENT_ID_NOT_CONFIGURED"});
       }
@@ -2654,6 +2683,7 @@ export default {
     }
 
     if (url.pathname==="/api/auth/callback" && request.method==="GET") {
+      await authTrace(env,"CALLBACK_RECEIVED",{hasCode:Boolean(url.searchParams.get("code")),hasState:Boolean(url.searchParams.get("state")),hasError:Boolean(url.searchParams.get("error"))});
       const front=env.BETHA_FRONT_URL || FRONT_URL_DEFAULT;
       const error=url.searchParams.get("error");
       const code=url.searchParams.get("code");
@@ -2697,6 +2727,8 @@ export default {
           throw new Error("OAUTH_TOKEN_EXCHANGE_FAILED");
         }
 
+        await authTrace(env,"TOKEN_OK",{expiresIn:Number(parsed.body.expires_in || parsed.body.expires || 0)});
+
         const oauthSeconds=Number(parsed.body.expires_in || parsed.body.expires || 0);
         const sessionSeconds=oauthSeconds>0 ? Math.min(oauthSeconds,8*60*60) : 8*60*60;
 
@@ -2705,6 +2737,8 @@ export default {
           parsed.body.access_token,
           sessionSeconds
         );
+
+        await authTrace(env,"KV_SESSION_SAVED",{sidLength:stored.sid.length,ttl:stored.ttl});
 
         const appUrl=new URL(request.url);
         appUrl.pathname="/";
@@ -2720,6 +2754,7 @@ export default {
           }
         });
       } catch(authError) {
+        await authTrace(env,"CALLBACK_ERROR",{code:authError && authError.message ? authError.message : "AUTH_CALLBACK_FAILED"});
         console.error("oauth callback",authError);
         const target=new URL(request.url);
         target.pathname="/";
