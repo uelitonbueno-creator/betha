@@ -2,5 +2,11 @@
   "name": "betha-bi-api",
   "main": "backend/worker.js",
   "compatibility_date": "2026-10-01",
-  "keep_vars": true
+  "keep_vars": true,
+  "kv_namespaces": [
+    {
+      "binding": "BI_SESSIONS",
+      "id": "32b40317f22445b1aef3c32dd437da02"
+    }
+  ]
 }
