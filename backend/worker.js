@@ -17,7 +17,7 @@ const OAUTH_TOKEN_URL = "https://plataforma-oauth.betha.cloud/auth/oauth2/token"
 const LOGIN_REDIRECT_DEFAULT = "https://betha-bi-api.ueliton-bueno.workers.dev/api/auth/callback";
 const FRONT_URL_DEFAULT = "https://uelitonbueno-creator.github.io/betha/";
 const FRONT_SOURCE_BASE = "https://uelitonbueno-creator.github.io/betha";
-const SESSION_COOKIE = "betha_bi_session";
+const SESSION_COOKIE = "__Host-betha_bi_sid";
 const LOGIN_SCOPES_DEFAULT = "contas-usuarios.suite,user-accounts.suite,licenses.suite";
 const SUPABASE_CACHE_WRITE_URL = "https://mliurxyjznxoafkwwtae.supabase.co/functions/v1/bi-cache-write";
 
@@ -331,10 +331,10 @@ function readCookie(request,name) {
   return "";
 }
 
-function sessionCookieValue(name,value,maxAge) {
+function sessionCookieHeader(sessionId,maxAge) {
   const seconds=Math.max(0,Number(maxAge)||0);
   return [
-    name+"="+encodeURIComponent(value||""),
+    SESSION_COOKIE+"="+encodeURIComponent(sessionId||""),
     "Path=/",
     "HttpOnly",
     "Secure",
@@ -343,69 +343,70 @@ function sessionCookieValue(name,value,maxAge) {
   ].join("; ");
 }
 
-function sessionCookieHeaders(session,maxAge) {
-  const value=String(session||"");
-  const chunkSize=2800;
-  const chunks=[];
-  for (let i=0;i<value.length;i+=chunkSize) chunks.push(value.slice(i,i+chunkSize));
-
-  // Mantém margem para tokens maiores sem ultrapassar o limite por cookie.
-  if (chunks.length>6) throw new Error("APPLICATION_SESSION_TOO_LARGE");
-
-  const out=[];
-  if (!chunks.length) {
-    out.push(sessionCookieValue(SESSION_COOKIE,"",0));
-    for (let i=0;i<6;i++) out.push(sessionCookieValue(SESSION_COOKIE+"_"+i,"",0));
-    return out;
-  }
-
-  // Limpa o formato antigo e grava o novo em partes.
-  out.push(sessionCookieValue(SESSION_COOKIE,"",0));
-  chunks.forEach((chunk,index)=>{
-    out.push(sessionCookieValue(SESSION_COOKIE+"_"+index,chunk,maxAge));
-  });
-  for (let i=chunks.length;i<6;i++) {
-    out.push(sessionCookieValue(SESSION_COOKIE+"_"+i,"",0));
-  }
-  return out;
+function createSessionId() {
+  return bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)));
 }
 
-function readSessionCookie(request) {
-  const legacy=readCookie(request,SESSION_COOKIE);
-  if (legacy) return legacy;
+async function createStoredSession(env,accessToken,ttlSeconds) {
+  if (!env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
+  if (!accessToken) throw new Error("USER_TOKEN_REQUIRED");
 
-  let combined="";
-  for (let i=0;i<6;i++) {
-    const chunk=readCookie(request,SESSION_COOKIE+"_"+i);
-    if (!chunk) break;
-    combined+=chunk;
-  }
-  return combined;
+  const ttl=Math.max(60,Math.min(Number(ttlSeconds)||8*60*60,8*60*60));
+  const sid=createSessionId();
+  const exp=Date.now()+ttl*1000;
+
+  await env.BI_SESSIONS.put(
+    "session:"+sid,
+    JSON.stringify({kind:"user-session",accessToken,exp}),
+    {expirationTtl:ttl}
+  );
+
+  return {sid,exp,ttl};
 }
 
-function appendSessionCookies(headers,session,maxAge) {
-  for (const cookie of sessionCookieHeaders(session,maxAge)) {
-    headers.append("Set-Cookie",cookie);
+async function readStoredSession(request,env) {
+  if (!env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
+
+  const sid=readCookie(request,SESSION_COOKIE);
+  if (!sid) return null;
+
+  const raw=await env.BI_SESSIONS.get("session:"+sid);
+  if (!raw) return null;
+
+  try {
+    const payload=JSON.parse(raw);
+    if (!payload || !payload.accessToken) {
+      await env.BI_SESSIONS.delete("session:"+sid);
+      return null;
+    }
+    if (payload.exp && Date.now()>=Number(payload.exp)) {
+      await env.BI_SESSIONS.delete("session:"+sid);
+      return null;
+    }
+    return {sid,...payload};
+  } catch {
+    await env.BI_SESSIONS.delete("session:"+sid);
+    return null;
+  }
+}
+
+async function destroyStoredSession(request,env) {
+  const sid=readCookie(request,SESSION_COOKIE);
+  if (sid && env.BI_SESSIONS) {
+    await env.BI_SESSIONS.delete("session:"+sid);
   }
 }
 
 async function serverAuthState(request,env) {
-  const session=readSessionCookie(request);
-  if (!session) {
-    return {authenticated:false,reason:"NO_SESSION_COOKIE"};
-  }
-
   try {
-    const payload=await openSession(session,env.BETHA_LOGIN_CLIENT_SECRET);
-    return {
-      authenticated:Boolean(payload && payload.accessToken),
-      reason:"",
-      kind:String(payload && payload.kind || "")
-    };
+    const session=await readStoredSession(request,env);
+    return session
+      ? {authenticated:true,reason:"",kind:String(session.kind||"user-session")}
+      : {authenticated:false,reason:"NO_SESSION_COOKIE",kind:""};
   } catch(error) {
     return {
       authenticated:false,
-      reason:error && error.message ? error.message : "SESSION_OPEN_FAILED",
+      reason:error && error.message ? error.message : "SESSION_STORE_FAILED",
       kind:""
     };
   }
@@ -478,10 +479,9 @@ async function getUserToken(request, env) {
     return session.accessToken;
   }
 
-  const cookieSession=readSessionCookie(request);
-  if (cookieSession) {
-    const session=await openSession(cookieSession,env.BETHA_LOGIN_CLIENT_SECRET);
-    return session.accessToken;
+  const storedSession=await readStoredSession(request,env);
+  if (storedSession && storedSession.accessToken) {
+    return storedSession.accessToken;
   }
 
   // Compatibilidade temporária durante a migração.
@@ -2470,7 +2470,7 @@ function errorResponse(request,env,error) {
     APPLICATION_SESSION_INVALID:401,
     APPLICATION_SESSION_EXPIRED:401,
     LOGIN_CLIENT_ID_NOT_CONFIGURED:503,
-    LOGIN_CLIENT_SECRET_NOT_CONFIGURED:503,
+    LOGIN_CLIENT_SECRET_NOT_CONFIGURED:503,\n    SESSION_STORE_NOT_CONFIGURED:503,
     AUTH_HANDOFF_REQUIRED:400,
     AUTH_HANDOFF_INVALID:401,
     AUTH_HANDOFF_EXPIRED:401,
@@ -2505,7 +2505,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-02-server-auth-v21",
+        buildVersion:"2026-10-02-kv-session-v22",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2516,7 +2516,7 @@ export default {
         loginClientSecretConfigured:Boolean(env.BETHA_LOGIN_CLIENT_SECRET),
         loginRedirectUri:env.BETHA_LOGIN_REDIRECT_URI || LOGIN_REDIRECT_DEFAULT,
         frontUrl:env.BETHA_FRONT_URL || FRONT_URL_DEFAULT,
-        sameOriginApp:true,
+        sameOriginApp:true,\n        sessionStoreConfigured:Boolean(env.BI_SESSIONS),
         devLoginConfigured:Boolean(env.BI_DEV_LOGIN_USER && env.BI_DEV_LOGIN_PASSWORD)
       });
     }
@@ -2535,56 +2535,45 @@ export default {
     }
 
     if (url.pathname==="/api/auth/session-debug" && request.method==="GET") {
-      const legacy=readCookie(request,SESSION_COOKIE);
-      const chunks=[];
-      for (let i=0;i<6;i++) {
-        const value=readCookie(request,SESSION_COOKIE+"_"+i);
-        if (value) chunks.push({index:i,length:value.length});
-      }
-
-      const combined=readSessionCookie(request);
-      let sessionOpenable=false;
-      let sessionKind="";
-      let expiresAt=null;
+      const sid=readCookie(request,SESSION_COOKIE);
+      let stored=null;
       let error="";
 
-      if (combined) {
+      if (sid) {
         try {
-          const payload=await openSession(combined,env.BETHA_LOGIN_CLIENT_SECRET);
-          sessionOpenable=Boolean(payload && payload.accessToken);
-          sessionKind=String(payload && payload.kind || "");
-          expiresAt=payload && payload.exp ? Number(payload.exp) : null;
+          stored=await readStoredSession(request,env);
         } catch(e) {
-          error=e && e.message ? e.message : "SESSION_OPEN_FAILED";
+          error=e && e.message ? e.message : "SESSION_STORE_FAILED";
         }
       }
 
       return json(request,env,200,{
         ok:true,
-        cookiePresent:Boolean(combined),
-        legacyCookieLength:legacy.length,
-        chunks,
-        combinedLength:combined.length,
-        sessionOpenable,
-        sessionKind,
-        expiresAt,
+        sessionCookiePresent:Boolean(sid),
+        sessionIdLength:sid.length,
+        sessionStoreConfigured:Boolean(env.BI_SESSIONS),
+        sessionFound:Boolean(stored),
+        sessionKind:stored ? String(stored.kind||"") : "",
+        expiresAt:stored && stored.exp ? Number(stored.exp) : null,
         error
       });
     }
 
     if (url.pathname==="/api/auth/logout" && request.method==="GET") {
+      await destroyStoredSession(request,env);
+
       const target=new URL(request.url);
       target.pathname="/";
       target.search="";
       target.hash="";
-      const responseHeaders=new Headers();
-      responseHeaders.set("Location",target.toString());
-      responseHeaders.set("Cache-Control","no-store");
-      appendSessionCookies(responseHeaders,"",0);
 
       return new Response(null,{
         status:302,
-        headers:responseHeaders
+        headers:{
+          "Location":target.toString(),
+          "Set-Cookie":sessionCookieHeader("",0),
+          "Cache-Control":"no-store"
+        }
       });
     }
 
@@ -2709,128 +2698,24 @@ export default {
         const oauthSeconds=Number(parsed.body.expires_in || parsed.body.expires || 0);
         const sessionSeconds=oauthSeconds>0 ? Math.min(oauthSeconds,8*60*60) : 8*60*60;
 
-        const session=await sealSession({
-          kind:"user-session",
-          accessToken:parsed.body.access_token,
-          exp:Date.now()+sessionSeconds*1000
-        },env.BETHA_LOGIN_CLIENT_SECRET);
+        const stored=await createStoredSession(
+          env,
+          parsed.body.access_token,
+          sessionSeconds
+        );
 
-        // A aplicação passa a ser servida pelo próprio Worker. Assim o cookie é
-        // first-party mesmo em navegação privada/anônima no celular.
         const appUrl=new URL(request.url);
         appUrl.pathname="/";
         appUrl.search="";
         appUrl.hash="";
 
-        const responseHeaders=new Headers();
-        responseHeaders.set("Content-Type","text/html; charset=utf-8");
-        responseHeaders.set("Cache-Control","no-store");
-        appendSessionCookies(responseHeaders,session,sessionSeconds);
-
-        const verifyHtml=`<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Validando sessão • BI Tributos</title>
-<style>
-*{box-sizing:border-box}body{font-family:Arial,sans-serif;background:#eff0f2;margin:0;min-height:100vh;display:grid;place-items:center;padding:20px;color:#24272c}
-.box{background:#fff;border:1px solid #dfe3e8;max-width:560px;width:100%;padding:30px;text-align:center;box-shadow:0 8px 28px rgba(0,0,0,.08)}
-.brand{width:58px;height:58px;margin:0 auto 14px;border-radius:10px;background:#202b84;color:#fff;display:grid;place-items:center;font-size:30px;font-weight:700;font-style:italic}
-h1{font-size:21px;font-weight:500;margin:0 0 8px}p{font-size:13px;line-height:1.55;color:#626b75}
-pre{display:none;text-align:left;white-space:pre-wrap;word-break:break-word;background:#f6f7f8;border:1px solid #e1e4e8;padding:12px;font-size:12px}
-.err{color:#a62d2d}
-button{display:none;width:100%;height:38px;border:0;background:#4263eb;color:white;font-weight:600;cursor:pointer;margin-top:12px}
-</style>
-</head>
-<body>
-<main class="box">
-<div class="brand">B</div>
-<h1 id="title">Login Betha concluído</h1>
-<p id="status">Validando a sessão segura do BI…</p>
-<pre id="diag"></pre>
-<button id="retry" type="button">ENTRAR NOVAMENTE</button>
-</main>
-<script>
-(async()=>{
-  const title=document.getElementById("title");
-  const status=document.getElementById("status");
-  const diag=document.getElementById("diag");
-  const retry=document.getElementById("retry");
-
-  retry.onclick=()=>location.replace("/api/auth/login");
-
-  try{
-    await new Promise(r=>setTimeout(r,120));
-    const check=await fetch("/api/auth/session-check",{
-      method:"GET",
-      credentials:"include",
-      headers:{"Accept":"application/json"},
-      cache:"no-store"
-    });
-    const body=await check.json().catch(()=>({}));
-
-    if(check.ok && body.sessionValid===true){
-      status.textContent="Sessão confirmada. Abrindo o BI Tributos…";
-
-      const appResponse=await fetch("/",{
-        method:"GET",
-        credentials:"include",
-        headers:{"Accept":"text/html"},
-        cache:"no-store"
-      });
-
-      const appHtml=await appResponse.text();
-      if(!appResponse.ok){
-        throw new Error("APP_HTML_HTTP_"+appResponse.status);
-      }
-
-      history.replaceState({},"","/");
-      document.open();
-      document.write(appHtml);
-      document.close();
-      return;
-    }
-
-    const debugResponse=await fetch("/api/auth/session-debug",{
-      method:"GET",
-      credentials:"include",
-      headers:{"Accept":"application/json"},
-      cache:"no-store"
-    });
-    const debug=await debugResponse.json().catch(()=>({}));
-
-    title.textContent="Sessão não foi gravada";
-    status.className="err";
-    status.textContent="A autenticação Betha funcionou, mas o navegador não devolveu a sessão ao Worker.";
-    diag.style.display="block";
-    diag.textContent=JSON.stringify({
-      checkStatus:check.status,
-      checkError:body.error||"",
-      cookiePresent:debug.cookiePresent||false,
-      chunks:debug.chunks||[],
-      combinedLength:debug.combinedLength||0,
-      sessionOpenable:debug.sessionOpenable||false,
-      sessionKind:debug.sessionKind||"",
-      debugError:debug.error||""
-    },null,2);
-    retry.style.display="block";
-  }catch(error){
-    title.textContent="Falha ao validar a sessão";
-    status.className="err";
-    status.textContent="O navegador não conseguiu concluir a validação local do BI.";
-    diag.style.display="block";
-    diag.textContent=String(error&&error.message||error);
-    retry.style.display="block";
-  }
-})();
-</script>
-</body>
-</html>`;
-
-        return new Response(verifyHtml,{
-          status:200,
-          headers:responseHeaders
+        return new Response(null,{
+          status:302,
+          headers:{
+            "Location":appUrl.toString(),
+            "Set-Cookie":sessionCookieHeader(stored.sid,stored.ttl),
+            "Cache-Control":"no-store"
+          }
         });
       } catch(authError) {
         console.error("oauth callback",authError);
