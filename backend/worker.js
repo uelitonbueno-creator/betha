@@ -618,6 +618,8 @@ async function getTenantContext(userToken, tenant) {
     if (ctx.entity && ctx.database) return ctx;
   } catch(error) {
     console.warn("tenant context via licensing failed",tenant.id,error.message);
+    if (error && error.message==="PLATFORM_HTTP_403") throw new Error("SERVICE_LICENSE_SCOPE_REQUIRED");
+    if (error && error.message==="PLATFORM_HTTP_401") throw new Error("SERVICE_ACCESS_TOKEN_INVALID");
   }
   throw new Error("TENANT_CONTEXT_UNRESOLVED");
 }
@@ -2519,6 +2521,8 @@ function errorResponse(request,env,error) {
     DEV_LOGIN_USER_INVALID:401,
     DEV_LOGIN_PASSWORD_INVALID:401,
     TENANT_CONTEXT_UNRESOLVED:503,
+    SERVICE_LICENSE_SCOPE_REQUIRED:503,
+    SERVICE_ACCESS_TOKEN_INVALID:503,
     TENANT_ACCESS_DENIED:403,
     TENANT_ACCESS_NOT_ACCEPTED:403,
     TENANT_ACCESS_EXPIRED:403,
@@ -2541,7 +2545,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-03-current-tokeninfo-v30",
+        buildVersion:"2026-10-03-license-scope-error-v31",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2570,170 +2574,6 @@ export default {
       } catch(error) {
         return errorResponse(request,env,error);
       }
-    }
-
-    if (url.pathname==="/api/auth/trace-safe" && request.method==="GET") {
-      let events=[];
-      let error="";
-
-      if (!env.BI_SESSIONS) {
-        error="SESSION_STORE_NOT_CONFIGURED";
-      } else {
-        try {
-          const raw=await env.BI_SESSIONS.get("debug:auth:last");
-          const parsed=raw ? JSON.parse(raw) : [];
-          if (Array.isArray(parsed)) {
-            events=parsed.slice(-25).map(item=>({
-              ts:String(item && item.ts || ""),
-              stage:String(item && item.stage || ""),
-              meta:item && item.meta && typeof item.meta==="object"
-                ? Object.fromEntries(
-                    Object.entries(item.meta).filter(([key,value])=>
-                      ["path","hasCode","hasState","hasError","expiresIn","ttl","sidLength","cookiePresent","code","count","tenant","userAccountsScope","licensesScope","scopeReported"].includes(key) &&
-                      ["string","number","boolean"].includes(typeof value)
-                    )
-                  )
-                : {}
-            }));
-          }
-        } catch(e) {
-          error=e && e.message ? e.message : "TRACE_READ_FAILED";
-        }
-      }
-
-      return json(request,env,200,{
-        ok:true,
-        buildVersion:"2026-10-03-trace-safe-v24",
-        events,
-        error
-      });
-    }
-
-    if (url.pathname==="/api/internal/tenant-context-probe" && request.method==="GET") {
-      const registry=parseJsonObject(env.BETHA_TENANTS_JSON,{});
-      const results=[];
-
-      for (const id of Object.keys(registry)) {
-        const tenant=resolveTenant(env,id);
-        const target=LICENSES_BASE+"/licenses/v0.1/api/entidades/atual/";
-
-        let status=0;
-        let ok=false;
-        let bodyKeys=[];
-        let errorCode="";
-        let errorMessage="";
-        let tokenInfoStatus=0;
-        let tokenScopeReported=false;
-        let tokenHasLicensesSuite=false;
-        let tokenHasSuiteServices=false;
-        let tokenHasUserAccountsSuite=false;
-        let tokenScopeCount=0;
-
-        try {
-          let tokenInfoResponse=await fetch(
-            "https://plataforma-oauth.betha.cloud/auth/oauth2/tokeninfo?access_token="+
-            encodeURIComponent(tenant.accessToken),
-            {method:"GET",headers:{"Accept":"application/json"}}
-          );
-
-          if (!tokenInfoResponse.ok && tokenInfoResponse.status===404) {
-            tokenInfoResponse=await fetch(
-              "https://oauth.cloud.betha.com.br/auth/oauth2/tokeninfo?access_token="+
-              encodeURIComponent(tenant.accessToken),
-              {method:"GET",headers:{"Accept":"application/json"}}
-            );
-          }
-
-          tokenInfoStatus=tokenInfoResponse.status;
-          const tokenInfo=await readJsonResponse(tokenInfoResponse);
-          const scopeValue=tokenInfo.body && typeof tokenInfo.body==="object"
-            ? (tokenInfo.body.scope ?? tokenInfo.body.scopes ?? "")
-            : "";
-
-          const scopeList=Array.isArray(scopeValue)
-            ? scopeValue.map(String)
-            : String(scopeValue||"").split(/[ ,]+/).filter(Boolean);
-
-          tokenScopeReported=scopeList.length>0;
-          tokenScopeCount=scopeList.length;
-          tokenHasLicensesSuite=scopeList.includes("licenses.suite");
-          tokenHasSuiteServices=scopeList.includes("suite.services");
-          tokenHasUserAccountsSuite=scopeList.includes("user-accounts.suite");
-        } catch {}
-
-
-        try {
-          const response=await fetch(target,{
-            method:"GET",
-            headers:{
-              "Accept":"application/json",
-              "Content-Type":"application/json",
-              "Authorization":"Bearer "+tenant.accessToken,
-              "User-Access":tenant.userAccess
-            }
-          });
-
-          status=response.status;
-          ok=response.ok;
-          const parsed=await readJsonResponse(response);
-
-          if (parsed.body && typeof parsed.body==="object" && !Array.isArray(parsed.body)) {
-            bodyKeys=Object.keys(parsed.body).slice(0,20);
-            errorCode=String(
-              parsed.body.error ||
-              parsed.body.code ||
-              parsed.body.errorCode ||
-              ""
-            ).slice(0,120);
-            errorMessage=String(
-              parsed.body.message ||
-              parsed.body.error_description ||
-              parsed.body.detail ||
-              ""
-            ).slice(0,240);
-          } else if (!response.ok && typeof parsed.body==="string") {
-            errorMessage=parsed.body.replace(/Bearer\s+[A-Za-z0-9._=-]+/gi,"Bearer [redacted]").slice(0,240);
-          }
-
-          const ctx=response.ok ? extractTenantContext(parsed.body,tenant) : {entity:"",database:""};
-
-          results.push({
-            tenant:id,
-            serviceTokenPresent:Boolean(tenant.accessToken),
-            userAccessPresent:Boolean(tenant.userAccess),
-            status,
-            ok,
-            bodyKeys,
-            resolved:Boolean(ctx.entity && ctx.database),
-            entityPresent:Boolean(ctx.entity),
-            databasePresent:Boolean(ctx.database),
-            errorCode,
-            errorMessage,
-            tokenInfoStatus,
-            tokenScopeReported,
-            tokenScopeCount,
-            tokenHasLicensesSuite,
-            tokenHasSuiteServices,
-            tokenHasUserAccountsSuite
-          });
-        } catch(error) {
-          results.push({
-            tenant:id,
-            serviceTokenPresent:Boolean(tenant.accessToken),
-            userAccessPresent:Boolean(tenant.userAccess),
-            status,
-            ok:false,
-            bodyKeys,
-            resolved:false,
-            entityPresent:false,
-            databasePresent:false,
-            errorCode:error && error.message ? error.message : "PROBE_FAILED",
-            errorMessage:""
-          });
-        }
-      }
-
-      return json(request,env,200,{ok:true,results});
     }
 
     if (url.pathname==="/api/auth/session-debug" && request.method==="GET") {
@@ -3161,6 +3001,7 @@ export default {
 
         const registry=parseJsonObject(env.BETHA_TENANTS_JSON,{});
         const tenants=[];
+        const tenantErrors=[];
 
         for (const id of Object.keys(registry)) {
           try {
@@ -3195,8 +3036,16 @@ export default {
               tenant:id,
               code:error && error.message ? error.message : "TENANT_VALIDATION_FAILED"
             });
+            tenantErrors.push(error && error.message ? error.message : "TENANT_VALIDATION_FAILED");
             console.warn("tenant validation",id,error.message);
           }
+        }
+
+        if (!tenants.length && tenantErrors.includes("SERVICE_LICENSE_SCOPE_REQUIRED")) {
+          throw new Error("SERVICE_LICENSE_SCOPE_REQUIRED");
+        }
+        if (!tenants.length && tenantErrors.includes("SERVICE_ACCESS_TOKEN_INVALID")) {
+          throw new Error("SERVICE_ACCESS_TOKEN_INVALID");
         }
 
         tenants.sort((a,b)=>String(a.name||a.id).localeCompare(String(b.name||b.id),"pt-BR"));
