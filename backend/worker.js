@@ -597,12 +597,20 @@ async function getTenantContext(userToken, tenant) {
   if (tenant.entityId && tenant.databaseId) {
     return {entity:tenant.entityId,database:tenant.databaseId};
   }
+
+  // O User-Access do tenant pertence à credencial de serviço que o gerou.
+  // Para resolver entity/database, ele deve ser combinado com o Access Token
+  // dessa mesma credencial. O token OAuth do usuário fica reservado para
+  // consultar os acessos do usuário e autorizar o tenant.
+  const contextToken=tenant.accessToken || userToken;
+  if (!contextToken) throw new Error("BETHA_ACCESS_TOKEN_NOT_CONFIGURED");
+
   try {
     const payload=await platformRequest(
       LICENSES_BASE+"/licenses/v0.1/api/entidades/atual/",
       {headers:{
         "Accept":"application/json",
-        "Authorization":"Bearer "+userToken,
+        "Authorization":"Bearer "+contextToken,
         "User-Access":tenant.userAccess
       }}
     );
@@ -2533,7 +2541,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-03-scope-tenant-trace-v26",
+        buildVersion:"2026-10-03-service-context-v27",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2598,6 +2606,37 @@ export default {
         buildVersion:"2026-10-03-trace-safe-v24",
         events,
         error
+      });
+    }
+
+    if (url.pathname==="/api/internal/tenant-context-probe" && request.method==="GET") {
+      const registry=parseJsonObject(env.BETHA_TENANTS_JSON,{});
+      const results=[];
+
+      for (const id of Object.keys(registry)) {
+        try {
+          const tenant=resolveTenant(env,id);
+          const context=await getTenantContext("",tenant);
+          results.push({
+            tenant:id,
+            resolved:Boolean(context && context.entity && context.database),
+            entityPresent:Boolean(context && context.entity),
+            databasePresent:Boolean(context && context.database)
+          });
+        } catch(error) {
+          results.push({
+            tenant:id,
+            resolved:false,
+            entityPresent:false,
+            databasePresent:false,
+            error:error && error.message ? error.message : "TENANT_CONTEXT_FAILED"
+          });
+        }
+      }
+
+      return json(request,env,200,{
+        ok:true,
+        results
       });
     }
 
