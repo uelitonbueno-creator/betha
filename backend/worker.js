@@ -2541,7 +2541,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-03-service-scope-probe-v29",
+        buildVersion:"2026-10-03-current-tokeninfo-v30",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2630,14 +2630,19 @@ export default {
         let tokenScopeCount=0;
 
         try {
-          const tokenInfoUrl=
-            "https://oauth.cloud.betha.com.br/auth/oauth2/tokeninfo?access_token="+
-            encodeURIComponent(tenant.accessToken);
+          let tokenInfoResponse=await fetch(
+            "https://plataforma-oauth.betha.cloud/auth/oauth2/tokeninfo?access_token="+
+            encodeURIComponent(tenant.accessToken),
+            {method:"GET",headers:{"Accept":"application/json"}}
+          );
 
-          const tokenInfoResponse=await fetch(tokenInfoUrl,{
-            method:"GET",
-            headers:{"Accept":"application/json"}
-          });
+          if (!tokenInfoResponse.ok && tokenInfoResponse.status===404) {
+            tokenInfoResponse=await fetch(
+              "https://oauth.cloud.betha.com.br/auth/oauth2/tokeninfo?access_token="+
+              encodeURIComponent(tenant.accessToken),
+              {method:"GET",headers:{"Accept":"application/json"}}
+            );
+          }
 
           tokenInfoStatus=tokenInfoResponse.status;
           const tokenInfo=await readJsonResponse(tokenInfoResponse);
