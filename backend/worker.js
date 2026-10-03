@@ -598,15 +598,11 @@ async function getTenantContext(userToken, tenant) {
     return {entity:tenant.entityId,database:tenant.databaseId};
   }
 
-  // O User-Access do tenant pertence à credencial de serviço que o gerou.
-  // Para resolver entity/database, ele deve ser combinado com o Access Token
-  // dessa mesma credencial. O token OAuth do usuário fica reservado para
-  // consultar os acessos do usuário e autorizar o tenant.
   const contextToken=tenant.accessToken || userToken;
   if (!contextToken) throw new Error("BETHA_ACCESS_TOKEN_NOT_CONFIGURED");
 
   try {
-    const payload=await platformRequest(
+    const entityPayload=await platformRequest(
       LICENSES_BASE+"/licenses/v0.1/api/entidades/atual/",
       {headers:{
         "Accept":"application/json",
@@ -614,13 +610,45 @@ async function getTenantContext(userToken, tenant) {
         "User-Access":tenant.userAccess
       }}
     );
-    const ctx=extractTenantContext(payload,tenant);
-    if (ctx.entity && ctx.database) return ctx;
+
+    const ctx=extractTenantContext(entityPayload,tenant);
+    let entity=String(ctx.entity||"");
+    let database=String(ctx.database||"");
+
+    if (!entity) throw new Error("TENANT_CONTEXT_UNRESOLVED");
+
+    if (!database) {
+      const databasePayload=await platformRequest(
+        LICENSES_BASE+"/licenses/v0.1/api/databases?entity="+encodeURIComponent(entity),
+        {headers:{
+          "Accept":"application/json",
+          "Authorization":"Bearer "+contextToken,
+          "User-Access":tenant.userAccess
+        }}
+      );
+
+      const rows=Array.isArray(databasePayload)
+        ? databasePayload
+        : (databasePayload && Array.isArray(databasePayload.content)
+          ? databasePayload.content
+          : [databasePayload].filter(Boolean));
+
+      const first=rows[0] || {};
+      database=
+        scalar(first.databaseId) ||
+        scalar(first.database) ||
+        scalar(first.id) ||
+        scalar(first.codigo);
+    }
+
+    if (entity && database) return {entity,database};
   } catch(error) {
     console.warn("tenant context via licensing failed",tenant.id,error.message);
     if (error && error.message==="PLATFORM_HTTP_403") throw new Error("SERVICE_LICENSE_SCOPE_REQUIRED");
     if (error && error.message==="PLATFORM_HTTP_401") throw new Error("SERVICE_ACCESS_TOKEN_INVALID");
+    if (error && error.message==="TENANT_CONTEXT_UNRESOLVED") throw error;
   }
+
   throw new Error("TENANT_CONTEXT_UNRESOLVED");
 }
 
@@ -2545,7 +2573,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-03-database-probe-v33",
+        buildVersion:"2026-10-03-tenant-context-v34",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2574,110 +2602,6 @@ export default {
       } catch(error) {
         return errorResponse(request,env,error);
       }
-    }
-
-    if (url.pathname==="/api/internal/license-check" && request.method==="GET") {
-      const registry=parseJsonObject(env.BETHA_TENANTS_JSON,{});
-      const ids=Object.keys(registry);
-      const id=ids[0] || "";
-      let result={
-        tenantConfigured:Boolean(id),
-        serviceTokenPresent:false,
-        userAccessPresent:false,
-        tokenInfoStatus:0,
-        hasLicensesSuite:false,
-        hasSuiteServices:false,
-        hasUserAccountsSuite:false,
-        licenseStatus:0,
-        licenseOk:false,
-        contextResolved:false,
-        entityPresent:false,
-        databasePresent:false,
-        error:""
-      };
-
-      if (!id) {
-        result.error="TENANT_NOT_CONFIGURED";
-        return json(request,env,200,{ok:true,result});
-      }
-
-      try {
-        const tenant=resolveTenant(env,id);
-        result.serviceTokenPresent=Boolean(tenant.accessToken);
-        result.userAccessPresent=Boolean(tenant.userAccess);
-
-        try {
-          const tokenInfoResponse=await fetch(
-            "https://plataforma-oauth.betha.cloud/auth/oauth2/tokeninfo?access_token="+encodeURIComponent(tenant.accessToken),
-            {method:"GET",headers:{"Accept":"application/json"}}
-          );
-          result.tokenInfoStatus=tokenInfoResponse.status;
-          const info=await readJsonResponse(tokenInfoResponse);
-          const raw=info.body && typeof info.body==="object" ? (info.body.scope ?? info.body.scopes ?? "") : "";
-          const scopes=Array.isArray(raw) ? raw.map(String) : String(raw||"").split(/[ ,]+/).filter(Boolean);
-          result.hasLicensesSuite=scopes.includes("licenses.suite");
-          result.hasSuiteServices=scopes.includes("suite.services");
-          result.hasUserAccountsSuite=scopes.includes("user-accounts.suite");
-        } catch {}
-
-        const response=await fetch(
-          LICENSES_BASE+"/licenses/v0.1/api/entidades/atual/",
-          {
-            method:"GET",
-            headers:{
-              "Accept":"application/json",
-              "Authorization":"Bearer "+tenant.accessToken,
-              "User-Access":tenant.userAccess
-            }
-          }
-        );
-
-        result.licenseStatus=response.status;
-        result.licenseOk=response.ok;
-        const parsed=await readJsonResponse(response);
-        if (response.ok) {
-          const ctx=extractTenantContext(parsed.body,tenant);
-          result.entityPresent=Boolean(ctx.entity);
-          result.databasePresent=Boolean(ctx.database);
-
-          if (ctx.entity && !ctx.database) {
-            const dbResponse=await fetch(
-              LICENSES_BASE+"/licenses/v0.1/api/databases?entity="+encodeURIComponent(ctx.entity),
-              {
-                method:"GET",
-                headers:{
-                  "Accept":"application/json",
-                  "Authorization":"Bearer "+tenant.accessToken,
-                  "User-Access":tenant.userAccess
-                }
-              }
-            );
-
-            const dbParsed=await readJsonResponse(dbResponse);
-            result.databaseLookupStatus=dbResponse.status;
-
-            if (dbResponse.ok) {
-              const rows=Array.isArray(dbParsed.body)
-                ? dbParsed.body
-                : (dbParsed.body && Array.isArray(dbParsed.body.content) ? dbParsed.body.content : [dbParsed.body].filter(Boolean));
-
-              const first=rows[0] || {};
-              const dbValue=scalar(first.databaseId) || scalar(first.database) || scalar(first.id) || scalar(first.codigo);
-              result.databasePresent=Boolean(dbValue);
-            }
-          }
-
-          result.contextResolved=Boolean(result.entityPresent && result.databasePresent);
-        } else if (parsed.body && typeof parsed.body==="object") {
-          result.error=String(parsed.body.code || parsed.body.error || parsed.body.message || ("HTTP_"+response.status)).slice(0,120);
-        } else {
-          result.error="HTTP_"+response.status;
-        }
-      } catch(error) {
-        result.error=error && error.message ? error.message : "LICENSE_CHECK_FAILED";
-      }
-
-      return json(request,env,200,{ok:true,result});
     }
 
     if (url.pathname==="/api/auth/session-debug" && request.method==="GET") {
