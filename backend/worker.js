@@ -2541,7 +2541,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-03-license-probe-v28",
+        buildVersion:"2026-10-03-service-scope-probe-v29",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2622,6 +2622,40 @@ export default {
         let bodyKeys=[];
         let errorCode="";
         let errorMessage="";
+        let tokenInfoStatus=0;
+        let tokenScopeReported=false;
+        let tokenHasLicensesSuite=false;
+        let tokenHasSuiteServices=false;
+        let tokenHasUserAccountsSuite=false;
+        let tokenScopeCount=0;
+
+        try {
+          const tokenInfoUrl=
+            "https://oauth.cloud.betha.com.br/auth/oauth2/tokeninfo?access_token="+
+            encodeURIComponent(tenant.accessToken);
+
+          const tokenInfoResponse=await fetch(tokenInfoUrl,{
+            method:"GET",
+            headers:{"Accept":"application/json"}
+          });
+
+          tokenInfoStatus=tokenInfoResponse.status;
+          const tokenInfo=await readJsonResponse(tokenInfoResponse);
+          const scopeValue=tokenInfo.body && typeof tokenInfo.body==="object"
+            ? (tokenInfo.body.scope ?? tokenInfo.body.scopes ?? "")
+            : "";
+
+          const scopeList=Array.isArray(scopeValue)
+            ? scopeValue.map(String)
+            : String(scopeValue||"").split(/[ ,]+/).filter(Boolean);
+
+          tokenScopeReported=scopeList.length>0;
+          tokenScopeCount=scopeList.length;
+          tokenHasLicensesSuite=scopeList.includes("licenses.suite");
+          tokenHasSuiteServices=scopeList.includes("suite.services");
+          tokenHasUserAccountsSuite=scopeList.includes("user-accounts.suite");
+        } catch {}
+
 
         try {
           const response=await fetch(target,{
@@ -2669,7 +2703,13 @@ export default {
             entityPresent:Boolean(ctx.entity),
             databasePresent:Boolean(ctx.database),
             errorCode,
-            errorMessage
+            errorMessage,
+            tokenInfoStatus,
+            tokenScopeReported,
+            tokenScopeCount,
+            tokenHasLicensesSuite,
+            tokenHasSuiteServices,
+            tokenHasUserAccountsSuite
           });
         } catch(error) {
           results.push({
