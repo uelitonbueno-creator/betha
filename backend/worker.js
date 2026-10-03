@@ -2545,7 +2545,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-03-license-scope-error-v31",
+        buildVersion:"2026-10-03-license-check-v32",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2574,6 +2574,82 @@ export default {
       } catch(error) {
         return errorResponse(request,env,error);
       }
+    }
+
+    if (url.pathname==="/api/internal/license-check" && request.method==="GET") {
+      const registry=parseJsonObject(env.BETHA_TENANTS_JSON,{});
+      const ids=Object.keys(registry);
+      const id=ids[0] || "";
+      let result={
+        tenantConfigured:Boolean(id),
+        serviceTokenPresent:false,
+        userAccessPresent:false,
+        tokenInfoStatus:0,
+        hasLicensesSuite:false,
+        hasSuiteServices:false,
+        hasUserAccountsSuite:false,
+        licenseStatus:0,
+        licenseOk:false,
+        contextResolved:false,
+        entityPresent:false,
+        databasePresent:false,
+        error:""
+      };
+
+      if (!id) {
+        result.error="TENANT_NOT_CONFIGURED";
+        return json(request,env,200,{ok:true,result});
+      }
+
+      try {
+        const tenant=resolveTenant(env,id);
+        result.serviceTokenPresent=Boolean(tenant.accessToken);
+        result.userAccessPresent=Boolean(tenant.userAccess);
+
+        try {
+          const tokenInfoResponse=await fetch(
+            "https://plataforma-oauth.betha.cloud/auth/oauth2/tokeninfo?access_token="+encodeURIComponent(tenant.accessToken),
+            {method:"GET",headers:{"Accept":"application/json"}}
+          );
+          result.tokenInfoStatus=tokenInfoResponse.status;
+          const info=await readJsonResponse(tokenInfoResponse);
+          const raw=info.body && typeof info.body==="object" ? (info.body.scope ?? info.body.scopes ?? "") : "";
+          const scopes=Array.isArray(raw) ? raw.map(String) : String(raw||"").split(/[ ,]+/).filter(Boolean);
+          result.hasLicensesSuite=scopes.includes("licenses.suite");
+          result.hasSuiteServices=scopes.includes("suite.services");
+          result.hasUserAccountsSuite=scopes.includes("user-accounts.suite");
+        } catch {}
+
+        const response=await fetch(
+          LICENSES_BASE+"/licenses/v0.1/api/entidades/atual/",
+          {
+            method:"GET",
+            headers:{
+              "Accept":"application/json",
+              "Authorization":"Bearer "+tenant.accessToken,
+              "User-Access":tenant.userAccess
+            }
+          }
+        );
+
+        result.licenseStatus=response.status;
+        result.licenseOk=response.ok;
+        const parsed=await readJsonResponse(response);
+        if (response.ok) {
+          const ctx=extractTenantContext(parsed.body,tenant);
+          result.entityPresent=Boolean(ctx.entity);
+          result.databasePresent=Boolean(ctx.database);
+          result.contextResolved=Boolean(ctx.entity && ctx.database);
+        } else if (parsed.body && typeof parsed.body==="object") {
+          result.error=String(parsed.body.code || parsed.body.error || parsed.body.message || ("HTTP_"+response.status)).slice(0,120);
+        } else {
+          result.error="HTTP_"+response.status;
+        }
+      } catch(error) {
+        result.error=error && error.message ? error.message : "LICENSE_CHECK_FAILED";
+      }
+
+      return json(request,env,200,{ok:true,result});
     }
 
     if (url.pathname==="/api/auth/session-debug" && request.method==="GET") {
