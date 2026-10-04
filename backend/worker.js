@@ -407,6 +407,204 @@ const BI_PAGE_MAPPING = [
   }
 ];
 
+const DETAIL_RESOURCES = Object.freeze({
+  "pagamentos-detalhados-valores":{
+    source:"bi",resource:"pagamentos-detalhados-valores",
+    datePaths:["dtPagamento","pagamento.dtPagamento"],
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["data","Pagamento",["dtPagamento","pagamento.dtPagamento"],"date"],
+      ["receita","Receita",["receita.descricao","receita.abreviatura"],"text"],
+      ["tipoPagamento","Tipo pagamento",["pagamento.tipoPagamento.descricao"],"text"],
+      ["tipoBaixa","Tipo baixa",["pagamento.tipoBaixa.descricao"],"text"],
+      ["tributo","Tributo",["valorPagoLancado"],"currency"],
+      ["correcao","Correção",["valorPagoCorrecao"],"currency"],
+      ["juros","Juros",["valorPagoJuros"],"currency"],
+      ["multa","Multa",["valorPagoMulta"],"currency"]
+    ]
+  },
+  "pagamentos-detalhados":{
+    source:"bi",resource:"pagamentos-detalhados",
+    datePaths:["pagamento.dataPagamento","dataPagamento","dtPagamento"],
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["data","Pagamento",["pagamento.dataPagamento","dataPagamento","dtPagamento"],"date"],
+      ["credito","Crédito",["creditoTributario.descricao","creditoTributario.abreviatura"],"text"],
+      ["vencimento","Vencimento",["dataVcto"],"date"],
+      ["economico","Econômico",["idEconomico"],"text"],
+      ["imovel","Imóvel",["idImovel"],"text"]
+    ]
+  },
+  debitos:{
+    source:"bi",resource:"debitos",datePaths:["dhDebito"],yearPaths:["ano"],
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["ano","Ano",["ano"],"number"],
+      ["contribuinte","Contribuinte",["pessoa.nome","pessoa.nomeFantasia"],"text"],
+      ["documento","Documento",["pessoa.cpf","pessoa.cnpj"],"document"],
+      ["situacao","Situação",["situacao"],"text"],
+      ["lancamento","Lançamento",["dhDebito"],"date"],
+      ["vencimento","Vencimento",["dtVcto"],"date"],
+      ["pagamento","Pagamento",["dtPgto"],"date"],
+      ["valor","Valor lançado",["vlLancado"],"currency"],
+      ["desconto","Desconto",["vlDesconto"],"currency"]
+    ]
+  },
+  dividas:{
+    source:"bi",resource:"dividas",datePaths:["dtInscricao"],yearPaths:["ano"],
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["ano","Ano",["ano"],"number"],
+      ["contribuinte","Contribuinte",["pessoa.nome","pessoa.nomeFantasia"],"text"],
+      ["documento","Documento",["pessoa.cpf","pessoa.cnpj"],"document"],
+      ["status","Status",["statusDivida","situacao"],"text"],
+      ["inscricao","Inscrição",["dtInscricao"],"date"],
+      ["vencimento","Vencimento",["dtVcto"],"date"],
+      ["execucao","Execução",["sitExecucao"],"boolean"],
+      ["protesto","Protesto",["protesto"],"boolean"],
+      ["cda","CDA",["possuiCdaEmitida"],"boolean"]
+    ]
+  },
+  parcelamentos:{
+    source:"bi",resource:"parcelamentos",datePaths:["dtParcelamento","dhParcelamento"],yearPaths:["anoParcelamento"],
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["numero","Parcelamento",["nroParcelamento"],"text"],
+      ["contribuinte","Contribuinte",["contribuinte.nome","contribuinte.nomeFantasia"],"text"],
+      ["documento","Documento",["contribuinte.cpfCnpj"],"document"],
+      ["data","Data",["dtParcelamento"],"date"],
+      ["situacao","Situação",["situacao.descricao","situacao"],"text"],
+      ["parcelas","Parcelas",["qtdParcela"],"number"],
+      ["vencidas","Vencidas",["qtdParcelasVencidas"],"number"],
+      ["entrada","Entrada",["vlEntrada"],"currency"]
+    ]
+  },
+  "parcelamentos-parcelas":{
+    source:"bi",resource:"parcelamentos-parcelas",datePaths:["dtVcto","dtPgto"],
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["parcelamento","ID parcelamento",["idParcelamentos"],"text"],
+      ["parcela","Parcela",["parcela"],"number"],
+      ["vencimento","Vencimento",["dtVcto"],"date"],
+      ["pagamento","Pagamento",["dtPgto"],"date"],
+      ["situacao","Situação",["situacao"],"text"],
+      ["valor","Valor",["vlParcela"],"currency"],
+      ["desconto","Desconto",["vlDesconto"],"currency"]
+    ]
+  },
+  "guias-unificadas":{
+    source:"base",resource:"guias-unificadas",datePaths:["dtEmissao"],yearPaths:["ano"],
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["emissao","Emissão",["dtEmissao"],"date"],
+      ["vencimento","Vencimento",["dtVencimento"],"date"],
+      ["baixa","Baixa",["nroBaixa"],"text"],
+      ["boleto","Boleto registrado",["boletoRegistrado"],"boolean"],
+      ["tributo","Tributo",["vlTributo"],"currency"],
+      ["correcao","Correção",["vlTotalCorrecao"],"currency"],
+      ["juros","Juros",["vlTotalJuros"],"currency"],
+      ["multa","Multa",["vlTotalMulta"],"currency"],
+      ["total","Total",["vlTotalGuiaUnificada"],"currency"]
+    ]
+  },
+  contribuintes:{
+    source:"bi",resource:"contribuintes",
+    columns:[
+      ["id","ID",["id","idPessoas"],"text"],
+      ["nome","Nome",["nome","nomeFantasia"],"text"],
+      ["documento","Documento",["cpf","cnpj","cpfCnpj"],"document"],
+      ["tipo","Tipo",["tipoPessoa","tipoPessoa.descricao"],"text"],
+      ["cidade","Cidade",["nomeCidade","municipio.nome"],"text"],
+      ["bairro","Bairro",["nomeBairro","bairro.nome"],"text"],
+      ["situacao","Situação",["situacao","desativado"],"text"]
+    ]
+  },
+  imoveis:{
+    source:"bi",resource:"imoveis",
+    columns:[
+      ["id","ID",["id","idImovel"],"text"],
+      ["codigo","Cadastro",["codOrig","codigo"],"text"],
+      ["bairro","Bairro",["nomeBairro"],"text"],
+      ["logradouro","Logradouro",["nomeLogradouro"],"text"],
+      ["numero","Número",["numero"],"text"],
+      ["setor","Setor",["setor"],"text"],
+      ["rural","Rural",["rural"],"boolean"],
+      ["desativado","Desativado",["desativado"],"boolean"]
+    ]
+  },
+  economicos:{
+    source:"bi",resource:"economicos",
+    columns:[
+      ["id","ID",["id","idEconomico"],"text"],
+      ["nome","Nome / razão social",["nome","nomeFantasia","pessoa.nome"],"text"],
+      ["inicio","Início atividade",["dtInicioAtiv"],"date"],
+      ["fechamento","Fechamento",["dtFechamento"],"date"],
+      ["situacao","Situação",["situacao","situacao.descricao"],"text"],
+      ["bairro","Bairro",["nomeBairro"],"text"],
+      ["logradouro","Logradouro",["nomeLogradouro"],"text"]
+    ]
+  },
+  receitas:{
+    source:"bi",resource:"receitas",
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["descricao","Receita",["descricao","nome"],"text"],
+      ["abreviatura","Abreviatura",["abreviatura"],"text"],
+      ["classificacao","Classificação",["classificacao"],"text"]
+    ]
+  },
+  "creditos-tributarios":{
+    source:"base",resource:"creditos-tributarios",
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["descricao","Crédito",["descricao"],"text"],
+      ["abreviatura","Abreviatura",["abreviatura"],"text"],
+      ["tipo","Tipo",["tipoCadastro.descricao"],"text"],
+      ["desativado","Desativado",["desativado.descricao","desativado.valor"],"text"]
+    ]
+  },
+  "indexadores-valores":{
+    source:"bi",resource:"indexadores-valores",datePaths:["dtIdx"],
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["indexador","Indexador",["moeda.nome","moeda.sigla"],"text"],
+      ["data","Data",["dtIdx"],"date"],
+      ["valor","Valor",["vlIdx"],"number"]
+    ]
+  },
+  logradouros:{
+    source:"base",resource:"logradouros",
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["nome","Logradouro",["nome"],"text"],
+      ["tipo","Tipo",["tipoLogradouroDescricao"],"text"],
+      ["zonaFiscal","Zona fiscal",["zonaFiscal"],"text"],
+      ["latitude","Latitude",["latitude"],"number"],
+      ["longitude","Longitude",["longitude"],"number"]
+    ]
+  },
+  obras:{
+    source:"bi",resource:"obras",
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["descricao","Obra",["descricao","nome"],"text"],
+      ["situacao","Situação",["situacao","situacao.descricao"],"text"],
+      ["inicio","Início",["dataInicio","dtInicio"],"date"],
+      ["fim","Fim",["dataFim","dtFim"],"date"]
+    ]
+  },
+  "transferencias-imoveis":{
+    source:"bi",resource:"transferencias-imoveis",
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["data","Data",["dataTransferencia","dtTransferencia"],"date"],
+      ["imovel","Imóvel",["idImovel","imovel.id"],"text"],
+      ["situacao","Situação",["situacao","status"],"text"],
+      ["valor","Valor",["valor","valorTransacao"],"currency"]
+    ]
+  }
+});
+
 const BI_RESOURCES = Object.freeze({
   contribuintes: "/integracoes-bi/v1/contribuintes",
   imoveis: "/integracoes-bi/v1/imoveis",
@@ -3767,6 +3965,143 @@ async function deleteContextUser(userToken, tenant, accessId) {
   });
 }
 
+
+function maskDetailDocument(value) {
+  const raw=String(value??"").replace(/\D/g,"");
+  if(!raw) return "";
+  if(raw.length<=5) return raw.slice(0,1)+"***"+raw.slice(-1);
+  return raw.slice(0,3)+"***"+raw.slice(-2);
+}
+
+function detailScalar(row,paths,format) {
+  const raw=firstValue(row,paths);
+  if(raw===undefined||raw===null||raw==="") return null;
+
+  if(format==="document") return maskDetailDocument(raw);
+  if(format==="currency"||format==="number") return numericValue(row,paths);
+  if(format==="boolean") {
+    if(typeof raw==="boolean") return raw;
+    const text=String(raw.descricao??raw.valor??raw).trim().toLowerCase();
+    return ["true","1","sim","s","yes","ativo","executada","protestada"].includes(text);
+  }
+  if(typeof raw==="object") return String(raw.descricao??raw.nome??raw.codigo??raw.id??"");
+  return String(raw);
+}
+
+function detailFilterRows(resource,rows,url) {
+  const periodo=url.searchParams.get("periodo")||"todos";
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const def=DETAIL_RESOURCES[resource]||{};
+
+  let out=rows;
+  if(periodo!=="todos" && Array.isArray(def.datePaths) && def.datePaths.length){
+    out=out.filter(row=>periodIncludes(row,{
+      periodo,exercicio,
+      datePaths:def.datePaths,
+      yearPaths:def.yearPaths||[]
+    }));
+  }
+
+  if(resource==="pagamentos-detalhados-valores"){
+    const tipoPagamento=dashboardFilterValue(url,"tipoPagamento");
+    const tipoBaixa=dashboardFilterValue(url,"tipoBaixa");
+    const receita=dashboardFilterValue(url,"receita");
+    out=out.filter(row=>
+      matchesDashboardFilter(row,tipoPagamento,["pagamento.tipoPagamento.descricao"]) &&
+      matchesDashboardFilter(row,tipoBaixa,["pagamento.tipoBaixa.descricao"]) &&
+      matchesDashboardFilter(row,receita,["receita.descricao","receita.abreviatura"])
+    );
+  } else if(resource==="debitos"){
+    const situacao=dashboardFilterValue(url,"situacao");
+    const carteira=dashboardFilterValue(url,"carteira");
+    const now=Date.now();
+    out=out.filter(row=>{
+      if(!matchesDashboardFilter(row,situacao,["situacao"])) return false;
+      const paid=Boolean(firstValue(row,["dtPgto"]));
+      const status=stringValue(row,["situacao"],"");
+      const open=!paid&&!/cancel|quit|pago|baix/i.test(status);
+      const d=dateValue(row,["dtVcto"]);
+      const overdue=open&&Boolean(d&&d.getTime()<now);
+      if(carteira==="aberto"&&!open) return false;
+      if(carteira==="vencido"&&!overdue) return false;
+      if(carteira==="pago"&&!paid) return false;
+      return true;
+    });
+  } else if(resource==="dividas"){
+    const situacao=dashboardFilterValue(url,"situacao");
+    const ano=dashboardFilterValue(url,"anoDivida");
+    const cobranca=dashboardFilterValue(url,"cobranca");
+    out=out.filter(row=>{
+      if(!matchesDashboardFilter(row,situacao,["situacao","statusDivida"])) return false;
+      if(ano&&!matchesDashboardFilter(row,ano,["ano"])) return false;
+      if(cobranca==="execucao"&&!truthyValue(row,["sitExecucao"])) return false;
+      if(cobranca==="protesto"&&!truthyValue(row,["protesto"])) return false;
+      if(cobranca==="penhora"&&!Boolean(firstValue(row,["penhora"]))) return false;
+      return true;
+    });
+  } else if(resource==="parcelamentos"){
+    const situacao=dashboardFilterValue(url,"situacao");
+    const tipoEntrada=dashboardFilterValue(url,"tipoEntrada");
+    const cobranca=dashboardFilterValue(url,"cobranca");
+    const inadimplencia=dashboardFilterValue(url,"inadimplencia");
+    out=out.filter(row=>{
+      if(!matchesDashboardFilter(row,situacao,["situacao.descricao","situacao"])) return false;
+      if(!matchesDashboardFilter(row,tipoEntrada,["tipoEntrada"])) return false;
+      if(cobranca==="executada"&&!truthyValue(row,["dividaExecutada.valor","dividaExecutada"])) return false;
+      if(cobranca==="protestada"&&!truthyValue(row,["dividaProtestada.valor","dividaProtestada"])) return false;
+      const vencidas=numericValue(row,["qtdParcelasVencidas"]);
+      if(inadimplencia==="com-vencidas"&&vencidas<=0) return false;
+      if(inadimplencia==="sem-vencidas"&&vencidas>0) return false;
+      return true;
+    });
+  }
+
+  return out;
+}
+
+async function buildDetailPage(env,tenant,resource,url) {
+  const def=DETAIL_RESOURCES[resource];
+  if(!def) throw new Error("DETAIL_RESOURCE_NOT_ALLOWED");
+
+  const limit=Math.max(5,Math.min(50,Number(url.searchParams.get("limit")||25)));
+  const startOffset=Math.max(0,Number(url.searchParams.get("offset")||0));
+
+  const src=await safeBethaRows(env,tenant,def.source,def.resource,{
+    limit,
+    maxPages:1,
+    startOffset,
+    chunkMode:true
+  });
+  if(src.error) {
+    const error=new Error(src.error);
+    error.status=src.errorStatus||502;
+    throw error;
+  }
+
+  const filtered=detailFilterRows(resource,src.rows,url);
+  const columns=def.columns.map(([key,label,paths,format])=>({key,label,format}));
+  const rows=filtered.map(row=>{
+    const item={};
+    for(const [key,,paths,format] of def.columns){
+      item[key]=detailScalar(row,paths,format);
+    }
+    return item;
+  });
+
+  return {
+    resource,
+    columns,
+    rows,
+    pagination:{
+      offset:startOffset,
+      loaded:rows.length,
+      sourceLoaded:src.loaded,
+      hasMore:src.hasMore===true,
+      nextOffset:src.nextOffset
+    }
+  };
+}
+
 function publicCatalog(env) {
   const base=baseResourceMap(env);
   return {
@@ -3811,7 +4146,7 @@ function errorResponse(request,env,error) {
     BI_RESOURCE_NOT_ALLOWED:404,
     BASE_RESOURCE_NOT_CONFIGURED:501,
     BETHA_ACCESS_TOKEN_NOT_CONFIGURED:503,
-    INVALID_SOURCE:400
+    INVALID_SOURCE:400,\n    DETAIL_RESOURCE_NOT_ALLOWED:404
   };
   if (code.startsWith("BETHA_HTTP_") || code.startsWith("PLATFORM_HTTP_")) {
     return json(request,env,error.status===401?401:error.status===403?403:502,{error:code});
@@ -3827,7 +4162,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-04-production-ui-v49",
+        buildVersion:"2026-10-04-detail-v50",
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant",
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
@@ -4218,6 +4553,19 @@ export default {
 
         const body=await builder(env,tenant,url);
         return json(request,env,200,body);
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
+    const detailMatch=url.pathname.match(/^\/api\/detail\/([^/]+)$/);
+    if (detailMatch && request.method==="GET") {
+      try {
+        const tenant=resolveTenant(env,getTenantId(request,url));
+        await authorizeTenant(request,env,tenant);
+        const resource=decodeURIComponent(detailMatch[1]);
+        const result=await buildDetailPage(env,tenant,resource,url);
+        return json(request,env,200,result);
       } catch(error) {
         return errorResponse(request,env,error);
       }
