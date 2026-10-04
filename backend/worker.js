@@ -2901,8 +2901,9 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-03-panels-refined-v40",
-        dashboardAggregatePublic:true,
+        buildVersion:"2026-10-03-panels-refined-v41",
+        dashboardAggregatePublic:false,
+        dashboardAuthorization:"betha-session+tenant",
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
         tenantsConfigured:Boolean(env.BETHA_TENANTS_JSON),
