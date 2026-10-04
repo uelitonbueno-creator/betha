@@ -3144,33 +3144,68 @@ async function buildInstallmentsDashboard(env,tenant,url) {
 async function buildEconomicsDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const filters={
+    busca:dashboardFilterValue(url,"busca"),
+    situacao:dashboardFilterValue(url,"situacao"),
+    bairro:dashboardFilterValue(url,"bairro")
+  };
   const [eco,ativ,pagdet]=await Promise.all([
     safeBethaRows(env,tenant,"bi","economicos"),
     safeBethaRows(env,tenant,"bi","economicos-atividades"),
     safeBethaRows(env,tenant,"bi","pagamentos-detalhados")
   ]);
+
+  const allEcoRows=eco.rows;
+  const normalizedSearch=filters.busca.toLocaleLowerCase("pt-BR");
+  const ecoRows=allEcoRows.filter(row=>{
+    if(filters.situacao&&!matchesDashboardFilter(row,filters.situacao,["situacao","situacao.descricao","status"])) return false;
+    if(filters.bairro&&!matchesDashboardFilter(row,filters.bairro,["nomeBairro","bairro.nome","bairro"])) return false;
+    if(normalizedSearch){
+      const searchable=[
+        stringValue(row,["nome"],""),
+        stringValue(row,["nomeFantasia"],""),
+        stringValue(row,["pessoa.nome"],"")
+      ].join(" ").toLocaleLowerCase("pt-BR");
+      if(!searchable.includes(normalizedSearch)) return false;
+    }
+    return true;
+  });
+
+  const economicIds=new Set(ecoRows.map(row=>String(firstValue(row,["id","idEconomico"])||"")).filter(Boolean));
+  const linkedToEconomic=(row,paths)=>{
+    const id=firstValue(row,paths);
+    return id!==undefined&&id!==null&&economicIds.has(String(id));
+  };
+  const ativRows=ativ.rows.filter(row=>linkedToEconomic(row,["idEconomico","economico.id","economicoId"]));
+  const issRows=pagdet.rows.filter(row=>linkedToEconomic(row,["idEconomico","economico.id","referente.idEconomico"]));
+
   const openDates=["dtInicioAtiv","dataInicioAtividade","dataAbertura","dtAbertura"];
   const closeDates=["dtFechamento","dataFechamento","dataEncerramento","dtEncerramento"];
-  const opened=monthlyCount(eco.rows,openDates,periodo,exercicio);
-  const closed=monthlyCount(eco.rows,closeDates,periodo,exercicio,r=>Boolean(firstValue(r,closeDates)));
-  const situ=groupCount(eco.rows,["situacao","situacao.descricao","status"],12);
-  const tipos=groupCount(eco.rows,["tipoCadastro","tipoEconomico","tipo"],12);
-  const atividade=groupCount(ativ.rows,["descricaoAtividade","atividade.descricao","atividade.nome","cnae.descricao"],15);
-  const principal=groupCount(ativ.rows,["principal","atividadePrincipal"],5);
-  const bairros=groupCount(eco.rows,["nomeBairro","bairro.nome","bairro"],15);
-  const issRows=pagdet.rows.filter(r=>firstValue(r,["idEconomico","economico.id","referente.idEconomico"])!==undefined);
+  const opened=monthlyCount(ecoRows,openDates,periodo,exercicio);
+  const closed=monthlyCount(ecoRows,closeDates,periodo,exercicio,r=>Boolean(firstValue(r,closeDates)));
+  const situ=groupCount(ecoRows,["situacao","situacao.descricao","status"],12);
+  const tipos=groupCount(ecoRows,["tipoCadastro","tipoEconomico","tipo"],12);
+  const atividade=groupCount(ativRows,["descricaoAtividade","atividade.descricao","atividade.nome","cnae.descricao"],15);
+  const principal=groupCount(ativRows,["principal","atividadePrincipal"],5);
+  const bairros=groupCount(ecoRows,["nomeBairro","bairro.nome","bairro"],15);
   const iss=monthSeries(issRows,{
     datePaths:["pagamento.dataPagamento","dataPagamento","dtPagamento"],
     valuePaths:["valorPagoLancado","vlPagoLancado","valorPago","vlPago"],periodo,exercicio
   });
+
   return {
     view:"economicos",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    filters:activeFilterObject(filters),
+    filterOptions:{
+      situacao:filterOptionsFromRows(allEcoRows,["situacao","situacao.descricao","status"]),
+      bairro:filterOptionsFromRows(allEcoRows,["nomeBairro","bairro.nome","bairro"])
+    },
     kpis:{
-      economicos:eco.total,
-      "ativos-economicos":countWhere(eco.rows,r=>!/inativ|baixad|encerr|cancel/i.test(stringValue(r,["situacao","situacao.descricao","status"],""))&&!truthyValue(r,["desativado"])),
-      "novos-economicos":eco.rows.filter(r=>periodIncludes(r,{periodo,exercicio,datePaths:openDates,yearPaths:["anoInicio","exercicio"]})).length,
-      fechados:eco.rows.filter(r=>Boolean(firstValue(r,closeDates))&&periodIncludes(r,{periodo,exercicio,datePaths:closeDates})).length,
-      atividades:ativ.total
+      economicos:ecoRows.length,
+      "ativos-economicos":countWhere(ecoRows,r=>!/inativ|baixad|encerr|cancel/i.test(stringValue(r,["situacao","situacao.descricao","status"],""))&&!truthyValue(r,["desativado"])),
+      "novos-economicos":ecoRows.filter(r=>periodIncludes(r,{periodo,exercicio,datePaths:openDates,yearPaths:["anoInicio","exercicio"]})).length,
+      fechados:ecoRows.filter(r=>Boolean(firstValue(r,closeDates))&&periodIncludes(r,{periodo,exercicio,datePaths:closeDates})).length,
+      atividades:ativRows.length
     },
     charts:{
       aberturas:{format:"number",labels:opened.labels,datasets:[{label:"Aberturas",data:opened.values}]},
@@ -3182,7 +3217,9 @@ async function buildEconomicsDashboard(env,tenant,url) {
       "bairro-economicos":chartGroups(bairros,"Econômicos","number"),
       "iss-arrecadacao":{format:"currency",labels:iss.labels,datasets:[{label:"Arrecadação",data:iss.values}]}
     },
-    meta:dashboardMeta([["economicos",eco],["atividades",ativ],["pagamentosDetalhados",pagdet]])
+    meta:dashboardMeta([["economicos",eco],["atividades",ativ],["pagamentosDetalhados",pagdet]],{
+      filteredRows:{economicos:ecoRows.length,atividades:ativRows.length,pagamentosDetalhados:issRows.length}
+    })
   };
 }
 
