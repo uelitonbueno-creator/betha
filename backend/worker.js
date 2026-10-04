@@ -583,6 +583,20 @@ const DETAIL_RESOURCES = Object.freeze({
       ["longitude","Longitude",["longitude"],"number"]
     ]
   },
+  "imoveis-campos-adicionais":{
+    source:"bi",resource:"imoveis-campos-adicionais",yearPaths:["ano"],datePaths:["dhCampo"],
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["imovel","ID imóvel",["idImovel"],"text"],
+      ["ano","Ano",["ano"],"number"],
+      ["campo","Campo adicional",["campoAdicional.titulo"],"text"],
+      ["tipo","Tipo",["campoAdicional.tipo"],"text"],
+      ["numero","Valor numérico",["vlCampo"],"number"],
+      ["texto","Texto",["texto","areaTexto"],"text"],
+      ["opcoes","Opções",["opcoes"],"text"],
+      ["dataHora","Data / hora",["dhCampo"],"date"]
+    ]
+  },
   obras:{
     source:"base",resource:"obras",
     columns:[
