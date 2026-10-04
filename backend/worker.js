@@ -4298,6 +4298,120 @@ async function sha256Hex(value) {
     .join("");
 }
 
+
+function auditActorLabel(access) {
+  const candidates=[
+    access&&access.userName,
+    access&&access.name,
+    access&&access.nome,
+    access&&access.user,
+    access&&access.login,
+    access&&access.idUsuario
+  ];
+  for(const value of candidates){
+    if(value!==undefined&&value!==null&&String(value).trim()) return String(value).trim().slice(0,120);
+  }
+  return "authenticated-user";
+}
+
+function safeAuditMeta(meta) {
+  const out={};
+  const blocked=/token|secret|authorization|password|document|cpf|cnpj|userToken|query|filter/i;
+  for(const [key,value] of Object.entries(meta||{})){
+    if(blocked.test(key)) continue;
+    if(["string","number","boolean"].includes(typeof value)){
+      out[key]=typeof value==="string" ? value.slice(0,180) : value;
+    }
+  }
+  return out;
+}
+
+async function writeAuditEvent(env,{tenantId="",actor="",category="system",action="",status="ok",subject="",meta={}}={}) {
+  if(!env.BI_SESSIONS || !tenantId || !action) return;
+  try{
+    const ts=Date.now();
+    const key="audit:"+String(tenantId)+":"+String(ts).padStart(13,"0")+":"+createSessionId().slice(0,8);
+    const event={
+      ts:new Date(ts).toISOString(),
+      tenantId:String(tenantId),
+      actor:String(actor||"authenticated-user").slice(0,120),
+      category:String(category||"system").slice(0,60),
+      action:String(action||"").slice(0,120),
+      status:String(status||"ok").slice(0,30),
+      subject:String(subject||"").slice(0,160),
+      meta:safeAuditMeta(meta)
+    };
+    await env.BI_SESSIONS.put(key,JSON.stringify(event),{expirationTtl:30*24*60*60});
+  }catch{}
+}
+
+async function listAuditEvents(env,tenantId,limit=100) {
+  if(!env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
+  const safeLimit=Math.max(10,Math.min(Number(limit)||100,250));
+  const listed=await env.BI_SESSIONS.list({prefix:"audit:"+String(tenantId)+":",limit:Math.min(1000,safeLimit*3)});
+  const keys=(listed.keys||[]).map(item=>item.name).sort().reverse().slice(0,safeLimit);
+  const values=await Promise.all(keys.map(key=>env.BI_SESSIONS.get(key)));
+  return values.map(raw=>{
+    try{return JSON.parse(raw||"null");}catch{return null;}
+  }).filter(Boolean);
+}
+
+async function mcpOwnerHash(auth) {
+  return sha256Hex(auth&&auth.userToken ? auth.userToken : "");
+}
+
+async function listMcpCredentials(env,tenantId,{ownerHash="",includeAll=false,limit=100}={}) {
+  if(!env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
+  const safeLimit=Math.max(10,Math.min(Number(limit)||100,250));
+  const listed=await env.BI_SESSIONS.list({prefix:"mcp-token:",limit:500});
+  const items=[];
+  for(const key of (listed.keys||[])){
+    if(items.length>=safeLimit) break;
+    const raw=await env.BI_SESSIONS.get(key.name);
+    if(!raw) continue;
+    let payload=null;
+    try{payload=JSON.parse(raw);}catch{}
+    if(!payload || payload.kind!=="mcp-token" || String(payload.tenantId)!==String(tenantId)) continue;
+    if(!includeAll && ownerHash && payload.ownerHash && payload.ownerHash!==ownerHash) continue;
+    if(!includeAll && ownerHash && !payload.ownerHash) continue;
+    const exp=Number(payload.exp||0);
+    items.push({
+      tokenId:key.name.slice("mcp-token:".length,"mcp-token:".length+16),
+      label:String(payload.label||""),
+      tenantId:String(payload.tenantId||""),
+      tenantName:String(payload.tenantName||""),
+      createdAt:String(payload.createdAt||""),
+      expiresAt:exp?new Date(exp).toISOString():"",
+      expired:Boolean(exp&&Date.now()>=exp),
+      allowedViews:Array.isArray(payload.allowedViews)?payload.allowedViews:[],
+      admin:Boolean(payload.admin),
+      technical:Boolean(payload.technical),
+      owner:String(payload.ownerLabel||"")
+    });
+  }
+  return items.sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
+}
+
+async function revokeMcpCredential(env,tenantId,tokenId,{ownerHash="",includeAll=false}={}) {
+  if(!env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
+  const prefix="mcp-token:"+String(tokenId||"").trim();
+  if(prefix==="mcp-token:") throw new Error("MCP_TOKEN_INVALID");
+  const listed=await env.BI_SESSIONS.list({prefix,limit:20});
+  for(const key of (listed.keys||[])){
+    const raw=await env.BI_SESSIONS.get(key.name);
+    if(!raw) continue;
+    let payload=null;
+    try{payload=JSON.parse(raw);}catch{}
+    if(!payload || String(payload.tenantId)!==String(tenantId)) continue;
+    if(!includeAll){
+      if(!ownerHash || !payload.ownerHash || payload.ownerHash!==ownerHash) continue;
+    }
+    await env.BI_SESSIONS.delete(key.name);
+    return {ok:true,tokenId:key.name.slice("mcp-token:".length,"mcp-token:".length+16),label:String(payload.label||"")};
+  }
+  throw new Error("MCP_TOKEN_INVALID");
+}
+
 async function createMcpCredential(env,auth,tenant,{label="",ttlSeconds=8*60*60}={}) {
   if (!env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
 
@@ -4306,6 +4420,8 @@ async function createMcpCredential(env,auth,tenant,{label="",ttlSeconds=8*60*60}
   const hash=await sha256Hex(rawToken);
   const exp=Date.now()+ttl*1000;
   const allowedViews=permissionViewsForAccess(auth.access);
+  const ownerHash=await mcpOwnerHash(auth);
+  const ownerLabel=auditActorLabel(auth.access);
 
   await env.BI_SESSIONS.put(
     "mcp-token:"+hash,
@@ -4314,6 +4430,8 @@ async function createMcpCredential(env,auth,tenant,{label="",ttlSeconds=8*60*60}
       tenantId:tenant.id,
       tenantName:tenant.name,
       userToken:auth.userToken,
+      ownerHash,
+      ownerLabel,
       allowedViews,
       admin:Boolean(auth.access&&auth.access.admin),
       technical:Boolean(auth.access&&auth.access.technical),
@@ -4640,9 +4758,27 @@ async function handleMcpRequest(request,env) {
       : {};
     try {
       const result=await executeMcpTool(request,env,credential,name,args);
+      await writeAuditEvent(env,{
+        tenantId:credential.tenant.id,
+        actor:credential.label || "MCP "+credential.tokenId,
+        category:"mcp",
+        action:"tool.call",
+        status:"ok",
+        subject:name,
+        meta:{view:String(args&&args.view||""),tokenId:credential.tokenId}
+      });
       return mcpJsonRpc(request,env,id,mcpToolResult(result));
     } catch(error) {
       const code=error&&error.message?error.message:"MCP_TOOL_FAILED";
+      await writeAuditEvent(env,{
+        tenantId:credential.tenant.id,
+        actor:credential.label || "MCP "+credential.tokenId,
+        category:"mcp",
+        action:"tool.call",
+        status:"error",
+        subject:name,
+        meta:{view:String(args&&args.view||""),code}
+      });
       return mcpJsonRpc(request,env,id,{
         content:[{type:"text",text:code}],
         isError:true
@@ -4719,7 +4855,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-04-mcp-v52",
+        buildVersion:"2026-10-04-audit-mcp-v53",
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant",
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
@@ -5219,6 +5355,19 @@ export default {
     }
 
 
+    if (url.pathname==="/api/mcp/tokens" && request.method==="GET") {
+      try {
+        const tenant=resolveTenant(env,getTenantId(request,url));
+        const auth=await authorizeTenant(request,env,tenant);
+        const ownerHash=await mcpOwnerHash(auth);
+        const includeAll=Boolean(auth.access&&(auth.access.admin===true||auth.access.technical===true));
+        const tokens=await listMcpCredentials(env,tenant.id,{ownerHash,includeAll,limit:url.searchParams.get("limit")||100});
+        return json(request,env,200,{tokens,count:tokens.length});
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
     if (url.pathname==="/api/mcp/tokens" && request.method==="POST") {
       try {
         const tenant=resolveTenant(env,getTenantId(request,url));
@@ -5228,6 +5377,15 @@ export default {
         const credential=await createMcpCredential(env,auth,tenant,{
           label:String(body.label||"").trim(),
           ttlSeconds:Math.round(ttlHours*60*60)
+        });
+        await writeAuditEvent(env,{
+          tenantId:tenant.id,
+          actor:auditActorLabel(auth.access),
+          category:"mcp",
+          action:"credential.create",
+          status:"ok",
+          subject:credential.tokenId,
+          meta:{label:String(body.label||""),expiresIn:credential.expiresIn,viewCount:credential.allowedViews.length}
         });
         return json(request,env,201,{
           ok:true,
@@ -5240,6 +5398,41 @@ export default {
           expiresIn:credential.expiresIn,
           authorizationHeader:"Bearer "+credential.token
         });
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
+    const deleteMcpTokenMatch=url.pathname.match(/^\/api\/mcp\/tokens\/([A-Fa-f0-9]{8,64})$/);
+    if (deleteMcpTokenMatch && request.method==="DELETE") {
+      try {
+        const tenant=resolveTenant(env,getTenantId(request,url));
+        const auth=await authorizeTenant(request,env,tenant);
+        const ownerHash=await mcpOwnerHash(auth);
+        const includeAll=Boolean(auth.access&&(auth.access.admin===true||auth.access.technical===true));
+        const revoked=await revokeMcpCredential(env,tenant.id,deleteMcpTokenMatch[1],{ownerHash,includeAll});
+        await writeAuditEvent(env,{
+          tenantId:tenant.id,
+          actor:auditActorLabel(auth.access),
+          category:"mcp",
+          action:"credential.revoke",
+          status:"ok",
+          subject:revoked.tokenId,
+          meta:{label:revoked.label}
+        });
+        return json(request,env,200,revoked);
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
+    if (url.pathname==="/api/admin/audit" && request.method==="GET") {
+      try {
+        const tenant=resolveTenant(env,getTenantId(request,url));
+        const auth=await authorizeTenant(request,env,tenant);
+        if (!auth.access || (!auth.access.admin && !auth.access.technical)) throw new Error("ADMIN_REQUIRED");
+        const events=await listAuditEvents(env,tenant.id,url.searchParams.get("limit")||100);
+        return json(request,env,200,{events,count:events.length});
       } catch(error) {
         return errorResponse(request,env,error);
       }
@@ -5268,6 +5461,15 @@ export default {
         const auth=await authorizeTenant(request,env,tenant);
         if (!auth.access || auth.access.admin!==true) throw new Error("ADMIN_REQUIRED");
         const result=await publishPageMapping(tenant);
+        await writeAuditEvent(env,{
+          tenantId:tenant.id,
+          actor:auditActorLabel(auth.access),
+          category:"permissions",
+          action:"page-mapping.publish",
+          status:"ok",
+          subject:"BI Page Mapping",
+          meta:{constraintCount:Number(result.constraintCount||0),groupCount:Number(result.groupCount||0)}
+        });
         return json(request,env,200,result);
       } catch(error) {
         return errorResponse(request,env,error);
@@ -5316,6 +5518,15 @@ export default {
         };
 
         const created=await createContextUser(auth.userToken,tenant,payload);
+        await writeAuditEvent(env,{
+          tenantId:tenant.id,
+          actor:auditActorLabel(auth.access),
+          category:"users",
+          action:"access.create",
+          status:"ok",
+          subject:user,
+          meta:{admin:payload.admin,technical:payload.technical,permissionCount:payload.permissions.length,hasExpiry:Boolean(payload.expiresIn)}
+        });
         return json(request,env,201,created);
       } catch(error) {
         return errorResponse(request,env,error);
@@ -5329,6 +5540,15 @@ export default {
         const auth=await authorizeTenant(request,env,tenant);
         if (!auth.access || (!auth.access.admin && !auth.access.technical)) throw new Error("ADMIN_REQUIRED");
         const body=await deleteContextUser(auth.userToken,tenant,deleteUserMatch[1]);
+        await writeAuditEvent(env,{
+          tenantId:tenant.id,
+          actor:auditActorLabel(auth.access),
+          category:"users",
+          action:"access.revoke",
+          status:"ok",
+          subject:"access",
+          meta:{accessId:String(deleteUserMatch[1]).slice(0,80)}
+        });
         return json(request,env,200,body || {ok:true});
       } catch(error) {
         return errorResponse(request,env,error);
