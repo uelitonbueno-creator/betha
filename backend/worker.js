@@ -2810,7 +2810,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-03-more-dashboards-secure-v38",
+        buildVersion:"2026-10-03-schema-probe-v39",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2839,6 +2839,45 @@ export default {
       } catch(error) {
         return errorResponse(request,env,error);
       }
+    }
+
+    if (url.pathname==="/api/internal/schema-probe" && request.method==="GET") {
+      const tenants=parseJsonObject(env.BETHA_TENANTS_JSON,{});
+      const firstId=Object.keys(tenants)[0] || "";
+      if (!firstId) return json(request,env,200,{ok:true,tenant:"",sources:[]});
+
+      const tenant=resolveTenant(env,firstId);
+      const specs=[
+        ["bi","receitas"],
+        ["base","creditos-tributarios"],
+        ["base","creditos-tributarios-receitas"],
+        ["base","guias-unificadas"],
+        ["bi","indexadores"],
+        ["bi","indexadores-valores"],
+        ["base","bairros"],
+        ["base","distritos"],
+        ["base","logradouros"],
+        ["base","loteamentos"],
+        ["bi","imoveis"]
+      ];
+
+      const sources=[];
+      for (const [source,resource] of specs) {
+        const src=await safeBethaRows(env,tenant,source,resource,{limit:50,maxPages:1});
+        sources.push({
+          source:source+":"+resource,
+          loaded:src.loaded,
+          error:src.error||"",
+          errorStatus:src.errorStatus||null,
+          fields:diagnosticFieldNames(src.rows,3,4)
+        });
+      }
+
+      return json(request,env,200,{
+        ok:true,
+        tenant:tenant.id,
+        sources
+      });
     }
 
     if (url.pathname==="/api/auth/logout" && request.method==="GET") {
