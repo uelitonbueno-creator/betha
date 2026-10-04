@@ -2901,7 +2901,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-03-panels-refined-v41",
+        buildVersion:"2026-10-03-finance-schema-v42",
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant",
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
@@ -2931,6 +2931,47 @@ export default {
       } catch(error) {
         return errorResponse(request,env,error);
       }
+    }
+
+    if (url.pathname==="/api/internal/finance-schema-probe" && request.method==="GET") {
+      const tenants=parseJsonObject(env.BETHA_TENANTS_JSON,{});
+      const firstId=Object.keys(tenants)[0] || "";
+      if (!firstId) return json(request,env,200,{ok:true,tenant:"",sources:[]});
+
+      const tenant=resolveTenant(env,firstId);
+      const specs=[
+        ["bi","pagamentos"],
+        ["bi","pagamentos-detalhados"],
+        ["bi","pagamentos-detalhados-valores"],
+        ["bi","debitos"],
+        ["bi","debitos-receitas"],
+        ["bi","dividas"],
+        ["bi","dividas-receitas"],
+        ["bi","parcelamentos"],
+        ["bi","parcelamentos-parcelas"],
+        ["bi","parcelamentos-referentes"],
+        ["base","encerramento-dividas"],
+        ["base","dividas"],
+        ["base","parcelamentos-parcelas"]
+      ];
+
+      const sources=[];
+      for (const [source,resource] of specs) {
+        const src=await safeBethaRows(env,tenant,source,resource,{limit:30,maxPages:1});
+        sources.push({
+          source:source+":"+resource,
+          loaded:src.loaded,
+          error:src.error||"",
+          errorStatus:src.errorStatus||null,
+          fields:diagnosticFieldNames(src.rows,3,4)
+        });
+      }
+
+      return json(request,env,200,{
+        ok:true,
+        tenant:tenant.id,
+        sources
+      });
     }
 
     if (url.pathname==="/api/auth/logout" && request.method==="GET") {
