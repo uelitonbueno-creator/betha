@@ -3900,7 +3900,7 @@ async function buildIndexersDashboard(env,tenant,url) {
     view:"indexadores",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
     filters:activeFilterObject(filters),
     filterOptions:{
-      indexador:filterOptionsFromRows([...idx.rows,...val.rows],[...idxPaths,...valIdxPaths])
+      indexador:filterOptionsFromRows(idx.rows,idxPaths)
     },
     kpis:{
       "indexadores-total":idxRows.length,
