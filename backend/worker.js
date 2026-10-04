@@ -3640,6 +3640,11 @@ async function buildWorksDashboard(env,tenant,url) {
 async function buildRevenueCodesDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const filters={
+    classificacaoReceita:dashboardFilterValue(url,"classificacaoReceita"),
+    tipoCredito:dashboardFilterValue(url,"tipoCredito"),
+    situacaoCredito:dashboardFilterValue(url,"situacaoCredito")
+  };
 
   const [receitas,creditos,vinculos,det]=await Promise.all([
     safeBethaRows(env,tenant,"bi","receitas"),
@@ -3655,33 +3660,48 @@ async function buildRevenueCodesDashboard(env,tenant,url) {
   }));
 
   const paymentPaths=["valorPagoLancado","vlPagoLancado","valorPago","vlPago"];
-
-  const disabledCredits=countWhere(creditos.rows,r=>{
+  const receitaClassificacaoPaths=["classificacao","tipoCadastro","abreviatura"];
+  const creditoTipoPaths=["tipoCadastro.descricao","tipoCadastro.valor","abreviatura","descricao"];
+  const isDisabledCredit=r=>{
     const raw=firstValue(r,["desativado.valor","desativado.descricao","desativado"]);
     if (typeof raw==="boolean") return raw;
     return /^(true|1|sim|s|yes|desativado|inativo)$/i.test(String(raw||"").trim());
+  };
+  const receitaRows=receitas.rows.filter(r=>!filters.classificacaoReceita||matchesDashboardFilter(r,filters.classificacaoReceita,receitaClassificacaoPaths));
+  const creditoRows=creditos.rows.filter(r=>{
+    if(filters.tipoCredito&&!matchesDashboardFilter(r,filters.tipoCredito,creditoTipoPaths)) return false;
+    if(filters.situacaoCredito==="ativo"&&isDisabledCredit(r)) return false;
+    if(filters.situacaoCredito==="inativo"&&!isDisabledCredit(r)) return false;
+    return true;
   });
+
+  const disabledCredits=countWhere(creditoRows,isDisabledCredit);
 
   return {
     view:"receitas-creditos",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    filters:activeFilterObject(filters),
+    filterOptions:{
+      classificacaoReceita:filterOptionsFromRows(receitas.rows,receitaClassificacaoPaths),
+      tipoCredito:filterOptionsFromRows(creditos.rows,creditoTipoPaths)
+    },
     kpis:{
-      "receitas-total":receitas.loaded,
-      "creditos-total":creditos.loaded,
+      "receitas-total":receitaRows.length,
+      "creditos-total":creditoRows.length,
       "vinculos-total":vinculos.loaded,
       "arrecadado-creditos":sumRows(detRows,paymentPaths)
     },
     charts:{
       "receitas-classificacao":chartGroups(
-        groupCount(receitas.rows,["classificacao","tipoCadastro","abreviatura"],12),
+        groupCount(receitaRows,receitaClassificacaoPaths,12),
         "Receitas","number"
       ),
       "creditos-situacao":chartFixed(
         ["Ativos","Desativados"],
-        [Math.max(0,creditos.loaded-disabledCredits),disabledCredits],
+        [Math.max(0,creditoRows.length-disabledCredits),disabledCredits],
         "Créditos","number"
       ),
       "creditos-tipo":chartGroups(
-        groupCount(creditos.rows,["tipoCadastro.descricao","tipoCadastro.valor","abreviatura","descricao"],12),
+        groupCount(creditoRows,creditoTipoPaths,12),
         "Créditos","number"
       ),
       "vinculos-receita":chartGroups(
@@ -3700,6 +3720,8 @@ async function buildRevenueCodesDashboard(env,tenant,url) {
     meta:dashboardMeta([
       ["receitas",receitas],["creditos",creditos],["vinculos",vinculos],["pagamentosDetalhados",det]
     ],{
+      appliedFilters:activeFilterObject(filters),
+      filteredRows:{receitas:receitaRows.length,creditos:creditoRows.length},
       fieldMapping:{
         receitaClassificacao:"classificacao",
         creditoSituacao:"desativado",
