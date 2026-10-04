@@ -2409,6 +2409,7 @@
         badge.textContent="CREDENCIAL ATIVA";
         badge.className="config-status-badge ok";
       }
+      await Promise.all([loadMcpTokens(),loadAuditEvents()]);
     } catch(error) {
       resetMcpCredentialUi();
       if(badge){
@@ -2421,6 +2422,124 @@
         button.disabled=false;
         button.innerHTML='<i class="mdi mdi-key-plus"></i> GERAR CREDENCIAL';
       }
+    }
+  }
+
+  function formatAuditAction(action) {
+    const map={
+      "credential.create":"Credencial MCP criada",
+      "credential.revoke":"Credencial MCP revogada",
+      "tool.call":"Consulta MCP",
+      "access.create":"Acesso de usuário criado",
+      "access.revoke":"Acesso de usuário removido",
+      "page-mapping.publish":"Matriz de permissões publicada"
+    };
+    return map[action] || action || "Ação";
+  }
+
+  function formatAuditCategory(category) {
+    const map={
+      mcp:"MCP",
+      users:"Usuários",
+      permissions:"Permissões",
+      system:"Sistema"
+    };
+    return map[category] || category || "Sistema";
+  }
+
+  function renderMcpTokens(payload) {
+    const container=document.getElementById("mcpActiveTokens");
+    if(!container) return;
+    const tokens=Array.isArray(payload?.tokens)?payload.tokens:[];
+    if(!tokens.length){
+      container.innerHTML='<div class="table-empty">Nenhuma credencial MCP ativa para esta prefeitura.</div>';
+      return;
+    }
+
+    container.innerHTML=tokens.map(token=>{
+      const expires=token.expiresAt ? new Date(token.expiresAt) : null;
+      const expired=token.expired===true || (expires&&!Number.isNaN(expires.getTime())&&expires.getTime()<Date.now());
+      const permissions=Array.isArray(token.allowedViews)?token.allowedViews.length:0;
+      return `
+        <article class="mcp-token-card">
+          <div class="mcp-token-card-main">
+            <strong>${escapeHtml(token.label||("Credencial "+token.tokenId))}</strong>
+            <span>ID ${escapeHtml(token.tokenId||"—")} · ${escapeHtml(token.owner||"Usuário autenticado")}</span>
+            <div class="mcp-token-meta-line">
+              <span class="mcp-token-chip ${expired?"warn":"ok"}">${expired?"EXPIRADA":"ATIVA"}</span>
+              <span class="mcp-token-chip">${permissions} painel(is)</span>
+              <span class="mcp-token-chip">${expires&&!Number.isNaN(expires.getTime()) ? "até "+escapeHtml(expires.toLocaleString("pt-BR")) : "sem validade informada"}</span>
+            </div>
+          </div>
+          <button class="row-action danger" type="button" data-revoke-mcp="${escapeHtml(token.tokenId||"")}" title="Revogar credencial" ${token.tokenId?"":"disabled"}>
+            <i class="mdi mdi-key-remove"></i>
+          </button>
+        </article>
+      `;
+    }).join("");
+  }
+
+  async function loadMcpTokens() {
+    const container=document.getElementById("mcpActiveTokens");
+    if(container) container.innerHTML='<div class="table-empty">Carregando credenciais…</div>';
+    try{
+      const payload=await api("/api/mcp/tokens?limit=100");
+      renderMcpTokens(payload);
+    }catch(error){
+      if(container) container.innerHTML='<div class="table-empty">Não foi possível carregar as credenciais MCP.</div>';
+    }
+  }
+
+  async function revokeMcpToken(tokenId) {
+    if(!tokenId) return;
+    if(!window.confirm("Revogar esta credencial MCP imediatamente?")) return;
+    try{
+      await api("/api/mcp/tokens/"+encodeURIComponent(tokenId),{method:"DELETE"});
+      await Promise.all([loadMcpTokens(),loadAuditEvents()]);
+    }catch(error){
+      window.alert("Não foi possível revogar a credencial MCP: "+(error.message||"falha desconhecida"));
+    }
+  }
+
+  function renderAuditEvents(payload) {
+    const tbody=document.getElementById("auditTableBody");
+    if(!tbody) return;
+    const events=Array.isArray(payload?.events)?payload.events:[];
+    if(!events.length){
+      tbody.innerHTML='<tr><td colspan="6" class="table-empty">Nenhum evento de auditoria registrado nesta prefeitura.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML=events.map(event=>{
+      const dt=event.ts ? new Date(event.ts) : null;
+      const meta=event.meta&&typeof event.meta==="object" ? event.meta : {};
+      const metaParts=[];
+      if(meta.view) metaParts.push("painel: "+meta.view);
+      if(meta.label) metaParts.push("rótulo: "+meta.label);
+      if(meta.permissionCount!==undefined) metaParts.push(meta.permissionCount+" permissão(ões)");
+      if(meta.viewCount!==undefined) metaParts.push(meta.viewCount+" painel(is)");
+      const status=String(event.status||"ok");
+      return `
+        <tr>
+          <td>${escapeHtml(dt&&!Number.isNaN(dt.getTime())?dt.toLocaleString("pt-BR"):(event.ts||"—"))}</td>
+          <td>${escapeHtml(formatAuditCategory(event.category))}</td>
+          <td><span class="audit-action">${escapeHtml(formatAuditAction(event.action))}</span>${metaParts.length?'<small class="audit-meta">'+escapeHtml(metaParts.join(" · "))+'</small>':""}</td>
+          <td>${escapeHtml(event.actor||"—")}</td>
+          <td>${escapeHtml(event.subject||"—")}</td>
+          <td><span class="audit-status ${status==="ok"?"ok":"error"}">${escapeHtml(status==="ok"?"OK":"ERRO")}</span></td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  async function loadAuditEvents() {
+    const tbody=document.getElementById("auditTableBody");
+    if(tbody) tbody.innerHTML='<tr><td colspan="6" class="table-empty">Carregando auditoria…</td></tr>';
+    try{
+      const payload=await api("/api/admin/audit?limit=100");
+      renderAuditEvents(payload);
+    }catch(error){
+      if(tbody) tbody.innerHTML='<tr><td colspan="6" class="table-empty">Auditoria disponível apenas para administradores/técnicos autorizados.</td></tr>';
     }
   }
 
@@ -2510,6 +2629,8 @@
   async function loadConfigAdmin() {
     const healthPromise=api("/api/health");
     const mappingPromise=readPageMappingStatus({silent:false});
+    const mcpTokensPromise=loadMcpTokens();
+    const auditPromise=loadAuditEvents();
     const tenant=currentTenantInfo();
 
     setConfigText("configTenantStatus",tenant ? (tenant.name||tenant.id) : "Não selecionada");
@@ -2554,7 +2675,7 @@
       setConfigText("configDataDetail",error.message||"Falha na consulta.");
     }
 
-    await mappingPromise;
+    await Promise.all([mappingPromise,mcpTokensPromise,auditPromise]);
   }
 
   function renderConfigAdmin() {
@@ -2909,6 +3030,12 @@
   document.getElementById("publishPageMappingButton").addEventListener("click", publishPageMappingFromUi);
 
   document.getElementById("generateMcpToken").addEventListener("click",generateMcpCredentialUi);
+  document.getElementById("refreshMcpTokens").addEventListener("click",loadMcpTokens);
+  document.getElementById("refreshAuditButton").addEventListener("click",loadAuditEvents);
+  document.getElementById("mcpActiveTokens").addEventListener("click",(event)=>{
+    const button=event.target.closest("[data-revoke-mcp]");
+    if(button) revokeMcpToken(button.dataset.revokeMcp);
+  });
   document.getElementById("copyMcpEndpoint").addEventListener("click",async()=>{
     const endpoint=document.getElementById("mcpEndpoint")?.value||mcpEndpointUrl();
     const ok=await copyTextValue(endpoint);
