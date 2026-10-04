@@ -3107,9 +3107,7 @@ async function buildItbiDashboard(env,tenant,url) {
       "tipo-cobranca":chartGroups(cobr,"Transferências","number"),
       compradores:chartGroups([...soldGroups.entries()],"Operações","number")
     },
-    meta:dashboardMeta([["solicitacoes",sol],["itens",itens],["transferencias",trans],["compras",compra]],{
-      privacy:["nomes de compradores ocultados enquanto login oficial estiver desativado"]
-    })
+    meta:dashboardMeta([["solicitacoes",sol],["itens",itens],["transferencias",trans],["compras",compra]])
   };
 }
 
@@ -3829,7 +3827,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-04-production-ui-v48",
+        buildVersion:"2026-10-04-production-ui-v49",
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant",
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
