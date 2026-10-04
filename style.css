@@ -1105,3 +1105,101 @@ html,body{
   .mcp-copy-row .btn-secondary-betha,
   .mcp-generate-box .btn-primary-betha{width:100%}
 }
+
+
+/* Gestão MCP e auditoria */
+.mcp-active-list{
+  border-top:1px solid var(--bth-line);
+  padding:12px
+}
+.mcp-active-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px
+}
+.mcp-active-head strong{
+  display:block;
+  margin-bottom:2px;
+  color:#2b333b;
+  font-size:12px
+}
+.mcp-active-head span{
+  display:block;
+  color:#707a84;
+  font-size:9px
+}
+.mcp-active-tokens{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px
+}
+.mcp-token-card{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:10px;
+  align-items:center;
+  padding:10px;
+  border:1px solid #e1e5e9;
+  background:#fff
+}
+.mcp-token-card-main strong{
+  display:block;
+  margin-bottom:3px;
+  font-size:11px;
+  color:#29323a
+}
+.mcp-token-card-main span{
+  display:block;
+  color:#707a84;
+  font-size:9px;
+  line-height:1.45
+}
+.mcp-token-meta-line{
+  margin-top:5px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px
+}
+.mcp-token-chip{
+  display:inline-flex;
+  align-items:center;
+  min-height:20px;
+  padding:0 6px;
+  border-radius:10px;
+  background:#eef3f7;
+  color:#56616b;
+  font-size:8px
+}
+.mcp-token-chip.ok{background:#eaf7ef;color:#176b43}
+.mcp-token-chip.warn{background:#fff4dc;color:#8b6110}
+.audit-panel .table-responsive{max-height:360px;overflow:auto}
+.audit-table td{vertical-align:top}
+.audit-action{
+  font-weight:700;
+  color:#2d353d
+}
+.audit-meta{
+  display:block;
+  margin-top:2px;
+  color:#77818a;
+  font-size:8px
+}
+.audit-status{
+  display:inline-flex;
+  align-items:center;
+  min-height:20px;
+  padding:0 6px;
+  border-radius:10px;
+  font-size:8px;
+  font-weight:700
+}
+.audit-status.ok{background:#eaf7ef;color:#176b43}
+.audit-status.error{background:#fdeaea;color:#a22f2f}
+@media(max-width:900px){
+  .mcp-active-tokens{grid-template-columns:1fr}
+}
+@media(max-width:720px){
+  .mcp-active-head{align-items:stretch;flex-direction:column}
+}
