@@ -20,28 +20,9 @@
     bethaApp.style.display = "none";
     authGate.hidden = false;
 
-    const message = document.getElementById("authMessage");
     const button = document.getElementById("loginButton");
-    const previousAuthError = window.BIAuth ? BIAuth.getError() : "BIAuth não carregou";
-
-    const authMessages = {
-      OAUTH_STATE_INVALID: "A validação de segurança do login expirou ou ficou inválida. Inicie o login novamente.",
-      OAUTH_CALLBACK_INCOMPLETE: "A Betha não devolveu todos os dados necessários para concluir o login.",
-      OAUTH_TOKEN_EXCHANGE_FAILED: "A Betha recusou a troca do código de autenticação pelo token.",
-      APPLICATION_SESSION_INVALID: "A sessão do BI não é mais válida. Entre novamente.",
-      APPLICATION_SESSION_EXPIRED: "Sua sessão do BI expirou. Entre novamente.",
-      USER_TOKEN_REQUIRED: "A sessão do usuário não foi encontrada.",
-      AUTH_VALIDATION_TIMEOUT: "A validação do login demorou mais que o esperado. Tente novamente.",
-      AUTH_HANDOFF_REQUIRED: "O retorno da Betha chegou sem o código temporário de autenticação.",
-      AUTH_HANDOFF_INVALID: "O código temporário de autenticação não é válido. Entre novamente.",
-      AUTH_HANDOFF_EXPIRED: "O retorno da Betha demorou demais e expirou. Entre novamente.",
-      AUTH_HANDOFF_MISSING: "A Betha retornou ao BI, mas o navegador não entregou o código temporário de autenticação.",
-      BACKEND_NOT_CONFIGURED: "O backend do BI não está configurado."
-    };
-
-    if (previousAuthError) {
-      message.textContent = authMessages[previousAuthError] || ("Falha na autenticação: " + previousAuthError);
-    }
+    // Erros de autenticação permanecem disponíveis internamente no BIAuth,
+    // mas não são exibidos na tela inicial para manter a entrada limpa.
 
     // O login Betha usa navegação HTML nativa. Assim ele continua funcionando
     // mesmo se algum módulo JavaScript falhar ou estiver com cache antigo.
