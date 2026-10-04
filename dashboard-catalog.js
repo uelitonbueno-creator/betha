@@ -25,6 +25,12 @@ window.BI_DASHBOARDS = {
     title: "Arrecadação",
     description: "Receita efetivamente recebida, excluindo pagamentos estornados, com composição por tributo, correção, juros, multa, receita e modalidade.",
     level: "macro-micro",
+    filters: [
+      {id:"tipoPagamento",label:"Tipo de pagamento",type:"select"},
+      {id:"tipoBaixa",label:"Tipo de baixa",type:"select"},
+      {id:"receita",label:"Receita",type:"select"},
+      {id:"classificacaoGuia",label:"Classificação da guia",type:"select"}
+    ],
     kpis: [
       {id:"total-pago",label:"Total arrecadado",format:"currency",source:"bi:pagamentos-detalhados-valores",field:"componentes pagos"},
       {id:"tributo-pago",label:"Tributo",format:"currency",source:"bi:pagamentos-detalhados-valores",field:"valorPagoLancado"},
@@ -53,6 +59,16 @@ window.BI_DASHBOARDS = {
     title: "Lançamentos e débitos",
     description: "Carteira lançada, situação, vencimentos, origem cadastral e descontos, com aging restrito aos débitos ainda em aberto.",
     level: "macro-micro",
+    filters: [
+      {id:"situacao",label:"Situação",type:"select"},
+      {id:"credito",label:"Crédito tributário",type:"select"},
+      {id:"origem",label:"Origem",type:"select"},
+      {id:"carteira",label:"Carteira",type:"select",options:[
+        {value:"aberto",label:"Em aberto"},
+        {value:"vencido",label:"Vencidos em aberto"},
+        {value:"pago",label:"Pagos"}
+      ]}
+    ],
     kpis: [
       {id:"vl-lancado",label:"Valor lançado",format:"currency",source:"bi:debitos",field:"vlLancado"},
       {id:"qtd-debitos",label:"Débitos",format:"number",source:"bi:debitos",field:"id"},
@@ -76,6 +92,16 @@ window.BI_DASHBOARDS = {
     title: "Dívida ativa",
     description: "Estoque atual pelo último encerramento mensal disponível, inscrições, recuperação, cobrança e maiores devedores.",
     level: "macro-micro",
+    filters: [
+      {id:"situacao",label:"Situação",type:"select"},
+      {id:"credito",label:"Crédito tributário",type:"select"},
+      {id:"anoDivida",label:"Ano da dívida",type:"select"},
+      {id:"cobranca",label:"Cobrança",type:"select",options:[
+        {value:"execucao",label:"Em execução"},
+        {value:"protesto",label:"Protestadas"},
+        {value:"penhora",label:"Com penhora"}
+      ]}
+    ],
     kpis: [
       {id:"saldo-divida",label:"Saldo atual",format:"currency",source:"base:encerramento-dividas",field:"valorSaldo no último encerramento"},
       {id:"inscrito",label:"Valor inscrito do estoque",format:"currency",source:"base:encerramento-dividas",field:"valorInscrito no último encerramento"},
@@ -103,6 +129,18 @@ window.BI_DASHBOARDS = {
     title: "Parcelamentos",
     description: "Acordos, entradas, parcelas, inadimplência, cancelamentos, cobrança e recebimentos, usando apenas as fontes BI vinculadas ao período selecionado.",
     level: "macro-micro",
+    filters: [
+      {id:"situacao",label:"Situação",type:"select"},
+      {id:"tipoEntrada",label:"Tipo de entrada",type:"select"},
+      {id:"cobranca",label:"Cobrança",type:"select",options:[
+        {value:"executada",label:"Dívida executada"},
+        {value:"protestada",label:"Dívida protestada"}
+      ]},
+      {id:"inadimplencia",label:"Inadimplência",type:"select",options:[
+        {value:"com-vencidas",label:"Com parcelas vencidas"},
+        {value:"sem-vencidas",label:"Sem parcelas vencidas"}
+      ]}
+    ],
     kpis: [
       {id:"qtd-parcelamentos",label:"Parcelamentos",format:"number",source:"bi:parcelamentos",field:"id"},
       {id:"ativos",label:"Ativos",format:"number",source:"bi:parcelamentos",field:"situacao.descricao"},
