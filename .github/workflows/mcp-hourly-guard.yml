@@ -2,6 +2,13 @@ name: MCP hourly guard
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "backend/worker.js"
+      - "config/page-mapping.json"
+      - "config/mcp-tools.generated.json"
+      - "scripts/**"
+      - "mcp/**"
   schedule:
     - cron: "17 * * * *"
   push:
@@ -25,6 +32,10 @@ jobs:
         run: node scripts/generate-mcp-tools.mjs
       - name: Verify generated catalog is committed
         run: git diff --exit-code -- config/mcp-tools.generated.json
+      - name: Install MCP Worker dependencies
+        run: npm install --prefix mcp --ignore-scripts --no-audit --no-fund
+      - name: Build MCP Worker (dry-run)
+        run: npm --prefix mcp run check
       - name: Check BI health
         run: |
           set -e
