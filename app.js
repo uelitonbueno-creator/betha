@@ -1634,12 +1634,13 @@
   }
 
   function drillProgressHtml(source,drill) {
-    const detailResource=typeof detailResourceFor==="function" ? detailResourceFor(source,drill) : "";
+    const detailResources=typeof detailResourcesFor==="function" ? detailResourcesFor(source,drill) : [];
+    const hasDetail=detailResources.length>0;
     const nodes=[
       {label:"Visão consolidada",state:"done"},
       {label:"Composição",state:"done"},
-      {label:"Origem / cadastro",state:"done"},
-      {label:detailResource ? "Registros autorizados" : "Registro individual",state:detailResource ? "done" : "locked"}
+      {label:detailResources.length>1 ? "Origens / cadastros" : "Origem / cadastro",state:"done"},
+      {label:hasDetail ? "Registros autorizados" : "Registro individual",state:hasDetail ? "done" : "locked"}
     ];
     return `
       <section class="drawer-section">
@@ -1688,34 +1689,62 @@
     "logradouros","obras","transferencias-imoveis"
   ]);
 
-  function detailResourceFor(source,drill) {
+  const DETAIL_RESOURCE_LABELS = Object.freeze({
+    contribuintes:"Contribuintes",
+    imoveis:"Imóveis",
+    economicos:"Econômicos",
+    debitos:"Débitos",
+    dividas:"Dívidas",
+    parcelamentos:"Parcelamentos",
+    "parcelamentos-parcelas":"Parcelas",
+    "guias-unificadas":"Guias",
+    receitas:"Receitas",
+    "creditos-tributarios":"Créditos tributários",
+    "indexadores-valores":"Valores de indexadores",
+    logradouros:"Logradouros",
+    obras:"Obras",
+    "transferencias-imoveis":"Transferências",
+    "pagamentos-detalhados":"Pagamentos",
+    "pagamentos-detalhados-valores":"Valores de pagamentos"
+  });
+
+  function detailResourcesFor(source,drill) {
     const candidates=[];
     if(drill) candidates.push(String(drill));
     for(const part of String(source||"").split("|")){
       const resource=part.includes(":") ? part.split(":").slice(1).join(":") : part;
       if(resource) candidates.push(resource);
     }
-    return candidates.find(item=>DETAIL_SUPPORTED.has(item)) || "";
+    return [...new Set(candidates.filter(item=>DETAIL_SUPPORTED.has(item)))];
+  }
+
+  function detailResourceFor(source,drill) {
+    return detailResourcesFor(source,drill)[0] || "";
   }
 
   function detailRecordsSection(source,drill) {
-    const resource=detailResourceFor(source,drill);
-    if(!resource) return "";
+    const resources=detailResourcesFor(source,drill);
+    if(!resources.length) return "";
+    const primary=resources[0];
 
     return `
       <section class="drawer-section detail-records-section">
         <div class="detail-records-head">
           <div>
             <h3>Registros autorizados</h3>
-            <p>Consulta paginada da fonte vinculada, respeitando prefeitura, sessão e filtros atuais.</p>
+            <p>Consulta paginada por origem, respeitando prefeitura, sessão e filtros atuais.</p>
           </div>
-          <button class="btn-secondary-betha" type="button" data-load-detail="${escapeHtml(resource)}">
-            <i class="mdi mdi-table-search"></i> CARREGAR REGISTROS
-          </button>
+          <div class="detail-records-actions">
+            ${resources.map(resource=>`
+              <button class="btn-secondary-betha" type="button" data-load-detail="${escapeHtml(resource)}">
+                <i class="mdi mdi-table-search"></i> ${escapeHtml(DETAIL_RESOURCE_LABELS[resource]||resource)}
+              </button>
+            `).join("")}
+          </div>
         </div>
-        <div class="detail-records-container" data-detail-container data-detail-resource="${escapeHtml(resource)}">
+        <div class="detail-records-container" data-detail-container data-detail-resource="${escapeHtml(primary)}">
           <div class="detail-empty-state compact">
-            <span>Os registros são carregados somente quando solicitados.</span>
+            <span>Escolha uma origem para carregar os registros autorizados.</span>
           </div>
         </div>
       </section>
