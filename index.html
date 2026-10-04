@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261003-hiddenfix1">
+  <link rel="stylesheet" href="style.css?v=20261004-settings1">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -155,9 +155,9 @@
         <section id="usersAdminView" class="users-admin-view" hidden>
           <header class="page-heading users-heading">
             <div>
-              <div class="level-label">ADMINISTRAÇÃO</div>
-              <h1>Usuários</h1>
-              <p>Somente usuários cadastrados na Central de Usuários Betha e autorizados no contexto desta entidade.</p>
+              <div class="level-label">CONFIGURAÇÕES</div>
+              <h1>Usuários e acessos</h1>
+              <p>Gerencie os usuários autorizados, validade de acesso e permissões desta prefeitura.</p>
             </div>
             <button id="addUserButton" class="btn-success-betha" type="button"><i class="mdi mdi-account-plus"></i> + USUÁRIO</button>
           </header>
@@ -191,6 +191,90 @@
                   <tr><td colspan="7" class="table-empty">Carregando usuários do contexto…</td></tr>
                 </tbody>
               </table>
+
+            </div>
+          </section>
+        </section>
+
+        <section id="configAdminView" class="config-admin-view" hidden>
+          <header class="page-heading users-heading">
+            <div>
+              <div class="level-label">CONFIGURAÇÕES</div>
+              <h1>Sistema e permissões</h1>
+              <p>Acompanhe a integração, o contexto da prefeitura e a matriz de permissões publicada na Betha.</p>
+            </div>
+            <button id="refreshConfigButton" class="btn-secondary-betha" type="button">
+              <i class="mdi mdi-refresh"></i> ATUALIZAR STATUS
+            </button>
+          </header>
+
+          <section class="config-grid">
+            <article class="config-card">
+              <div class="config-card-icon"><i class="mdi mdi-shield-account"></i></div>
+              <div>
+                <small>Autenticação</small>
+                <strong id="configAuthStatus">Verificando…</strong>
+                <span id="configAuthDetail">Sessão Betha e tenant atual.</span>
+              </div>
+            </article>
+
+            <article class="config-card">
+              <div class="config-card-icon"><i class="mdi mdi-database-check"></i></div>
+              <div>
+                <small>Dados e cache</small>
+                <strong id="configDataStatus">Verificando…</strong>
+                <span id="configDataDetail">Worker, token de serviço e cache.</span>
+              </div>
+            </article>
+
+            <article class="config-card">
+              <div class="config-card-icon"><i class="mdi mdi-office-building-cog"></i></div>
+              <div>
+                <small>Prefeitura</small>
+                <strong id="configTenantStatus">—</strong>
+                <span id="configTenantDetail">Contexto entity/database autorizado.</span>
+              </div>
+            </article>
+
+            <article class="config-card">
+              <div class="config-card-icon"><i class="mdi mdi-key-chain-variant"></i></div>
+              <div>
+                <small>Matriz de permissões</small>
+                <strong id="configMappingStatus">Verificando…</strong>
+                <span id="configMappingDetail">Permissões funcionais cadastradas na Betha.</span>
+              </div>
+            </article>
+          </section>
+
+          <section class="panel config-permissions-panel">
+            <div class="panel-header config-panel-header">
+              <div>
+                <h2>Matriz de permissões</h2>
+                <p>Define quais módulos do BI podem ser concedidos aos usuários no Gerenciador de Acessos da Betha.</p>
+              </div>
+              <div class="config-actions">
+                <span id="pageMappingBadge" class="config-status-badge">CONSULTANDO</span>
+                <button id="publishPageMappingButton" class="btn-primary-betha" type="button" disabled>
+                  <i class="mdi mdi-cloud-upload-outline"></i> PUBLICAR PERMISSÕES
+                </button>
+              </div>
+            </div>
+            <div id="pageMappingMessage" class="config-message">Consultando a matriz de permissões atual…</div>
+            <div id="configPermissionList" class="config-permission-list"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Segurança do contexto</h2>
+                <p>O token de serviço e o User-Access permanecem no backend; o navegador recebe somente dados já autorizados.</p>
+              </div>
+            </div>
+            <div class="config-security-grid">
+              <div><small>Tenant lógico</small><strong id="configTenantId">—</strong></div>
+              <div><small>Entity</small><strong id="configEntityId">—</strong></div>
+              <div><small>Database</small><strong id="configDatabaseId">—</strong></div>
+              <div><small>Versão do Worker</small><strong id="configWorkerVersion">—</strong></div>
             </div>
           </section>
         </section>
@@ -221,8 +305,8 @@
     <div class="user-wizard">
       <div class="wizard-steps">
         <button type="button" class="wizard-step is-active" data-step="1"><span>1</span> Localizar usuário</button>
-        <button type="button" class="wizard-step" data-step="2"><span>2</span> Gerenciar permissão</button>
-        <button type="button" class="wizard-step" data-step="3"><span>3</span> Definir grupos</button>
+        <button type="button" class="wizard-step" data-step="2"><span>2</span> Permissões</button>
+        <button type="button" class="wizard-step" data-step="3"><span>3</span> Perfil</button>
         <button type="button" class="wizard-step" data-step="4"><span>4</span> Restrições de acesso</button>
       </div>
       <div class="drawer-body">
@@ -237,12 +321,13 @@
 
         <section class="wizard-panel" data-panel="2" hidden>
           <h3>Permissões do BI Tributos</h3>
-          <p class="form-help">As permissões serão integradas ao Page Mapping da Betha. Até o Page Mapping ser publicado, esta etapa fica em modo de configuração.</p>
+          <p id="permissionMappingHelp" class="form-help">Selecione os módulos que este usuário poderá consultar. As permissões são vinculadas à matriz oficial cadastrada na Betha.</p>
           <div id="permissionsList" class="permission-list"></div>
         </section>
 
         <section class="wizard-panel" data-panel="3" hidden>
-          <h3>Grupos</h3>
+          <h3>Perfil de acesso</h3>
+          <p class="form-help">O perfil apenas pré-seleciona as permissões. Você ainda pode ajustar cada módulo individualmente.</p>
           <div class="group-options">
             <label><input type="radio" name="biGroup" value="consulta" checked> Consulta</label>
             <label><input type="radio" name="biGroup" value="gestor"> Gestor</label>
@@ -293,7 +378,7 @@
 
   <script src="config.js?v=20261002-kvsession1"></script>
   <script src="auth/auth.js?v=20261002-kvsession1"></script>
-  <script src="dashboard-catalog.js?v=20261004-finance1"></script>
-  <script src="app.js?v=20261003-refined2"></script>
+  <script src="dashboard-catalog.js?v=20261004-settings1"></script>
+  <script src="app.js?v=20261004-settings1"></script>
 </body>
 </html>
