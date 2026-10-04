@@ -1722,8 +1722,9 @@
     return detailResourcesFor(source,drill)[0] || "";
   }
 
-  function detailRecordsSection(source,drill) {
+  function detailRecordsSection(source,drill,options={}) {
     const resources=detailResourcesFor(source,drill);
+    const qualityIssue=String(options.qualityIssue||"");
     if(!resources.length) return "";
     const primary=resources[0];
 
@@ -1736,7 +1737,7 @@
           </div>
           <div class="detail-records-actions">
             ${resources.map(resource=>`
-              <button class="btn-secondary-betha" type="button" data-load-detail="${escapeHtml(resource)}">
+              <button class="btn-secondary-betha" type="button" data-load-detail="${escapeHtml(resource)}" ${qualityIssue ? 'data-detail-quality-issue="'+escapeHtml(qualityIssue)+'"' : ''}>
                 <i class="mdi mdi-table-search"></i> ${escapeHtml(DETAIL_RESOURCE_LABELS[resource]||resource)}
               </button>
             `).join("")}
@@ -2065,7 +2066,7 @@
     }
   }
 
-  async function loadDetailRecords(resource,offset=0) {
+  async function loadDetailRecords(resource,offset=0,qualityIssue="") {
     const container=document.querySelector("[data-detail-container]");
     if(!container) return;
 
@@ -2078,6 +2079,7 @@
       offset:String(offset||0)
     });
     for(const [key,value] of Object.entries(currentDashboardFilters())) params.set(key,value);
+    if(qualityIssue) params.set("qualityIssue",qualityIssue);
 
     try {
       const payload=await api("/api/detail/"+encodeURIComponent(resource)+"?"+params.toString(),{timeoutMs:30000});
@@ -2091,9 +2093,9 @@
         <div class="detail-pagination">
           <span>${Number(pagination.loaded||0).toLocaleString("pt-BR")} registro(s) nesta página</span>
           <div>
-            ${offset>0 ? '<button class="btn-secondary-betha" type="button" data-detail-page="'+escapeHtml(resource)+'" data-detail-offset="'+Math.max(0,offset-25)+'">ANTERIOR</button>' : ''}
+            ${offset>0 ? '<button class="btn-secondary-betha" type="button" data-detail-page="'+escapeHtml(resource)+'" data-detail-offset="'+Math.max(0,offset-25)+'" '+(qualityIssue ? 'data-detail-quality-issue="'+escapeHtml(qualityIssue)+'"' : '')+'>ANTERIOR</button>' : ''}
             ${pagination.hasMore && pagination.nextOffset!==null && pagination.nextOffset!==undefined
-              ? '<button class="btn-secondary-betha" type="button" data-detail-page="'+escapeHtml(resource)+'" data-detail-offset="'+escapeHtml(pagination.nextOffset)+'">PRÓXIMA</button>'
+              ? '<button class="btn-secondary-betha" type="button" data-detail-page="'+escapeHtml(resource)+'" data-detail-offset="'+escapeHtml(pagination.nextOffset)+'" '+(qualityIssue ? 'data-detail-quality-issue="'+escapeHtml(qualityIssue)+'"' : '')+'>PRÓXIMA</button>'
               : ''}
           </div>
         </div>
@@ -2107,6 +2109,8 @@
     const raw=currentPayload?.kpis?.[kpi.id];
     const composition=compositionForKpi(kpi);
     const coverage=coverageForSource(kpi.source);
+    const detailResource=kpi.detailResource||sourceKeyCandidates(kpi.source)[0];
+    const detailIssue=kpi.detailIssue||"";
 
     openDrawer(kpi.label, `
       <section class="drawer-section detail-hero">
@@ -2127,8 +2131,8 @@
       </section>
 
       ${sourceOriginHtml(kpi.source,kpi.field)}
-      ${detailRecordsSection(kpi.source,sourceKeyCandidates(kpi.source)[0])}
-      ${drillProgressHtml(kpi.source,sourceKeyCandidates(kpi.source)[0])}
+      ${detailRecordsSection(kpi.source,detailResource,{qualityIssue:detailIssue})}
+      ${drillProgressHtml(kpi.source,detailResource)}
     `);
   }
 
@@ -2231,12 +2235,12 @@
   document.getElementById("drawerBody").addEventListener("click",(event)=>{
     const loadButton=event.target.closest("[data-load-detail]");
     if(loadButton){
-      loadDetailRecords(loadButton.dataset.loadDetail,0);
+      loadDetailRecords(loadButton.dataset.loadDetail,0,loadButton.dataset.detailQualityIssue||"");
       return;
     }
     const pageButton=event.target.closest("[data-detail-page]");
     if(pageButton){
-      loadDetailRecords(pageButton.dataset.detailPage,Number(pageButton.dataset.detailOffset||0));
+      loadDetailRecords(pageButton.dataset.detailPage,Number(pageButton.dataset.detailOffset||0),pageButton.dataset.detailQualityIssue||"");
     }
   });
 

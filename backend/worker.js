@@ -4261,7 +4261,7 @@ function detailScalar(row,paths,format) {
   return String(raw);
 }
 
-function detailFilterRows(resource,rows,url) {
+function detailFilterRows(resource,rows,url,context={}) {
   const periodo=url.searchParams.get("periodo")||"todos";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
   const def=DETAIL_RESOURCES[resource]||{};
@@ -4327,6 +4327,25 @@ function detailFilterRows(resource,rows,url) {
       if(inadimplencia==="sem-vencidas"&&vencidas>0) return false;
       return true;
     });
+  } else if(["contribuintes","imoveis","economicos"].includes(resource)){
+    const situacao=dashboardFilterValue(url,"situacao");
+    const qualityIssue=dashboardFilterValue(url,"qualityIssue");
+    const isInactive=row=>truthyValue(row,["desativado"])||/inativ|desativ/i.test(stringValue(row,["situacao","situacao.descricao","status"],""));
+    out=out.filter(row=>{
+      const inactive=isInactive(row);
+      if(situacao==="ativo"&&inactive) return false;
+      if(situacao==="inativo"&&!inactive) return false;
+      if(resource==="contribuintes"&&qualityIssue==="sem-documento"&&firstValue(row,["cpf","cnpj","cpfCnpj","documento"])!==undefined) return false;
+      if(resource==="contribuintes"&&qualityIssue==="sem-contato"&&firstValue(row,["email","emailPrincipal","telefone","fone","celular"])!==undefined) return false;
+      if(resource==="imoveis"&&qualityIssue==="sem-endereco"){
+        if(firstValue(row,["nomeLogradouro","logradouro.nome"])!==undefined&&firstValue(row,["cep","endereco.cep"])!==undefined) return false;
+      }
+      if(resource==="economicos"&&qualityIssue==="sem-atividade"){
+        const id=String(firstValue(row,["id","idEconomico"])||"");
+        if(!id||context.ecoWithActivity?.has(id)) return false;
+      }
+      return true;
+    });
   }
 
   return out;
@@ -4351,7 +4370,23 @@ async function buildDetailPage(env,tenant,resource,url) {
     throw error;
   }
 
-  const filtered=detailFilterRows(resource,src.rows,url);
+  const qualityIssue=dashboardFilterValue(url,"qualityIssue");
+  const detailContext={};
+  if(resource==="economicos"&&qualityIssue==="sem-atividade"){
+    const atividades=await safeBethaRows(env,tenant,"bi","economicos-atividades");
+    if(atividades.error){
+      const error=new Error(atividades.error);
+      error.status=atividades.errorStatus||502;
+      throw error;
+    }
+    detailContext.ecoWithActivity=new Set(
+      atividades.rows
+        .map(row=>String(firstValue(row,["idEconomico","economico.id"])||""))
+        .filter(Boolean)
+    );
+  }
+
+  const filtered=detailFilterRows(resource,src.rows,url,detailContext);
   const columns=def.columns.map(([key,label,paths,format])=>({key,label,format}));
   const rows=filtered.map(row=>{
     const item={};

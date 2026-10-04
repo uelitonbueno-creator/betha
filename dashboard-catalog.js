@@ -355,10 +355,10 @@ window.BI_DASHBOARDS = {
       ]}
     ],
     kpis: [
-      {id:"sem-documento",label:"Sem CPF/CNPJ",format:"number",source:"bi:contribuintes",field:"cpf/cnpj"},
-      {id:"sem-contato",label:"Sem contato",format:"number",source:"bi:contribuintes",field:"email/telefone/celular"},
-      {id:"imoveis-sem-endereco",label:"Imóveis sem endereço completo",format:"number",source:"bi:imoveis",field:"nomeLogradouro/cep"},
-      {id:"economicos-sem-atividade",label:"Econômicos sem atividade",format:"number",source:"bi:economicos-atividades",field:"idEconomico"}
+      {id:"sem-documento",label:"Sem CPF/CNPJ",format:"number",source:"bi:contribuintes",field:"cpf/cnpj",detailResource:"contribuintes",detailIssue:"sem-documento"},
+      {id:"sem-contato",label:"Sem contato",format:"number",source:"bi:contribuintes",field:"email/telefone/celular",detailResource:"contribuintes",detailIssue:"sem-contato"},
+      {id:"imoveis-sem-endereco",label:"Imóveis sem endereço completo",format:"number",source:"bi:imoveis",field:"nomeLogradouro/cep",detailResource:"imoveis",detailIssue:"sem-endereco"},
+      {id:"economicos-sem-atividade",label:"Econômicos sem atividade",format:"number",source:"bi:economicos-atividades",field:"idEconomico",detailResource:"economicos",detailIssue:"sem-atividade"}
     ],
     charts: [
       {id:"completude-contribuintes",title:"Completude dos contribuintes",subtitle:"Documento, endereço, e-mail e telefone.",type:"bar",source:"bi:contribuintes",dimension:"campo",measures:["percentualPreenchido"],drill:"contribuintes"},
