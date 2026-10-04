@@ -985,3 +985,53 @@ html,body{
   .advanced-filters .field,
   .advanced-filters .field select{width:100%;min-width:0}
 }
+
+
+/* Exportação PDF/CSV/TXT */
+.page-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap
+}
+.drawer-header-actions{
+  display:flex;
+  align-items:center;
+  gap:8px
+}
+.drawer-export-actions{
+  display:flex;
+  align-items:center;
+  gap:5px
+}
+.drawer-export-actions[hidden]{display:none !important}
+.drawer-export-btn{
+  width:31px;
+  height:31px;
+  display:grid;
+  place-items:center;
+  border:1px solid rgba(255,255,255,.28);
+  border-radius:4px;
+  background:rgba(255,255,255,.08);
+  color:#fff;
+  cursor:pointer
+}
+.drawer-export-btn:hover{background:rgba(255,255,255,.16)}
+.export-busy{
+  opacity:.55;
+  pointer-events:none
+}
+.export-note{
+  padding:8px 10px;
+  margin:8px 0;
+  border:1px solid #e1e5e9;
+  background:#fafbfc;
+  color:#65707a;
+  font-size:9px;
+  line-height:1.45
+}
+@media(max-width:720px){
+  .page-actions{align-items:stretch;flex-direction:column}
+  .page-actions .btn-secondary-betha{width:100%}
+}
