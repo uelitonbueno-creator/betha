@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "betha-bi-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-03",
+  "workers_dev": true,
+  "vars": {
+    "BI_API_BASE": "https://betha-bi-api.ueliton-bueno.workers.dev",
+    "MCP_AUTH_READY": "false"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
