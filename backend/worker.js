@@ -3316,17 +3316,28 @@ async function buildRealEstateDashboard(env,tenant,url) {
 async function buildItbiDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const filters={
+    situacao:dashboardFilterValue(url,"situacao"),
+    certidao:dashboardFilterValue(url,"certidao"),
+    cobranca:dashboardFilterValue(url,"cobranca")
+  };
   const [sol,itens,trans,compra]=await Promise.all([
     safeBethaRows(env,tenant,"bi","solicitacoes-transferencias-imoveis"),
     safeBethaRows(env,tenant,"bi","solicitacoes-transferencias-imoveis-itens"),
     safeBethaRows(env,tenant,"bi","transferencias-imoveis"),
     safeBethaRows(env,tenant,"bi","transferencias-imoveis-compra")
   ]);
+  const transRows=trans.rows.filter(row=>{
+    if(filters.situacao&&!matchesDashboardFilter(row,filters.situacao,["situacao","situacao.descricao","status"])) return false;
+    if(filters.certidao&&!matchesDashboardFilter(row,filters.certidao,["statusCertidaoITBI","statusCertidao","certidaoStatus"])) return false;
+    if(filters.cobranca&&!matchesDashboardFilter(row,filters.cobranca,["tipoCobranca","tipoCobranca.descricao","cobranca"])) return false;
+    return true;
+  });
   const solMon=monthlyCount(sol.rows,["dataHoraSolicitacao","dataSolicitacao","dhSolicitacao"],periodo,exercicio);
-  const transMon=monthlyCount(trans.rows,["dataHoraTransferencia","dataTransferencia","dhTransferencia"],periodo,exercicio);
+  const transMon=monthlyCount(transRows,["dataHoraTransferencia","dataTransferencia","dhTransferencia"],periodo,exercicio);
   const sitSol=groupCount(sol.rows,["situacao","situacao.descricao","status"],10);
-  const sitTrans=groupCount(trans.rows,["situacao","situacao.descricao","status"],10);
-  const cert=groupCount(trans.rows,["statusCertidaoITBI","statusCertidao","certidaoStatus"],10);
+  const sitTrans=groupCount(transRows,["situacao","situacao.descricao","status"],10);
+  const cert=groupCount(transRows,["statusCertidaoITBI","statusCertidao","certidaoStatus"],10);
   const compGroups=new Map();
   for(const r of itens.rows){
     const label=stringValue(r,["competencia","ano","exercicio"],"Sem competência");
@@ -3340,7 +3351,7 @@ async function buildItbiDashboard(env,tenant,url) {
     compGroups.set(label,x);
   }
   const comps=[...compGroups.entries()].sort((a,b)=>String(a[0]).localeCompare(String(b[0]))).slice(-12);
-  const cobr=groupCount(trans.rows,["tipoCobranca","tipoCobranca.descricao","cobranca"],10);
+  const cobr=groupCount(transRows,["tipoCobranca","tipoCobranca.descricao","cobranca"],10);
   const soldGroups=new Map();
   for(const r of compra.rows){
     const p=numericValue(r,["percVendido","percentualVendido","percentual"]);
@@ -3349,9 +3360,15 @@ async function buildItbiDashboard(env,tenant,url) {
   }
   return {
     view:"itbi",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    filters:activeFilterObject(filters),
+    filterOptions:{
+      situacao:filterOptionsFromRows(trans.rows,["situacao","situacao.descricao","status"]),
+      certidao:filterOptionsFromRows(trans.rows,["statusCertidaoITBI","statusCertidao","certidaoStatus"]),
+      cobranca:filterOptionsFromRows(trans.rows,["tipoCobranca","tipoCobranca.descricao","cobranca"])
+    },
     kpis:{
       solicitacoes:sol.total,
-      "transferencias-itbi":trans.total,
+      "transferencias-itbi":transRows.length,
       itbi:sumRowsOrNull(itens.rows,["valorITBI","vlITBI","valorItbi"]),
       declarado:sumRowsOrNull(itens.rows,["valorDeclarado","vlDeclarado"]),
       financiado:sumRowsOrNull(itens.rows,["valorFinanciado","vlFinanciado"])
@@ -3377,7 +3394,7 @@ async function buildItbiDashboard(env,tenant,url) {
       "tipo-cobranca":chartGroups(cobr,"Transferências","number"),
       compradores:chartGroups([...soldGroups.entries()],"Operações","number")
     },
-    meta:dashboardMeta([["solicitacoes",sol],["itens",itens],["transferencias",trans],["compras",compra]])
+    meta:dashboardMeta([["solicitacoes",sol],["itens",itens],["transferencias",trans],["compras",compra]],{filteredRows:{transferencias:transRows.length}})
   };
 }
 
