@@ -4028,6 +4028,7 @@ async function buildTerritoryDashboard(env,tenant,url) {
 async function buildQualityDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const filters={situacao:dashboardFilterValue(url,"situacao")};
   const [con,imo,eco,ativ,campos]=await Promise.all([
     safeBethaRows(env,tenant,"bi","contribuintes"),
     safeBethaRows(env,tenant,"bi","imoveis"),
@@ -4036,27 +4037,36 @@ async function buildQualityDashboard(env,tenant,url) {
     safeBethaRows(env,tenant,"bi","imoveis-campos-adicionais")
   ]);
 
+  const isInactive=r=>truthyValue(r,["desativado"])||/inativ|desativ/i.test(stringValue(r,["situacao","situacao.descricao","status"],""));
+  const filterSituacao=rows=>rows.filter(r=>{
+    if(filters.situacao==="ativo") return !isInactive(r);
+    if(filters.situacao==="inativo") return isInactive(r);
+    return true;
+  });
+  const conRows=filterSituacao(con.rows);
+  const imoRows=filterSituacao(imo.rows);
+  const ecoRows=filterSituacao(eco.rows);
   const ecoWithActivity=new Set(ativ.rows.map(r=>String(firstValue(r,["idEconomico","economico.id"])||"")).filter(Boolean));
-  const opCon=monthlyCount(con.rows,["dhOperacao","dataHoraOperacao","dataAtualizacao"],periodo,exercicio);
-  const opImo=monthlyCount(imo.rows,["dhOperacao","dataHoraOperacao","dataAtualizacao"],periodo,exercicio);
-  const opEco=monthlyCount(eco.rows,["dhOperacao","dataHoraOperacao","dataAtualizacao"],periodo,exercicio);
+  const opCon=monthlyCount(conRows,["dhOperacao","dataHoraOperacao","dataAtualizacao"],periodo,exercicio);
+  const opImo=monthlyCount(imoRows,["dhOperacao","dataHoraOperacao","dataAtualizacao"],periodo,exercicio);
+  const opEco=monthlyCount(ecoRows,["dhOperacao","dataHoraOperacao","dataAtualizacao"],periodo,exercicio);
   const campoGroups=groupCount(campos.rows,["campoAdicional.descricao","descricaoCampo","campoAdicional","campo"],12);
 
-  const completionCon=completenessChart(con.rows,[
+  const completionCon=completenessChart(conRows,[
     {label:"CPF/CNPJ",paths:["cpf","cnpj","cpfCnpj","documento"]},
     {label:"E-mail",paths:["email","emailPrincipal"]},
     {label:"Telefone",paths:["telefone","fone","celular"]},
     {label:"CEP",paths:["cep","endereco.cep"]},
     {label:"Logradouro",paths:["nomeLogradouro","logradouro.nome","endereco.logradouro"]}
   ]);
-  const completionImo=completenessChart(imo.rows,[
+  const completionImo=completenessChart(imoRows,[
     {label:"Logradouro",paths:["nomeLogradouro","logradouro.nome"]},
     {label:"Número",paths:["numero","numeroImovel"]},
     {label:"CEP",paths:["cep","endereco.cep"]},
     {label:"Bairro",paths:["nomeBairro","bairro.nome"]},
     {label:"Setor",paths:["setor","setor.codigo"]}
   ]);
-  const completionEco=completenessChart(eco.rows,[
+  const completionEco=completenessChart(ecoRows,[
     {label:"Início atividade",paths:["dtInicioAtiv","dataInicioAtividade"]},
     {label:"Situação",paths:["situacao","situacao.descricao"]},
     {label:"Bairro",paths:["nomeBairro","bairro.nome"]},
@@ -4066,11 +4076,12 @@ async function buildQualityDashboard(env,tenant,url) {
 
   return {
     view:"qualidade",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    filters:activeFilterObject(filters),
     kpis:{
-      "sem-documento":countWhere(con.rows,r=>firstValue(r,["cpf","cnpj","cpfCnpj","documento"])===undefined),
-      "sem-contato":countWhere(con.rows,r=>firstValue(r,["email","emailPrincipal","telefone","fone","celular"])===undefined),
-      "imoveis-sem-endereco":countWhere(imo.rows,r=>firstValue(r,["nomeLogradouro","logradouro.nome"])===undefined||firstValue(r,["cep","endereco.cep"])===undefined),
-      "economicos-sem-atividade":countWhere(eco.rows,r=>{
+      "sem-documento":countWhere(conRows,r=>firstValue(r,["cpf","cnpj","cpfCnpj","documento"])===undefined),
+      "sem-contato":countWhere(conRows,r=>firstValue(r,["email","emailPrincipal","telefone","fone","celular"])===undefined),
+      "imoveis-sem-endereco":countWhere(imoRows,r=>firstValue(r,["nomeLogradouro","logradouro.nome"])===undefined||firstValue(r,["cep","endereco.cep"])===undefined),
+      "economicos-sem-atividade":countWhere(ecoRows,r=>{
         const id=String(firstValue(r,["id","idEconomico"])||"");
         return id&&!ecoWithActivity.has(id);
       })
@@ -4085,12 +4096,15 @@ async function buildQualityDashboard(env,tenant,url) {
         {label:"Econômicos",data:opEco.values}
       ]},
       "registros-desativados":chartFixed(["Contribuintes","Imóveis"],[
-        countWhere(con.rows,r=>truthyValue(r,["desativado"])||/inativ|desativ/i.test(stringValue(r,["situacao","status"],""))),
-        countWhere(imo.rows,r=>truthyValue(r,["desativado"])||/inativ|desativ/i.test(stringValue(r,["situacao","status"],"")))
+        countWhere(conRows,isInactive),
+        countWhere(imoRows,isInactive)
       ],"Desativados","number"),
       "campos-adicionais":chartGroups(campoGroups,"Registros","number")
     },
-    meta:dashboardMeta([["contribuintes",con],["imoveis",imo],["economicos",eco],["atividades",ativ],["camposAdicionais",campos]])
+    meta:dashboardMeta([["contribuintes",con],["imoveis",imo],["economicos",eco],["atividades",ativ],["camposAdicionais",campos]],{
+      appliedFilters:activeFilterObject(filters),
+      filteredRows:{contribuintes:conRows.length,imoveis:imoRows.length,economicos:ecoRows.length}
+    })
   };
 }
 
