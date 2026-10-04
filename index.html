@@ -9,13 +9,16 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261004-filters1">
+  <link rel="stylesheet" href="style.css?v=20261004-export1">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
     defineCustomElements();
   </script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
   <script>
@@ -96,9 +99,14 @@
             <h1 id="pageTitle">Visão geral</h1>
             <p id="pageDescription">Visão executiva da arrecadação e da carteira tributária.</p>
           </div>
-          <div id="apiStatus" class="api-status api-status-waiting">
+          <div class="page-actions">
+            <button id="exportDashboardPdf" class="btn-secondary-betha" type="button">
+              <i class="mdi mdi-file-pdf-box"></i> EXPORTAR PDF
+            </button>
+                      <div id="apiStatus" class="api-status api-status-waiting">
             <span class="status-dot"></span>
             <span>Carregando dados autorizados…</span>
+          </div>
           </div>
         </header>
 
@@ -295,7 +303,14 @@
         <small>DETALHAMENTO</small>
         <h2 id="drawerTitle">Detalhamento</h2>
       </div>
-      <button id="closeDrawer" class="drawer-close" type="button" aria-label="Fechar"><i class="mdi mdi-close"></i></button>
+      <div class="drawer-header-actions">
+        <div id="drawerExportActions" class="drawer-export-actions" hidden>
+          <button id="exportDetailPdf" class="drawer-export-btn" type="button" title="Exportar PDF"><i class="mdi mdi-file-pdf-box"></i></button>
+          <button id="exportDetailCsv" class="drawer-export-btn" type="button" title="Exportar CSV"><i class="mdi mdi-file-delimited-outline"></i></button>
+          <button id="exportDetailTxt" class="drawer-export-btn" type="button" title="Exportar TXT"><i class="mdi mdi-file-document-outline"></i></button>
+        </div>
+              <button id="closeDrawer" class="drawer-close" type="button" aria-label="Fechar"><i class="mdi mdi-close"></i></button>
+      </div>
     </div>
     <div id="drawerBody" class="drawer-body"></div>
   </aside>
@@ -385,7 +400,7 @@
 
   <script src="config.js?v=20261002-kvsession1"></script>
   <script src="auth/auth.js?v=20261002-kvsession1"></script>
-  <script src="dashboard-catalog.js?v=20261004-filters1"></script>
-  <script src="app.js?v=20261004-filters1"></script>
+  <script src="dashboard-catalog.js?v=20261004-export1"></script>
+  <script src="app.js?v=20261004-export1"></script>
 </body>
 </html>
