@@ -1666,6 +1666,113 @@
     return pieces.join("");
   }
 
+  const DETAIL_SUPPORTED = new Set([
+    "pagamentos-detalhados-valores","pagamentos-detalhados",
+    "debitos","dividas","parcelamentos","parcelamentos-parcelas",
+    "guias-unificadas","contribuintes","imoveis","economicos",
+    "receitas","creditos-tributarios","indexadores-valores",
+    "logradouros","obras","transferencias-imoveis"
+  ]);
+
+  function detailResourceFor(source,drill) {
+    const candidates=[];
+    if(drill) candidates.push(String(drill));
+    for(const part of String(source||"").split("|")){
+      const resource=part.includes(":") ? part.split(":").slice(1).join(":") : part;
+      if(resource) candidates.push(resource);
+    }
+    return candidates.find(item=>DETAIL_SUPPORTED.has(item)) || "";
+  }
+
+  function detailRecordsSection(source,drill) {
+    const resource=detailResourceFor(source,drill);
+    if(!resource) return "";
+
+    return `
+      <section class="drawer-section detail-records-section">
+        <div class="detail-records-head">
+          <div>
+            <h3>Registros autorizados</h3>
+            <p>Consulta paginada da fonte vinculada, respeitando prefeitura, sessão e filtros atuais.</p>
+          </div>
+          <button class="btn-secondary-betha" type="button" data-load-detail="${escapeHtml(resource)}">
+            <i class="mdi mdi-table-search"></i> CARREGAR REGISTROS
+          </button>
+        </div>
+        <div class="detail-records-container" data-detail-container data-detail-resource="${escapeHtml(resource)}">
+          <div class="detail-empty-state compact">
+            <span>Os registros são carregados somente quando solicitados.</span>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
+  function formatDetailCell(value,format) {
+    if(value===null||value===undefined||value==="") return "—";
+    if(format==="currency") return Number(value||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+    if(format==="number") return Number.isFinite(Number(value)) ? Number(value).toLocaleString("pt-BR",{maximumFractionDigits:6}) : String(value);
+    if(format==="boolean") return value===true ? "Sim" : value===false ? "Não" : String(value);
+    if(format==="date") {
+      const d=new Date(value);
+      return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString("pt-BR");
+    }
+    return String(value);
+  }
+
+  function detailPageTable(payload) {
+    const columns=Array.isArray(payload?.columns)?payload.columns:[];
+    const rows=Array.isArray(payload?.rows)?payload.rows:[];
+    if(!columns.length) return '<div class="detail-empty-state compact"><span>Fonte sem colunas de detalhamento configuradas.</span></div>';
+    if(!rows.length) return '<div class="detail-empty-state compact"><span>Nenhum registro encontrado neste recorte.</span></div>';
+
+    return `
+      <div class="detail-table-wrap">
+        <table class="detail-table">
+          <thead><tr>${columns.map(col=>'<th>'+escapeHtml(col.label||col.key)+'</th>').join("")}</tr></thead>
+          <tbody>
+            ${rows.map(row=>'<tr>'+columns.map(col=>
+              '<td>'+escapeHtml(formatDetailCell(row[col.key],col.format))+'</td>'
+            ).join("")+'</tr>').join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  async function loadDetailRecords(resource,offset=0) {
+    const container=document.querySelector("[data-detail-container]");
+    if(!container) return;
+
+    container.innerHTML='<div class="detail-empty-state compact"><i class="mdi mdi-loading mdi-spin"></i><span>Consultando registros autorizados…</span></div>';
+
+    const params=new URLSearchParams({
+      periodo:document.getElementById("periodo")?.value||"todos",
+      exercicio:document.getElementById("exercicio")?.value||String(new Date().getFullYear()),
+      limit:"25",
+      offset:String(offset||0)
+    });
+    for(const [key,value] of Object.entries(currentDashboardFilters())) params.set(key,value);
+
+    try {
+      const payload=await api("/api/detail/"+encodeURIComponent(resource)+"?"+params.toString(),{timeoutMs:30000});
+      const pagination=payload?.pagination||{};
+      container.innerHTML=detailPageTable(payload)+`
+        <div class="detail-pagination">
+          <span>${Number(pagination.loaded||0).toLocaleString("pt-BR")} registro(s) nesta página</span>
+          <div>
+            ${offset>0 ? '<button class="btn-secondary-betha" type="button" data-detail-page="'+escapeHtml(resource)+'" data-detail-offset="'+Math.max(0,offset-25)+'">ANTERIOR</button>' : ''}
+            ${pagination.hasMore && pagination.nextOffset!==null && pagination.nextOffset!==undefined
+              ? '<button class="btn-secondary-betha" type="button" data-detail-page="'+escapeHtml(resource)+'" data-detail-offset="'+escapeHtml(pagination.nextOffset)+'">PRÓXIMA</button>'
+              : ''}
+          </div>
+        </div>
+      `;
+    } catch(error) {
+      container.innerHTML='<div class="detail-empty-state compact"><strong>Detalhamento indisponível</strong><span>'+escapeHtml(error.message||"Falha na consulta")+'</span></div>';
+    }
+  }
+
   function openKpiDetail(kpi) {
     const raw=currentPayload?.kpis?.[kpi.id];
     const composition=compositionForKpi(kpi);
@@ -1690,6 +1797,7 @@
       </section>
 
       ${sourceOriginHtml(kpi.source,kpi.field)}
+      ${detailRecordsSection(kpi.source,sourceKeyCandidates(kpi.source)[0])}
       ${drillProgressHtml(kpi.source,sourceKeyCandidates(kpi.source)[0])}
     `);
   }
@@ -1727,13 +1835,14 @@
         ${series || `
           <div class="detail-empty-state">
             <i class="mdi mdi-chart-box-outline"></i>
-            <strong>Composição ainda não disponível no snapshot</strong>
-            <span>O gráfico continuará aparecendo assim que sua fonte terminar a carga.</span>
+            <strong>Sem composição para o recorte atual</strong>
+            <span>Atualize os dados ou ajuste os filtros desta visão.</span>
           </div>
         `}
       </section>
 
       ${sourceOriginHtml(chartDef.source,(chartDef.measures||[]).join(", "))}
+      ${detailRecordsSection(chartDef.source,chartDef.drill)}
       ${drillProgressHtml(chartDef.source,chartDef.drill)}
     `);
   }
@@ -1783,6 +1892,18 @@
       document.body.classList.remove("drawer-open");
     }
   }
+
+  document.getElementById("drawerBody").addEventListener("click",(event)=>{
+    const loadButton=event.target.closest("[data-load-detail]");
+    if(loadButton){
+      loadDetailRecords(loadButton.dataset.loadDetail,0);
+      return;
+    }
+    const pageButton=event.target.closest("[data-detail-page]");
+    if(pageButton){
+      loadDetailRecords(pageButton.dataset.detailPage,Number(pageButton.dataset.detailOffset||0));
+    }
+  });
 
   document.getElementById("closeDrawer").addEventListener("click", () => closeDrawer("detailDrawer"));
   document.getElementById("closeIntegration").addEventListener("click", () => closeDrawer("integrationDrawer"));
