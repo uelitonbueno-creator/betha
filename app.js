@@ -42,19 +42,17 @@
       message.textContent = authMessages[previousAuthError] || ("Falha na autenticação: " + previousAuthError);
     }
 
-    button.addEventListener("click", () => {
-      message.textContent = "Redirecionando para a Betha…";
-      button.disabled = true;
-      button.textContent = "REDIRECIONANDO…";
+    // O login Betha usa navegação HTML nativa. Assim ele continua funcionando
+    // mesmo se algum módulo JavaScript falhar ou estiver com cache antigo.
+    if (button.tagName === "A") {
+      const loginBase=String(cfg.BACKEND_URL || "").replace(/\/$/,"");
+      button.setAttribute("href",(loginBase || "") + "/api/auth/login");
+    }
 
-      try {
-        BIAuth.login();
-      } catch (error) {
-        message.textContent = authMessages[error.message] || ("Falha no login: " + error.message);
-        button.disabled = false;
-        button.textContent = "ENTRAR COM BETHA";
-      }
-    });
+    // Sem sessão, não mantém contexto de prefeitura na URL.
+    const cleanUrl=new URL(location.href);
+    ["tenant","entidade","entidadeId","entityId","entity","entidadeNome"].forEach(key=>cleanUrl.searchParams.delete(key));
+    if (cleanUrl.toString()!==location.href) history.replaceState({},"",cleanUrl);
 
     return;
   }
