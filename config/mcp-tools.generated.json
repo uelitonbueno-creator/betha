@@ -12,12 +12,7 @@
     "entity"
   ],
   "toolCount": 16,
-  "missingPermissions": [
-    "guias",
-    "indexadores",
-    "receitas-creditos",
-    "territorio"
-  ],
+  "missingPermissions": [],
   "tools": [
     {
       "name": "get_arrecadacao",
@@ -264,7 +259,7 @@
       "panel": "guias",
       "title": "Guias e documentos",
       "description": "Consulta somente leitura do painel Guias e documentos do BI Tributário.",
-      "permission": null,
+      "permission": "BiGuiasDocumentos",
       "upstream": "/api/dashboard/guias",
       "readOnly": true,
       "tenantIsolation": [
@@ -344,7 +339,7 @@
       "panel": "indexadores",
       "title": "Indexadores",
       "description": "Consulta somente leitura do painel Indexadores do BI Tributário.",
-      "permission": null,
+      "permission": "BiIndexadores",
       "upstream": "/api/dashboard/indexadores",
       "readOnly": true,
       "tenantIsolation": [
@@ -544,7 +539,7 @@
       "panel": "receitas-creditos",
       "title": "Receitas e créditos",
       "description": "Consulta somente leitura do painel Receitas e créditos do BI Tributário.",
-      "permission": null,
+      "permission": "BiReceitasCreditos",
       "upstream": "/api/dashboard/receitas-creditos",
       "readOnly": true,
       "tenantIsolation": [
@@ -584,7 +579,7 @@
       "panel": "territorio",
       "title": "Território cadastral",
       "description": "Consulta somente leitura do painel Território cadastral do BI Tributário.",
-      "permission": null,
+      "permission": "BiTerritorioCadastral",
       "upstream": "/api/dashboard/territorio",
       "readOnly": true,
       "tenantIsolation": [
