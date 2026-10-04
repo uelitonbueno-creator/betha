@@ -10,6 +10,7 @@
  */
 const BI_BASE_DEFAULT = "https://tributos.suite.betha.cloud";
 const AUTH_BASE = "https://plataforma-autorizacoes.betha.cloud";
+const PAGE_MAPPING_BASE = "https://autorizacoes.suite.betha.cloud/dados/v1";
 const USERS_BASE = "https://plataforma-usuarios.betha.cloud";
 const LICENSES_BASE = "https://plataforma-licencas.betha.cloud";
 const OAUTH_AUTHORIZE_URL = "https://plataforma-oauth.betha.cloud/auth/oauth2/authorize";
@@ -20,6 +21,391 @@ const FRONT_SOURCE_BASE = "https://uelitonbueno-creator.github.io/betha";
 const SESSION_COOKIE = "__Host-betha_bi_sid";
 const LOGIN_SCOPES_DEFAULT = "contas-usuarios.suite,user-accounts.suite,licenses.suite";
 const SUPABASE_CACHE_WRITE_URL = "https://mliurxyjznxoafkwwtae.supabase.co/functions/v1/bi-cache-write";
+
+const BI_PAGE_MAPPING = [
+  {
+    "contexts": [
+      "database",
+      "entity"
+    ],
+    "constraints": [
+      {
+        "id": "BIVisaoGeralPage",
+        "description": "Visão geral",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/visao-geral",
+            "methods": [
+              "GET"
+            ]
+          },
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/visao-geral/.*",
+            "methods": [
+              "GET"
+            ]
+          }
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BIArrecadacaoPage",
+        "description": "Arrecadação",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/arrecadacao",
+            "methods": [
+              "GET"
+            ]
+          }
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BIDebitosPage",
+        "description": "Lançamentos e débitos",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/debitos",
+            "methods": [
+              "GET"
+            ]
+          }
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BIDividaPage",
+        "description": "Dívida ativa",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/divida",
+            "methods": [
+              "GET"
+            ]
+          }
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BIParcelamentosPage",
+        "description": "Parcelamentos",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/parcelamentos",
+            "methods": [
+              "GET"
+            ]
+          }
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BIReceitasCreditosPage",
+        "description": "Receitas e créditos",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/receitas-creditos",
+            "methods": [
+              "GET"
+            ]
+          }
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BIGuiasPage",
+        "description": "Guias e documentos",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/guias",
+            "methods": [
+              "GET"
+            ]
+          }
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BIIndexadoresPage",
+        "description": "Indexadores",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/indexadores",
+            "methods": [
+              "GET"
+            ]
+          }
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BIEncerramentoPage",
+        "description": "Encerramento mensal",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/encerramento",
+            "methods": [
+              "GET"
+            ]
+          }
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BIEconomicosPage",
+        "description": "Econômicos e ISS",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/economicos",
+            "methods": [
+              "GET"
+            ]
+          }
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BIImobiliarioPage",
+        "description": "Imobiliário e IPTU",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/imobiliario",
+            "methods": [
+              "GET"
+            ]
+          }
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BIContribuintesPage",
+        "description": "Contribuintes",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/contribuintes",
+            "methods": [
+              "GET"
+            ]
+          }
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BITerritorioPage",
+        "description": "Território cadastral",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/territorio",
+            "methods": [
+              "GET"
+            ]
+          }
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BIObrasPage",
+        "description": "Obras",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/obras",
+            "methods": [
+              "GET"
+            ]
+          }
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BIITBIPage",
+        "description": "Transferências e ITBI",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/itbi",
+            "methods": [
+              "GET"
+            ]
+          }
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BIQualidadePage",
+        "description": "Qualidade e auditoria",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/qualidade",
+            "methods": [
+              "GET"
+            ]
+          }
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BIUsuariosPage",
+        "description": "Usuários e acessos",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/admin/users",
+            "methods": [
+              "GET"
+            ]
+          },
+          {
+            "accessControll": null,
+            "urlPattern": "/api/admin/user-search",
+            "methods": [
+              "GET"
+            ]
+          },
+          {
+            "accessControll": "manage",
+            "urlPattern": "/api/admin/users",
+            "methods": [
+              "POST"
+            ]
+          },
+          {
+            "accessControll": "manage",
+            "urlPattern": "/api/admin/users/.*",
+            "methods": [
+              "DELETE"
+            ]
+          }
+        ],
+        "accessControll": [
+          {
+            "id": "manage",
+            "description": "Adicionar e remover usuários"
+          }
+        ]
+      },
+      {
+        "id": "BIConfiguracoesPage",
+        "description": "Configurações do BI",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/admin/page-mapping/status",
+            "methods": [
+              "GET"
+            ]
+          },
+          {
+            "accessControll": "manage",
+            "urlPattern": "/api/admin/page-mapping",
+            "methods": [
+              "PUT"
+            ]
+          }
+        ],
+        "accessControll": [
+          {
+            "id": "manage",
+            "description": "Publicar configuração de permissões"
+          }
+        ]
+      }
+    ],
+    "resources": [
+      {
+        "urlPattern": "/api/health",
+        "methods": [
+          "GET"
+        ]
+      },
+      {
+        "urlPattern": "/api/auth/.*",
+        "methods": [
+          "GET",
+          "POST"
+        ]
+      },
+      {
+        "urlPattern": "/api/me/tenants",
+        "methods": [
+          "GET"
+        ]
+      }
+    ],
+    "groups": [
+      {
+        "id": "geral",
+        "description": "Geral",
+        "constraints": [
+          "BIVisaoGeralPage"
+        ]
+      },
+      {
+        "id": "financeiro",
+        "description": "Financeiro",
+        "constraints": [
+          "BIArrecadacaoPage",
+          "BIDebitosPage",
+          "BIDividaPage",
+          "BIParcelamentosPage",
+          "BIReceitasCreditosPage",
+          "BIGuiasPage",
+          "BIIndexadoresPage",
+          "BIEncerramentoPage"
+        ]
+      },
+      {
+        "id": "cadastros",
+        "description": "Cadastros",
+        "constraints": [
+          "BIEconomicosPage",
+          "BIImobiliarioPage",
+          "BIContribuintesPage",
+          "BITerritorioPage",
+          "BIObrasPage"
+        ]
+      },
+      {
+        "id": "transferencias",
+        "description": "Transferências",
+        "constraints": [
+          "BIITBIPage"
+        ]
+      },
+      {
+        "id": "auditoria",
+        "description": "Auditoria",
+        "constraints": [
+          "BIQualidadePage"
+        ]
+      },
+      {
+        "id": "administracao",
+        "description": "Configurações",
+        "constraints": [
+          "BIUsuariosPage",
+          "BIConfiguracoesPage"
+        ]
+      }
+    ]
+  }
+];
 
 const BI_RESOURCES = Object.freeze({
   contribuintes: "/integracoes-bi/v1/contribuintes",
@@ -104,7 +490,7 @@ function corsHeaders(request, env) {
   const allowOrigin = allowed.includes(origin) ? origin : "";
   return {
     ...(allowOrigin ? {"Access-Control-Allow-Origin": allowOrigin} : {}),
-    "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type,Accept,Authorization,X-Tenant-Id",
     "Vary": "Origin",
     "Cache-Control": "no-store"
@@ -3178,6 +3564,87 @@ async function buildQualityDashboard(env,tenant,url) {
   };
 }
 
+
+function pageMappingSummary(payload) {
+  const blocks=Array.isArray(payload)?payload:[];
+  const constraints=blocks.flatMap(block=>Array.isArray(block&&block.constraints)?block.constraints:[]);
+  const groups=blocks.flatMap(block=>Array.isArray(block&&block.groups)?block.groups:[]);
+  return {
+    configured:blocks.length>0 && constraints.length>0,
+    contexts:[...new Set(blocks.flatMap(block=>Array.isArray(block&&block.contexts)?block.contexts:[]))],
+    constraints:constraints.map(item=>({id:String(item&&item.id||""),description:String(item&&item.description||"")})).filter(x=>x.id),
+    constraintCount:constraints.length,
+    groupCount:groups.length
+  };
+}
+
+async function getPageMappingStatus(tenant) {
+  if (!tenant.accessToken) {
+    return {available:false,configured:false,error:"BETHA_ACCESS_TOKEN_NOT_CONFIGURED"};
+  }
+
+  const response=await fetch(PAGE_MAPPING_BASE+"/page-mapping",{
+    method:"GET",
+    headers:{
+      "Accept":"application/json",
+      "Authorization":"Bearer "+tenant.accessToken
+    }
+  });
+  const parsed=await readJsonResponse(response);
+
+  if (response.status===401) {
+    return {available:false,configured:false,error:"PAGE_MAPPING_TOKEN_INVALID",httpStatus:401};
+  }
+  if (response.status===403) {
+    return {available:false,configured:false,error:"PAGE_MAPPING_SCOPE_REQUIRED",httpStatus:403};
+  }
+  if (!response.ok) {
+    return {
+      available:false,
+      configured:false,
+      error:"PAGE_MAPPING_HTTP_"+response.status,
+      httpStatus:response.status
+    };
+  }
+
+  return {
+    available:true,
+    httpStatus:response.status,
+    ...pageMappingSummary(parsed.body)
+  };
+}
+
+async function publishPageMapping(tenant) {
+  if (!tenant.accessToken) throw new Error("BETHA_ACCESS_TOKEN_NOT_CONFIGURED");
+
+  const response=await fetch(PAGE_MAPPING_BASE+"/page-mapping",{
+    method:"PUT",
+    headers:{
+      "Accept":"application/json",
+      "Content-Type":"application/json",
+      "Authorization":"Bearer "+tenant.accessToken
+    },
+    body:JSON.stringify(BI_PAGE_MAPPING)
+  });
+  const parsed=await readJsonResponse(response);
+
+  if (response.status===401) throw new Error("PAGE_MAPPING_TOKEN_INVALID");
+  if (response.status===403) throw new Error("PAGE_MAPPING_WRITE_SCOPE_REQUIRED");
+  if (!response.ok) {
+    const error=new Error("PAGE_MAPPING_PUBLISH_HTTP_"+response.status);
+    error.status=response.status;
+    throw error;
+  }
+
+  return {
+    ok:true,
+    message:parsed.body && typeof parsed.body==="object"
+      ? String(parsed.body.message||"Page Mapping publicado")
+      : "Page Mapping publicado",
+    ...pageMappingSummary(BI_PAGE_MAPPING)
+  };
+}
+
 async function listContextUsers(userToken, tenant, url) {
   const params=new URLSearchParams();
   params.set("limit",url.searchParams.get("limit") || "100");
@@ -3242,6 +3709,10 @@ function errorResponse(request,env,error) {
     TENANT_NOT_FOUND:403,
     TENANT_USER_ACCESS_NOT_CONFIGURED:503,
     USER_TOKEN_REQUIRED:401,
+    ADMIN_REQUIRED:403,
+    PAGE_MAPPING_SCOPE_REQUIRED:503,
+    PAGE_MAPPING_WRITE_SCOPE_REQUIRED:503,
+    PAGE_MAPPING_TOKEN_INVALID:503,
     APPLICATION_SESSION_INVALID:401,
     APPLICATION_SESSION_EXPIRED:401,
     LOGIN_CLIENT_ID_NOT_CONFIGURED:503,
@@ -3283,7 +3754,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-04-finance-refined-v44",
+        buildVersion:"2026-10-04-settings-v45",
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant",
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
@@ -3784,6 +4255,36 @@ export default {
       }
     }
 
+
+    if (url.pathname==="/api/admin/page-mapping/status" && request.method==="GET") {
+      try {
+        const tenant=resolveTenant(env,getTenantId(request,url));
+        const auth=await authorizeTenant(request,env,tenant);
+        if (!auth.access || (!auth.access.admin && !auth.access.technical)) throw new Error("ADMIN_REQUIRED");
+        const status=await getPageMappingStatus(tenant);
+        return json(request,env,200,{
+          ok:true,
+          tenant:{id:tenant.id,name:tenant.name},
+          expected:pageMappingSummary(BI_PAGE_MAPPING),
+          ...status
+        });
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
+    if (url.pathname==="/api/admin/page-mapping" && request.method==="PUT") {
+      try {
+        const tenant=resolveTenant(env,getTenantId(request,url));
+        const auth=await authorizeTenant(request,env,tenant);
+        if (!auth.access || auth.access.admin!==true) throw new Error("ADMIN_REQUIRED");
+        const result=await publishPageMapping(tenant);
+        return json(request,env,200,result);
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
     if (url.pathname==="/api/admin/users" && request.method==="GET") {
       try {
         const tenant=resolveTenant(env,getTenantId(request,url));
@@ -3814,7 +4315,18 @@ export default {
         const auth=await authorizeTenant(request,env,tenant);
         if (!auth.access || (!auth.access.admin && !auth.access.technical)) throw new Error("ADMIN_REQUIRED");
         const body=await request.json();
-        const created=await createContextUser(auth.userToken,tenant,body);
+        const user=String(body && body.user || "").trim();
+        if (!user) throw new Error("USER_REQUIRED");
+
+        const payload={
+          user,
+          admin:Boolean(body && body.admin),
+          technical:Boolean(body && body.technical),
+          permissions:Array.isArray(body && body.permissions) ? body.permissions : [],
+          expiresIn:body && body.expiresIn ? String(body.expiresIn) : null
+        };
+
+        const created=await createContextUser(auth.userToken,tenant,payload);
         return json(request,env,201,created);
       } catch(error) {
         return errorResponse(request,env,error);
@@ -3858,7 +4370,7 @@ export default {
       return proxyFront(request,env);
     }
 
-    if (!["GET","POST","DELETE"].includes(request.method)) {
+    if (!["GET","POST","PUT","DELETE"].includes(request.method)) {
       return json(request,env,405,{error:"METHOD_NOT_ALLOWED"});
     }
 
