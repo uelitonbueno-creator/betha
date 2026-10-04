@@ -3831,7 +3831,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-04-finance-filters-v46",
+        buildVersion:"2026-10-04-finance-filters-v47",
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant",
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
@@ -3845,6 +3845,7 @@ export default {
         frontUrl:env.BETHA_FRONT_URL || FRONT_URL_DEFAULT,
         sameOriginApp:true,
         sessionStoreConfigured:Boolean(env.BI_SESSIONS),
+        supabaseCacheConfigured:Boolean(env.SUPABASE_CACHE_KEY),
         devLoginConfigured:Boolean(env.BI_DEV_LOGIN_USER && env.BI_DEV_LOGIN_PASSWORD)
       });
     }
