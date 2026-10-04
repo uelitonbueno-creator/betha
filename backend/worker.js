@@ -3534,26 +3534,59 @@ async function buildClosingDashboard(env,tenant,url) {
 async function buildWorksDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const filters={
+    situacao:dashboardFilterValue(url,"situacao"),
+    liberacao:dashboardFilterValue(url,"liberacao")
+  };
   const [obras,resp]=await Promise.all([
     safeBethaRows(env,tenant,"base","obras"),
     safeBethaRows(env,tenant,"base","obras-responsaveis")
   ]);
-  const entrada=monthlyCount(obras.rows,["dataEntrada","dtEntrada","dataCadastro"],periodo,exercicio);
-  const liber=monthlyCount(obras.rows,["dataLiberacao","dtLiberacao"],periodo,exercicio,r=>Boolean(firstValue(r,["dataLiberacao","dtLiberacao"])));
-  const sit=groupCount(obras.rows,["situacao","situacao.descricao","status"],12);
-  const medida=groupSum(obras.rows,["situacao","situacao.descricao","status"],["medida","area","metragem"],12);
+
+  const allRows=obras.rows;
+  const filterOptions={
+    situacao:filterOptionsFromRows(allRows,["situacao","situacao.descricao","status"])
+  };
+  const isReleased=row=>Boolean(firstValue(row,["dataLiberacao","dtLiberacao"]));
+  const rows=allRows.filter(row=>{
+    if(filters.situacao&&!matchesDashboardFilter(row,filters.situacao,["situacao","situacao.descricao","status"])) return false;
+    if(filters.liberacao==="liberada"&&!isReleased(row)) return false;
+    if(filters.liberacao==="pendente"&&isReleased(row)) return false;
+    return true;
+  });
+
+  const obraIds=new Set(
+    rows
+      .map(row=>String(firstValue(row,["id","idObra","obra.id"])??"").trim())
+      .filter(Boolean)
+  );
+  const respObraPaths=["idObra","obra.id","obraId"];
+  const hasRespObraLink=resp.rows.some(row=>{
+    const value=firstValue(row,respObraPaths);
+    return value!==undefined&&value!==null&&String(value).trim()!=="";
+  });
+  const respRows=hasRespObraLink
+    ? resp.rows.filter(row=>obraIds.has(String(firstValue(row,respObraPaths)??"").trim()))
+    : resp.rows;
+
+  const entrada=monthlyCount(rows,["dataEntrada","dtEntrada","dataCadastro"],periodo,exercicio);
+  const liber=monthlyCount(rows,["dataLiberacao","dtLiberacao"],periodo,exercicio,r=>isReleased(r));
+  const sit=groupCount(rows,["situacao","situacao.descricao","status"],12);
+  const medida=groupSum(rows,["situacao","situacao.descricao","status"],["medida","area","metragem"],12);
   const respGrouped=new Map();
-  for(const r of resp.rows){
+  for(const r of respRows){
     const tipo=stringValue(r,["tipoResponsavel","tipo","funcao"],"Responsável");
     respGrouped.set(tipo,(respGrouped.get(tipo)||0)+1);
   }
+
   return {
     view:"obras",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    filters:activeFilterObject(filters),
     kpis:{
-      "obras-total":obras.total,
-      "obras-situacao":countWhere(obras.rows,r=>/andamento|execu|abert/i.test(stringValue(r,["situacao","situacao.descricao","status"],""))),
-      medida:sumRowsOrNull(obras.rows,["medida","area","metragem"]),
-      liberadas:obras.rows.filter(r=>Boolean(firstValue(r,["dataLiberacao","dtLiberacao"]))&&periodIncludes(r,{periodo,exercicio,datePaths:["dataLiberacao","dtLiberacao"]})).length
+      "obras-total":rows.length,
+      "obras-situacao":countWhere(rows,r=>/andamento|execu|abert/i.test(stringValue(r,["situacao","situacao.descricao","status"],""))),
+      medida:sumRowsOrNull(rows,["medida","area","metragem"]),
+      liberadas:rows.filter(r=>isReleased(r)&&periodIncludes(r,{periodo,exercicio,datePaths:["dataLiberacao","dtLiberacao"]})).length
     },
     charts:{
       "obras-situacao-grafico":chartGroups(sit,"Obras","number"),
@@ -3562,10 +3595,20 @@ async function buildWorksDashboard(env,tenant,url) {
       "obras-medida":chartGroups(medida,"Medida","number"),
       "obras-responsaveis":chartGroups([...respGrouped.entries()],"Vínculos","number")
     },
-    meta:dashboardMeta([["obras",obras],["responsaveis",resp]])
+    meta:dashboardMeta([["obras",obras],["responsaveis",resp]],{
+      filterOptions,
+      appliedFilters:activeFilterObject(filters),
+      filteredRows:{obras:rows.length,responsaveis:respRows.length},
+      fieldMapping:{
+        situacao:"situacao",
+        entrada:"dataEntrada",
+        liberacao:"dataLiberacao",
+        medida:"medida",
+        responsavelObra:"idObra"
+      }
+    })
   };
 }
-
 
 async function buildRevenueCodesDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
