@@ -584,7 +584,7 @@ const DETAIL_RESOURCES = Object.freeze({
     ]
   },
   obras:{
-    source:"bi",resource:"obras",
+    source:"base",resource:"obras",
     columns:[
       ["id","ID",["id"],"text"],
       ["descricao","Obra",["descricao","nome"],"text"],
