@@ -1686,7 +1686,7 @@
     "debitos","dividas","parcelamentos","parcelamentos-parcelas",
     "guias-unificadas","contribuintes","imoveis","economicos",
     "receitas","creditos-tributarios","indexadores-valores",
-    "logradouros","obras","transferencias-imoveis"
+    "logradouros","imoveis-campos-adicionais","obras","transferencias-imoveis"
   ]);
 
   const DETAIL_RESOURCE_LABELS = Object.freeze({
@@ -1702,6 +1702,7 @@
     "creditos-tributarios":"Créditos tributários",
     "indexadores-valores":"Valores de indexadores",
     logradouros:"Logradouros",
+    "imoveis-campos-adicionais":"Campos adicionais dos imóveis",
     obras:"Obras",
     "transferencias-imoveis":"Transferências",
     "pagamentos-detalhados":"Pagamentos",
