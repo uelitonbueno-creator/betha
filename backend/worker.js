@@ -689,7 +689,7 @@ function corsHeaders(request, env) {
   return {
     ...(allowOrigin ? {"Access-Control-Allow-Origin": allowOrigin} : {}),
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Accept,Authorization,X-Tenant-Id",
+    "Access-Control-Allow-Headers": "Content-Type,Accept,Authorization,X-Tenant-Id,MCP-Protocol-Version,Mcp-Method,Mcp-Name,Mcp-Session-Id,Last-Event-ID",
     "Vary": "Origin",
     "Cache-Control": "no-store"
   };
@@ -4548,7 +4548,7 @@ async function readMcpCredential(request,env) {
 }
 
 function mcpToolDefinitions(credential) {
-  return [
+  const tools=[
     {
       name:"bi_context",
       description:"Retorna a prefeitura vinculada à credencial MCP e os painéis que o usuário pode consultar.",
@@ -4596,6 +4596,63 @@ function mcpToolDefinitions(credential) {
       }
     }
   ];
+
+  if (credential.allowedViews.includes("arrecadacao")) {
+    tools.push({
+      name:"bi_revenue_summary",
+      description:"Retorna um resumo executivo da arrecadação: total, tributo, correção, juros, multa, descontos e evolução mensal.",
+      inputSchema:{
+        type:"object",
+        properties:{
+          periodo:{type:"string",description:"Período, por exemplo ano, mes, trimestre ou todos."},
+          exercicio:{type:"integer",minimum:2000,maximum:2100},
+          filters:{
+            type:"object",
+            additionalProperties:{type:["string","number","boolean"]}
+          }
+        },
+        additionalProperties:false
+      }
+    });
+  }
+
+  if (credential.allowedViews.includes("economicos")) {
+    tools.push({
+      name:"bi_company_iss",
+      description:"Consulta quanto uma empresa ou econômico arrecadou de ISS no período, pesquisando pelo nome ou nome fantasia.",
+      inputSchema:{
+        type:"object",
+        required:["empresa"],
+        properties:{
+          empresa:{type:"string",minLength:2,maxLength:120},
+          periodo:{type:"string",description:"Período, por exemplo ano, mes, trimestre ou todos."},
+          exercicio:{type:"integer",minimum:2000,maximum:2100}
+        },
+        additionalProperties:false
+      }
+    });
+  }
+
+  if (
+    credential.allowedViews.includes("contribuintes") &&
+    credential.allowedViews.includes("imobiliario")
+  ) {
+    tools.push({
+      name:"bi_person_properties",
+      description:"Localiza um contribuinte por nome ou documento e retorna quantos imóveis estão vinculados a ele, sem expor endereços ou documentos completos.",
+      inputSchema:{
+        type:"object",
+        required:["busca"],
+        properties:{
+          busca:{type:"string",minLength:2,maxLength:120},
+          limite:{type:"integer",minimum:1,maximum:10}
+        },
+        additionalProperties:false
+      }
+    });
+  }
+
+  return tools;
 }
 
 function mcpJsonRpc(request,env,id,result,status=200,extraHeaders={}) {
@@ -4650,6 +4707,220 @@ function mcpDashboardUrl(request,args) {
     url.searchParams.set(String(key),String(value));
   }
   return url;
+}
+
+function mcpRequireViews(credential,views) {
+  const required=Array.isArray(views)?views:[views];
+  if(!required.every(view=>credential.allowedViews.includes(view))) {
+    throw new Error("MCP_VIEW_FORBIDDEN");
+  }
+}
+
+function mcpChartTotal(chart) {
+  if(!chart || !Array.isArray(chart.datasets)) return 0;
+  let total=0;
+  for(const dataset of chart.datasets){
+    for(const value of (Array.isArray(dataset&&dataset.data)?dataset.data:[])){
+      const n=Number(value);
+      if(Number.isFinite(n)) total+=n;
+    }
+  }
+  return total;
+}
+
+function normalizeMcpLookup(value) {
+  return String(value||"")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g,"")
+    .toLocaleLowerCase("pt-BR")
+    .trim();
+}
+
+function mcpLookupMatches(row,query,paths) {
+  const normalized=normalizeMcpLookup(query);
+  if(!normalized) return false;
+
+  const digits=String(query||"").replace(/\D/g,"");
+  for(const path of paths){
+    const raw=firstValue(row,[path]);
+    if(raw===undefined||raw===null) continue;
+    const text=normalizeMcpLookup(typeof raw==="object"
+      ? (raw.nome??raw.descricao??raw.nomeFantasia??raw.id??"")
+      : raw);
+    if(text.includes(normalized)) return true;
+
+    if(digits.length>=5){
+      const rowDigits=String(typeof raw==="object" ? (raw.cpfCnpj??raw.cpf??raw.cnpj??"") : raw).replace(/\D/g,"");
+      if(rowDigits && rowDigits.includes(digits)) return true;
+    }
+  }
+  return false;
+}
+
+async function mcpRevenueSummary(request,env,credential,args) {
+  mcpRequireViews(credential,["arrecadacao"]);
+  const url=mcpDashboardUrl(request,{
+    view:"arrecadacao",
+    periodo:args.periodo||"ano",
+    exercicio:args.exercicio||new Date().getFullYear(),
+    filters:args.filters||{}
+  });
+  const body=await buildRevenueDashboard(env,credential.tenant,url);
+  const monthly=body.charts&&body.charts["arrecadacao-mes"] ? body.charts["arrecadacao-mes"] : null;
+
+  return {
+    tenant:body.tenant,
+    period:body.period,
+    filters:body.filters||{},
+    totalArrecadado:Number(body.kpis&&body.kpis["total-pago"]||0),
+    tributo:Number(body.kpis&&body.kpis["tributo-pago"]||0),
+    correcao:Number(body.kpis&&body.kpis["correcao-paga"]||0),
+    juros:Number(body.kpis&&body.kpis["juros-pagos"]||0),
+    multa:Number(body.kpis&&body.kpis["multa-paga"]||0),
+    descontos:Number(body.kpis&&body.kpis.descontos||0),
+    mensal:monthly ? {
+      labels:monthly.labels||[],
+      valores:monthly.datasets&&monthly.datasets[0] ? monthly.datasets[0].data||[] : []
+    } : {labels:[],valores:[]},
+    calculationBasis:body.meta&&body.meta.calculationBasis ? body.meta.calculationBasis : null
+  };
+}
+
+async function mcpCompanyIss(request,env,credential,args) {
+  mcpRequireViews(credential,["economicos"]);
+  const empresa=String(args.empresa||"").trim();
+  if(empresa.length<2) throw new Error("MCP_QUERY_REQUIRED");
+
+  const url=mcpDashboardUrl(request,{
+    view:"economicos",
+    periodo:args.periodo||"ano",
+    exercicio:args.exercicio||new Date().getFullYear(),
+    filters:{busca:empresa}
+  });
+  const body=await buildEconomicsDashboard(env,credential.tenant,url);
+  const chart=body.charts&&body.charts["iss-arrecadacao"] ? body.charts["iss-arrecadacao"] : null;
+  const matched=Number(body.kpis&&body.kpis.economicos||0);
+
+  return {
+    tenant:body.tenant,
+    query:empresa,
+    period:body.period,
+    matchedEconomics:matched,
+    ambiguous:matched>1,
+    activeEconomics:Number(body.kpis&&body.kpis["ativos-economicos"]||0),
+    activities:Number(body.kpis&&body.kpis.atividades||0),
+    issArrecadado:mcpChartTotal(chart),
+    mensal:chart ? {
+      labels:chart.labels||[],
+      valores:chart.datasets&&chart.datasets[0] ? chart.datasets[0].data||[] : []
+    } : {labels:[],valores:[]},
+    note:matched===0
+      ? "Nenhum econômico encontrado para a busca informada."
+      : matched>1
+        ? "A busca encontrou mais de um econômico; refine o nome para obter um resultado individual."
+        : "Resultado individual encontrado."
+  };
+}
+
+async function mcpPersonProperties(env,credential,args) {
+  mcpRequireViews(credential,["contribuintes","imobiliario"]);
+  const query=String(args.busca||"").trim();
+  if(query.length<2) throw new Error("MCP_QUERY_REQUIRED");
+  const limit=Math.max(1,Math.min(10,Number(args.limite)||5));
+
+  const [contributors,responsibilities,properties]=await Promise.all([
+    safeBethaRows(env,credential.tenant,"bi","contribuintes"),
+    safeBethaRows(env,credential.tenant,"bi","imoveis-responsaveis"),
+    safeBethaRows(env,credential.tenant,"bi","imoveis")
+  ]);
+
+  const contributorPaths=[
+    "nome","nomeFantasia","cpf","cnpj","cpfCnpj","documento",
+    "pessoa.nome","pessoa.nomeFantasia"
+  ];
+  const matches=contributors.rows
+    .filter(row=>mcpLookupMatches(row,query,contributorPaths))
+    .slice(0,limit);
+
+  const propertyById=new Map();
+  for(const row of properties.rows){
+    const id=firstValue(row,["id","idImovel","imovel.id"]);
+    if(id!==undefined&&id!==null&&String(id)!=="") propertyById.set(String(id),row);
+  }
+
+  const results=[];
+  for(const contributor of matches){
+    const contributorId=String(firstValue(contributor,["id","idPessoas","idPessoa","pessoa.id"])||"");
+    const contributorName=stringValue(contributor,["nome","nomeFantasia","pessoa.nome"],"Contribuinte");
+    const documentRaw=firstValue(contributor,["cpf","cnpj","cpfCnpj","documento"]);
+
+    const linkedPropertyIds=new Set();
+    for(const rel of responsibilities.rows){
+      const responsibleId=firstValue(rel,[
+        "idPessoa","idPessoas","idContribuinte","idResponsavel",
+        "pessoa.id","contribuinte.id","responsavel.id","responsavel.idPessoa"
+      ]);
+      const relName=stringValue(rel,[
+        "pessoa.nome","contribuinte.nome","responsavel.nome","nomeResponsavel"
+      ],"");
+      const idMatches=contributorId && responsibleId!==undefined && responsibleId!==null &&
+        String(responsibleId)===contributorId;
+      const nameMatches=!idMatches && relName && normalizeMcpLookup(relName)===normalizeMcpLookup(contributorName);
+      if(!idMatches&&!nameMatches) continue;
+
+      const propertyId=firstValue(rel,["idImovel","imovel.id","imovelId","idContribImoveis"]);
+      if(propertyId!==undefined&&propertyId!==null&&String(propertyId)!=="") {
+        linkedPropertyIds.add(String(propertyId));
+      }
+    }
+
+    // Fallback para APIs que já trazem o responsável diretamente no imóvel.
+    if(!linkedPropertyIds.size){
+      for(const [propertyId,row] of propertyById.entries()){
+        const responsibleId=firstValue(row,[
+          "idPessoaResponsavel","idResponsavel","responsavel.id","proprietario.id",
+          "contribuinte.id","pessoa.id"
+        ]);
+        if(contributorId && responsibleId!==undefined&&responsibleId!==null&&String(responsibleId)===contributorId){
+          linkedPropertyIds.add(propertyId);
+        }
+      }
+    }
+
+    const linkedRows=[...linkedPropertyIds]
+      .map(id=>propertyById.get(id))
+      .filter(Boolean);
+
+    const bairros=groupCount(linkedRows,["nomeBairro","bairro.nome","bairro"],8)
+      .map(([label,count])=>({label,count:Number(count)||0}));
+    const setores=groupCount(linkedRows,["setor","setor.codigo","nomeSetor"],8)
+      .map(([label,count])=>({label,count:Number(count)||0}));
+
+    results.push({
+      contributorId:contributorId||null,
+      name:contributorName,
+      document:documentRaw ? maskDetailDocument(documentRaw) : "",
+      propertyCount:linkedPropertyIds.size,
+      bairros,
+      setores
+    });
+  }
+
+  return {
+    tenant:{id:credential.tenant.id,name:credential.tenant.name},
+    query,
+    matchedContributors:results.length,
+    truncatedMatches:contributors.rows.filter(row=>mcpLookupMatches(row,query,contributorPaths)).length>limit,
+    results,
+    sourceStatus:{
+      contributorsLoaded:contributors.loaded,
+      responsibilitiesLoaded:responsibilities.loaded,
+      propertiesLoaded:properties.loaded,
+      contributorsComplete:contributors.complete,
+      responsibilitiesComplete:responsibilities.complete,
+      propertiesComplete:properties.complete
+    }
+  };
 }
 
 async function executeMcpTool(request,env,credential,name,args={}) {
@@ -4708,6 +4979,18 @@ async function executeMcpTool(request,env,credential,name,args={}) {
     };
   }
 
+  if (name==="bi_revenue_summary") {
+    return mcpRevenueSummary(request,env,credential,args);
+  }
+
+  if (name==="bi_company_iss") {
+    return mcpCompanyIss(request,env,credential,args);
+  }
+
+  if (name==="bi_person_properties") {
+    return mcpPersonProperties(env,credential,args);
+  }
+
   throw new Error("MCP_TOOL_NOT_FOUND");
 }
 
@@ -4760,7 +5043,11 @@ async function handleMcpRequest(request,env) {
   }
 
   if (method==="initialize" || method==="server/discover") {
-    const protocolVersion=method==="server/discover" ? "2026-07-28" : "2025-11-25";
+    const requestedVersion=String(body.params&&body.params.protocolVersion||"");
+    const supportedVersions=["2026-07-28","2025-11-25"];
+    const protocolVersion=method==="server/discover"
+      ? "2026-07-28"
+      : (supportedVersions.includes(requestedVersion) ? requestedVersion : "2026-07-28");
     return new Response(JSON.stringify({
       jsonrpc:"2.0",
       id,
@@ -4882,7 +5169,8 @@ function errorResponse(request,env,error) {
     MCP_TOKEN_INVALID:401,
     MCP_TOKEN_EXPIRED:401,
     MCP_VIEW_FORBIDDEN:403,
-    MCP_TOOL_NOT_FOUND:404
+    MCP_TOOL_NOT_FOUND:404,
+    MCP_QUERY_REQUIRED:400
   };
   if (code.startsWith("BETHA_HTTP_") || code.startsWith("PLATFORM_HTTP_")) {
     return json(request,env,error.status===401?401:error.status===403?403:502,{error:code});
@@ -4898,7 +5186,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-04-audit-mcp-v53",
+        buildVersion:"2026-10-04-mcp-analytics-v54",
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant",
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
