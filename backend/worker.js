@@ -3938,6 +3938,11 @@ async function buildIndexersDashboard(env,tenant,url) {
 }
 
 async function buildTerritoryDashboard(env,tenant,url) {
+  const filters={
+    setor:dashboardFilterValue(url,"setor"),
+    tipoLogradouro:dashboardFilterValue(url,"tipoLogradouro"),
+    zonaFiscal:dashboardFilterValue(url,"zonaFiscal")
+  };
   const [bairros,distritos,logradouros,imoveis]=await Promise.all([
     safeBethaRows(env,tenant,"base","bairros"),
     safeBethaRows(env,tenant,"base","distritos"),
@@ -3945,7 +3950,17 @@ async function buildTerritoryDashboard(env,tenant,url) {
     safeBethaRows(env,tenant,"bi","imoveis")
   ]);
 
-  const geocoded=countWhere(logradouros.rows,r=>{
+  const setorPaths=["setor","nroSecao","iSecoes"];
+  const tipoLogradouroPaths=["tipoLogradouroDescricao","tipoLogradouroAbreviatura"];
+  const zonaFiscalPaths=["zonaFiscal"];
+  const imovelRows=imoveis.rows.filter(r=>!filters.setor||matchesDashboardFilter(r,filters.setor,setorPaths));
+  const logradouroRows=logradouros.rows.filter(r=>{
+    if(filters.tipoLogradouro&&!matchesDashboardFilter(r,filters.tipoLogradouro,tipoLogradouroPaths)) return false;
+    if(filters.zonaFiscal&&!matchesDashboardFilter(r,filters.zonaFiscal,zonaFiscalPaths)) return false;
+    return true;
+  });
+
+  const geocoded=countWhere(logradouroRows,r=>{
     const lat=firstValue(r,["latitude"]);
     const lng=firstValue(r,["longitude"]);
     return lat!==undefined && lat!==null && lat!=="" &&
@@ -3954,24 +3969,30 @@ async function buildTerritoryDashboard(env,tenant,url) {
 
   return {
     view:"territorio",tenant:{id:tenant.id,name:tenant.name},
+    filters:activeFilterObject(filters),
+    filterOptions:{
+      setor:filterOptionsFromRows(imoveis.rows,setorPaths),
+      tipoLogradouro:filterOptionsFromRows(logradouros.rows,tipoLogradouroPaths),
+      zonaFiscal:filterOptionsFromRows(logradouros.rows,zonaFiscalPaths)
+    },
     kpis:{
       "bairros-total":bairros.loaded,
       "distritos-total":distritos.loaded,
-      "logradouros-total":logradouros.loaded,
+      "logradouros-total":logradouroRows.length,
       "logradouros-geo":geocoded,
-      "territorio-imoveis":imoveis.loaded
+      "territorio-imoveis":imovelRows.length
     },
     charts:{
       "imoveis-bairro":chartGroups(
-        groupCount(imoveis.rows,["nomeBairro","iBairros"],15),
+        groupCount(imovelRows,["nomeBairro","iBairros"],15),
         "Imóveis","number"
       ),
       "imoveis-setor":chartGroups(
-        groupCount(imoveis.rows,["setor","nroSecao","iSecoes"],15),
+        groupCount(imovelRows,setorPaths,15),
         "Imóveis","number"
       ),
       "logradouros-tipo":chartGroups(
-        groupCount(logradouros.rows,["tipoLogradouroDescricao","tipoLogradouroAbreviatura"],12),
+        groupCount(logradouroRows,tipoLogradouroPaths,12),
         "Logradouros","number"
       ),
       "bairros-zona":chartGroups(
@@ -3979,18 +4000,20 @@ async function buildTerritoryDashboard(env,tenant,url) {
         "Bairros","number"
       ),
       "logradouros-zona-fiscal":chartGroups(
-        groupCount(logradouros.rows,["zonaFiscal"],12),
+        groupCount(logradouroRows,zonaFiscalPaths,12),
         "Logradouros","number"
       ),
       "cadastros-territoriais":chartFixed(
         ["Bairros","Distritos","Logradouros","Imóveis"],
-        [bairros.loaded,distritos.loaded,logradouros.loaded,imoveis.loaded],
+        [bairros.loaded,distritos.loaded,logradouroRows.length,imovelRows.length],
         "Cadastros","number"
       )
     },
     meta:dashboardMeta([
       ["bairros",bairros],["distritos",distritos],["logradouros",logradouros],["imoveis",imoveis]
     ],{
+      appliedFilters:activeFilterObject(filters),
+      filteredRows:{bairros:bairros.rows.length,distritos:distritos.rows.length,logradouros:logradouroRows.length,imoveis:imovelRows.length},
       fieldMapping:{
         bairroImovel:"nomeBairro",
         setorImovel:"setor",
