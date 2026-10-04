@@ -3479,12 +3479,20 @@ async function buildTaxpayersDashboard(env,tenant,url) {
 async function buildClosingDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const filters={competencia:dashboardFilterValue(url,"competencia")};
   const [lan,div]=await Promise.all([
     safeBethaRows(env,tenant,"base","encerramento-lancamentos"),
     safeBethaRows(env,tenant,"base","encerramento-dividas")
   ]);
 
-  const labelFor=row=>String(firstValue(row,["mesEncerramento","competencia","mes","referencia"])||"Não informado");
+  const competenciaPaths=["mesEncerramento","competencia","mes","referencia"];
+  const allRows=[...lan.rows,...div.rows];
+  const filterByCompetencia=rows=>filters.competencia
+    ? rows.filter(row=>matchesDashboardFilter(row,filters.competencia,competenciaPaths))
+    : rows;
+  const lanRows=filterByCompetencia(lan.rows);
+  const divRows=filterByCompetencia(div.rows);
+  const labelFor=row=>String(firstValue(row,competenciaPaths)||"Não informado");
   const aggregate=(rows)=>{
     const map=new Map();
     for(const r of rows){
@@ -3504,17 +3512,19 @@ async function buildClosingDashboard(env,tenant,url) {
     return [...map.entries()].sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
   };
 
-  const l=aggregate(lan.rows), d=aggregate(div.rows);
+  const l=aggregate(lanRows), d=aggregate(divRows);
   return {
     view:"encerramento",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    filters:activeFilterObject(filters),
+    filterOptions:{competencia:filterOptionsFromRows(allRows,competenciaPaths)},
     kpis:{
-      "saldo-lancamentos":sumRowsOrNull(lan.rows,["valorSaldo","vlSaldo","saldo"]),
-      "saldo-dividas":sumRowsOrNull(div.rows,["valorSaldo","vlSaldo","saldo"]),
-      "acrescimos-lancamentos":hasAnyValue(lan.rows,["valorCorrecao","vlCorrecao","valorJuros","vlJuros","valorMulta","vlMulta"])
-        ? sumRows(lan.rows,["valorCorrecao","vlCorrecao"])+sumRows(lan.rows,["valorJuros","vlJuros"])+sumRows(lan.rows,["valorMulta","vlMulta"])
+      "saldo-lancamentos":sumRowsOrNull(lanRows,["valorSaldo","vlSaldo","saldo"]),
+      "saldo-dividas":sumRowsOrNull(divRows,["valorSaldo","vlSaldo","saldo"]),
+      "acrescimos-lancamentos":hasAnyValue(lanRows,["valorCorrecao","vlCorrecao","valorJuros","vlJuros","valorMulta","vlMulta"])
+        ? sumRows(lanRows,["valorCorrecao","vlCorrecao"])+sumRows(lanRows,["valorJuros","vlJuros"])+sumRows(lanRows,["valorMulta","vlMulta"])
         : null,
-      "acrescimos-dividas":hasAnyValue(div.rows,["valorCorrecao","vlCorrecao","valorJuros","vlJuros","valorMulta","vlMulta"])
-        ? sumRows(div.rows,["valorCorrecao","vlCorrecao"])+sumRows(div.rows,["valorJuros","vlJuros"])+sumRows(div.rows,["valorMulta","vlMulta"])
+      "acrescimos-dividas":hasAnyValue(divRows,["valorCorrecao","vlCorrecao","valorJuros","vlJuros","valorMulta","vlMulta"])
+        ? sumRows(divRows,["valorCorrecao","vlCorrecao"])+sumRows(divRows,["valorJuros","vlJuros"])+sumRows(divRows,["valorMulta","vlMulta"])
         : null
     },
     charts:{
@@ -3544,7 +3554,7 @@ async function buildClosingDashboard(env,tenant,url) {
         {label:"Multa",data:d.map(([,v])=>v.multaMes)}
       ]}
     },
-    meta:dashboardMeta([["encerramentoLancamentos",lan],["encerramentoDividas",div]])
+    meta:dashboardMeta([["encerramentoLancamentos",lan],["encerramentoDividas",div]],{filteredRows:{lancamentos:lanRows.length,dividas:divRows.length}})
   };
 }
 
