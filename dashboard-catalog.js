@@ -384,7 +384,8 @@ window.BI_MENU = [
   ]},
   { id:"itbi", descricao:"Transferências e ITBI", icone:"home-switch", rota:"itbi", possuiPermissao:true },
   { id:"qualidade", descricao:"Qualidade e auditoria", icone:"shield-check", rota:"qualidade", possuiPermissao:true },
-  { id:"administrando", descricao:"Administrando", icone:"cog", possuiPermissao:true, submenus:[
-    {id:"usuarios-admin",descricao:"Usuários",rota:"usuarios-admin",possuiPermissao:true}
+  { id:"configuracoes", descricao:"Configurações", icone:"cog", possuiPermissao:true, submenus:[
+    {id:"usuarios-admin",descricao:"Usuários e acessos",rota:"usuarios-admin",possuiPermissao:true},
+    {id:"configuracoes-admin",descricao:"Sistema e permissões",rota:"configuracoes-admin",possuiPermissao:true}
   ]}
 ];
