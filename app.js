@@ -557,8 +557,8 @@
   }
 
   const CACHE_PREFIX = "betha_bi_snapshot_v1";
-  const FINANCIAL_AGGREGATION_VERSION = 2;
-  const DEBT_MAPPING_VERSION = 3;
+  const FINANCIAL_AGGREGATION_VERSION = 3;
+  const DEBT_MAPPING_VERSION = 4;
 
   function dashboardCacheKey(view) {
     const periodo = document.getElementById("periodo")?.value || "ano";
