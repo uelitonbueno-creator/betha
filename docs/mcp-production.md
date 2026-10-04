@@ -72,7 +72,7 @@ O catálogo atual possui 16 comandos principais:
 - get_indexadores
 - get_territorio
 
-Os quatro últimos painéis adicionais ainda precisam de constraints próprios no Page Mapping antes de serem liberados pelo MCP.
+Todos os 16 painéis atuais possuem constraints próprios no Page Mapping nesta branch. O gerador bloqueia a liberação futura se surgir painel novo sem permissão correspondente.
 
 ## Transporte e autenticação
 
