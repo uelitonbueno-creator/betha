@@ -3384,8 +3384,38 @@ async function buildItbiDashboard(env,tenant,url) {
 async function buildTaxpayersDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const filters={
+    busca:dashboardFilterValue(url,"busca"),
+    tipoPessoa:dashboardFilterValue(url,"tipoPessoa"),
+    simples:dashboardFilterValue(url,"simples"),
+    cidade:dashboardFilterValue(url,"cidade"),
+    situacao:dashboardFilterValue(url,"situacao")
+  };
   const con=await safeBethaRows(env,tenant,"bi","contribuintes");
-  const rows=con.rows;
+  const allRows=con.rows;
+  const normalizedSearch=filters.busca.toLocaleLowerCase("pt-BR");
+  const isInactive=row=>truthyValue(row,["desativado"])||/inativ|desativ/i.test(stringValue(row,["situacao","status"],""));
+  const rows=allRows.filter(row=>{
+    if(filters.tipoPessoa&&!matchesDashboardFilter(row,filters.tipoPessoa,["tipoPessoa","tipoPessoa.descricao","pessoa.tipo"])) return false;
+    if(filters.cidade&&!matchesDashboardFilter(row,filters.cidade,["nomeCidade","cidade.nome","municipio.nome"])) return false;
+    if(filters.simples==="sim"&&!truthyValue(row,["optanteSimples","simplesNacional","optanteSimplesNacional"])) return false;
+    if(filters.simples==="nao"&&truthyValue(row,["optanteSimples","simplesNacional","optanteSimplesNacional"])) return false;
+    if(filters.situacao==="ativo"&&isInactive(row)) return false;
+    if(filters.situacao==="inativo"&&!isInactive(row)) return false;
+    if(normalizedSearch){
+      const searchable=[
+        stringValue(row,["nome"],""),
+        stringValue(row,["nomeFantasia"],""),
+        stringValue(row,["cpf"],""),
+        stringValue(row,["cnpj"],""),
+        stringValue(row,["cpfCnpj"],""),
+        stringValue(row,["documento"],"")
+      ].join(" ").toLocaleLowerCase("pt-BR");
+      if(!searchable.includes(normalizedSearch)) return false;
+    }
+    return true;
+  });
+
   const tipo=groupCount(rows,["tipoPessoa","tipoPessoa.descricao","pessoa.tipo"],5);
   const simples=groupCount(rows,["optanteSimples","simplesNacional","optanteSimplesNacional"],5);
   const porte=groupCount(rows,["porteEmpresa","porteEmpresa.descricao","porte"],10);
@@ -3402,12 +3432,17 @@ async function buildTaxpayersDashboard(env,tenant,url) {
   ]);
   return {
     view:"contribuintes",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    filters:activeFilterObject(filters),
+    filterOptions:{
+      tipoPessoa:filterOptionsFromRows(allRows,["tipoPessoa","tipoPessoa.descricao","pessoa.tipo"]),
+      cidade:filterOptionsFromRows(allRows,["nomeCidade","cidade.nome","municipio.nome"])
+    },
     kpis:{
-      "contribuintes-total":con.total,
+      "contribuintes-total":rows.length,
       pf:countWhere(rows,r=>/fis|pf|física/i.test(stringValue(r,["tipoPessoa","tipoPessoa.descricao"],""))),
       pj:countWhere(rows,r=>/jur|pj|jurídica/i.test(stringValue(r,["tipoPessoa","tipoPessoa.descricao"],""))),
       simples:countWhere(rows,r=>truthyValue(r,["optanteSimples","simplesNacional","optanteSimplesNacional"])),
-      inativos:countWhere(rows,r=>truthyValue(r,["desativado"])||/inativ|desativ/i.test(stringValue(r,["situacao","status"],"")))
+      inativos:countWhere(rows,r=>isInactive(r))
     },
     charts:{
       "tipo-pessoa":chartGroups(tipo,"Contribuintes","number"),
@@ -3419,7 +3454,7 @@ async function buildTaxpayersDashboard(env,tenant,url) {
       "situacao-cadastro":chartGroups(ativo,"Contribuintes","number"),
       atualizacoes:{format:"number",labels:updates.labels,datasets:[{label:"Atualizações",data:updates.values}]}
     },
-    meta:dashboardMeta([["contribuintes",con]])
+    meta:dashboardMeta([["contribuintes",con]],{filteredRows:{contribuintes:rows.length}})
   };
 }
 
