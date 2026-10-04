@@ -3226,6 +3226,12 @@ async function buildEconomicsDashboard(env,tenant,url) {
 async function buildRealEstateDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const filters={
+    bairro:dashboardFilterValue(url,"bairro"),
+    setor:dashboardFilterValue(url,"setor"),
+    zona:dashboardFilterValue(url,"zona"),
+    cadastro:dashboardFilterValue(url,"cadastro")
+  };
   const [imo,resp,trans,baseImo,planta,pagdet]=await Promise.all([
     safeBethaRows(env,tenant,"bi","imoveis"),
     safeBethaRows(env,tenant,"bi","imoveis-responsaveis"),
@@ -3234,33 +3240,60 @@ async function buildRealEstateDashboard(env,tenant,url) {
     safeBethaRows(env,tenant,"base","planta-valores"),
     safeBethaRows(env,tenant,"bi","pagamentos-detalhados")
   ]);
-  const bairros=groupCount(imo.rows,["nomeBairro","bairro.nome","bairro"],15);
-  const setores=groupCount(imo.rows,["setor","setor.codigo","nomeSetor"],15);
-  const rural=groupCount(imo.rows,["rural","tipoZona","zona"],6);
-  const ativo=groupCount(imo.rows,["desativado","situacao","status"],8);
-  const condo=groupCount(imo.rows,["nomeCondominio","condominio.nome","condominio"],12);
-  const lote=groupCount(imo.rows,["nomeLoteamento","loteamento.nome","loteamento"],12);
+
+  const allImoRows=imo.rows;
+  const isRural=row=>truthyValue(row,["rural"])||/rural/i.test(stringValue(row,["tipoZona","zona"],""));
+  const isInactive=row=>truthyValue(row,["desativado"])||/inativ|desativ|cancel/i.test(stringValue(row,["situacao","status"],""));
+  const imoRows=allImoRows.filter(row=>{
+    if(filters.bairro&&!matchesDashboardFilter(row,filters.bairro,["nomeBairro","bairro.nome","bairro"])) return false;
+    if(filters.setor&&!matchesDashboardFilter(row,filters.setor,["setor","setor.codigo","nomeSetor"])) return false;
+    if(filters.zona==="rural"&&!isRural(row)) return false;
+    if(filters.zona==="urbana"&&isRural(row)) return false;
+    if(filters.cadastro==="ativo"&&isInactive(row)) return false;
+    if(filters.cadastro==="inativo"&&!isInactive(row)) return false;
+    return true;
+  });
+
+  const propertyIds=new Set(imoRows.map(row=>String(firstValue(row,["id","idImovel"])||"")).filter(Boolean));
+  const linkedToProperty=(row,paths)=>{
+    const id=firstValue(row,paths);
+    return id!==undefined&&id!==null&&propertyIds.has(String(id));
+  };
+  const respRows=resp.rows.filter(row=>linkedToProperty(row,["idImovel","imovel.id","imovelId"]));
+  const transRows=trans.rows.filter(row=>linkedToProperty(row,["idImovel","imovel.id","imovelId"]));
+  const iptuRows=pagdet.rows.filter(row=>linkedToProperty(row,["idImovel","imovel.id","referente.idImovel"]));
+
+  const bairros=groupCount(imoRows,["nomeBairro","bairro.nome","bairro"],15);
+  const setores=groupCount(imoRows,["setor","setor.codigo","nomeSetor"],15);
+  const rural=groupCount(imoRows,["rural","tipoZona","zona"],6);
+  const ativo=groupCount(imoRows,["desativado","situacao","status"],8);
+  const condo=groupCount(imoRows,["nomeCondominio","condominio.nome","condominio"],12);
+  const lote=groupCount(imoRows,["nomeLoteamento","loteamento.nome","loteamento"],12);
   const tipo=groupCount(baseImo.rows,["tipoImovel","tipoImovel.descricao","tipo"],12);
   const plantaGroups=groupSum(planta.rows,["bairro.nome","nomeBairro","logradouro.nome","nomeLogradouro"],["vlMetroQuadrado","valorMetroQuadrado","valor"],12);
-  const iptuRows=pagdet.rows.filter(r=>firstValue(r,["idImovel","imovel.id","referente.idImovel"])!==undefined);
   const iptu=monthSeries(iptuRows,{
     datePaths:["pagamento.dataPagamento","dataPagamento","dtPagamento"],
     valuePaths:["valorPagoLancado","vlPagoLancado","valorPago","vlPago"],periodo,exercicio
   });
   const perc=new Map();
-  for(const r of resp.rows){
+  for(const r of respRows){
     const p=numericValue(r,["percentual","percentualTitularidade","percResponsabilidade"]);
     const b=numberBucket(p,[[25,"Até 25%"],[50,"26–50%"],[75,"51–75%"],[99.99,"76–99%"],[100,"100%"]]);
     perc.set(b,(perc.get(b)||0)+1);
   }
   return {
     view:"imobiliario",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    filters:activeFilterObject(filters),
+    filterOptions:{
+      bairro:filterOptionsFromRows(allImoRows,["nomeBairro","bairro.nome","bairro"]),
+      setor:filterOptionsFromRows(allImoRows,["setor","setor.codigo","nomeSetor"])
+    },
     kpis:{
-      "imoveis-total":imo.total,
-      "imoveis-ativos":countWhere(imo.rows,r=>!truthyValue(r,["desativado"])&&!/inativ|desativ|cancel/i.test(stringValue(r,["situacao","status"],""))),
-      rurais:countWhere(imo.rows,r=>truthyValue(r,["rural"])||/rural/i.test(stringValue(r,["tipoZona","zona"],""))),
-      responsaveis:resp.total,
-      transferencias:trans.total
+      "imoveis-total":imoRows.length,
+      "imoveis-ativos":countWhere(imoRows,r=>!isInactive(r)),
+      rurais:countWhere(imoRows,r=>isRural(r)),
+      responsaveis:respRows.length,
+      transferencias:transRows.length
     },
     charts:{
       "bairro-imoveis":chartGroups(bairros,"Imóveis","number"),
@@ -3274,7 +3307,9 @@ async function buildRealEstateDashboard(env,tenant,url) {
       "iptu-pagamentos":{format:"currency",labels:iptu.labels,datasets:[{label:"Arrecadação",data:iptu.values}]},
       responsabilidade:chartGroups([...perc.entries()],"Responsáveis","number")
     },
-    meta:dashboardMeta([["imoveis",imo],["responsaveis",resp],["transferencias",trans],["baseImoveis",baseImo],["plantaValores",planta],["pagamentosDetalhados",pagdet]])
+    meta:dashboardMeta([["imoveis",imo],["responsaveis",resp],["transferencias",trans],["baseImoveis",baseImo],["plantaValores",planta],["pagamentosDetalhados",pagdet]],{
+      filteredRows:{imoveis:imoRows.length,responsaveis:respRows.length,transferencias:transRows.length,pagamentosDetalhados:iptuRows.length}
+    })
   };
 }
 
