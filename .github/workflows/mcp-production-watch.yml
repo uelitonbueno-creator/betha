@@ -82,6 +82,16 @@ jobs:
           git commit -m "chore(mcp): sync tool catalog with BI panels"
           git push origin "HEAD:${MCP_BRANCH}"
 
+      - name: Install MCP Worker dependencies
+        if: steps.exists.outputs.ready == 'true' && hashFiles('mcp/package.json') != ''
+        shell: bash
+        run: npm install --prefix mcp --ignore-scripts --no-audit --no-fund
+
+      - name: Build MCP Worker (dry-run)
+        if: steps.exists.outputs.ready == 'true' && hashFiles('mcp/package.json') != ''
+        shell: bash
+        run: npm --prefix mcp run check
+
       - name: Check BI production health
         id: health
         shell: bash
