@@ -454,6 +454,11 @@ Object.assign(window.BI_DASHBOARDS, {
     title: "Território cadastral",
     description: "Bairros, distritos, logradouros e distribuição territorial real da base imobiliária.",
     level: "macro-micro",
+    filters: [
+      {id:"setor",label:"Setor do imóvel",type:"select"},
+      {id:"tipoLogradouro",label:"Tipo de logradouro",type:"select"},
+      {id:"zonaFiscal",label:"Zona fiscal do logradouro",type:"select"}
+    ],
     kpis: [
       {id:"bairros-total",label:"Bairros",format:"number",source:"base:bairros",field:"id"},
       {id:"distritos-total",label:"Distritos",format:"number",source:"base:distritos",field:"id"},
