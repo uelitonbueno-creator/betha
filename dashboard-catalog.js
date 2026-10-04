@@ -348,6 +348,12 @@ window.BI_DASHBOARDS = {
     title: "Qualidade e auditoria",
     description: "Indicadores de completude, consistência e atualização dos cadastros que sustentam o BI.",
     level: "micro",
+    filters: [
+      {id:"situacao",label:"Situação cadastral",type:"select",options:[
+        {value:"ativo",label:"Ativos"},
+        {value:"inativo",label:"Desativados / inativos"}
+      ]}
+    ],
     kpis: [
       {id:"sem-documento",label:"Sem CPF/CNPJ",format:"number",source:"bi:contribuintes",field:"cpf/cnpj"},
       {id:"sem-contato",label:"Sem contato",format:"number",source:"bi:contribuintes",field:"email/telefone/celular"},
