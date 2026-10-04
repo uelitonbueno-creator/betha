@@ -3735,13 +3735,17 @@ async function buildRevenueCodesDashboard(env,tenant,url) {
 async function buildGuidesDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const filters={
+    situacao:dashboardFilterValue(url,"situacao"),
+    boleto:dashboardFilterValue(url,"boleto")
+  };
 
   const guias=await safeBethaRows(env,tenant,"base","guias-unificadas");
   const datePaths=["dtEmissao"];
   const duePaths=["dtVencimento"];
   const totalPaths=["vlTotalGuiaUnificada"];
 
-  const rows=guias.rows.filter(r=>periodIncludes(r,{
+  const periodRows=guias.rows.filter(r=>periodIncludes(r,{
     periodo,exercicio,datePaths,yearPaths:["ano","exercicio"]
   }));
 
@@ -3751,20 +3755,31 @@ async function buildGuidesDashboard(env,tenant,url) {
   };
 
   const now=Date.now();
-  const paid=countWhere(rows,hasBaixa);
-  const overdue=countWhere(rows,r=>{
+  const isOverdue=r=>{
     if (hasBaixa(r)) return false;
     const d=dateValue(r,duePaths);
     return Boolean(d && d.getTime()<now);
+  };
+  const rows=periodRows.filter(r=>{
+    if(filters.situacao==="paga"&&!hasBaixa(r)) return false;
+    if(filters.situacao==="vencida"&&!isOverdue(r)) return false;
+    if(filters.situacao==="aberta"&&(hasBaixa(r)||isOverdue(r))) return false;
+    const boletoRegistrado=truthyValue(r,["boletoRegistrado"]);
+    if(filters.boleto==="sim"&&!boletoRegistrado) return false;
+    if(filters.boleto==="nao"&&boletoRegistrado) return false;
+    return true;
   });
+  const paid=countWhere(rows,hasBaixa);
+  const overdue=countWhere(rows,isOverdue);
   const open=Math.max(0,rows.length-paid-overdue);
   const registered=countWhere(rows,r=>truthyValue(r,["boletoRegistrado"]));
 
-  const issue=monthlyCount(guias.rows,datePaths,periodo,exercicio);
-  const due=monthlyCount(guias.rows,duePaths,periodo,exercicio);
+  const issue=monthlyCount(rows,datePaths,periodo,exercicio);
+  const due=monthlyCount(rows,duePaths,periodo,exercicio);
 
   return {
     view:"guias",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    filters:activeFilterObject(filters),
     kpis:{
       "guias-total":rows.length,
       "guias-valor":sumRows(rows,totalPaths),
@@ -3805,6 +3820,8 @@ async function buildGuidesDashboard(env,tenant,url) {
       }
     },
     meta:dashboardMeta([["guias",guias]],{
+      appliedFilters:activeFilterObject(filters),
+      filteredRows:{guias:rows.length},
       fieldMapping:{
         emissao:"dtEmissao",
         vencimento:"dtVencimento",
