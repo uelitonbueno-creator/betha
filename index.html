@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261004-mcp1">
+  <link rel="stylesheet" href="style.css?v=20261004-audit1">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -325,6 +325,50 @@
                 Guarde esta credencial somente no cliente MCP/IA autorizado. Ela expira automaticamente e não revela o token Betha nem o User-Access.
               </div>
             </div>
+
+            <div class="mcp-active-list">
+              <div class="mcp-active-head">
+                <div>
+                  <strong>Credenciais MCP ativas</strong>
+                  <span>Revogue qualquer credencial antes do vencimento quando necessário.</span>
+                </div>
+                <button id="refreshMcpTokens" class="btn-secondary-betha" type="button">
+                  <i class="mdi mdi-refresh"></i> ATUALIZAR
+                </button>
+              </div>
+              <div id="mcpActiveTokens" class="mcp-active-tokens">
+                <div class="table-empty">Carregando credenciais…</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel audit-panel">
+            <div class="panel-header config-panel-header">
+              <div>
+                <h2>Auditoria</h2>
+                <p>Histórico seguro de alterações administrativas e uso do MCP nesta prefeitura.</p>
+              </div>
+              <button id="refreshAuditButton" class="btn-secondary-betha" type="button">
+                <i class="mdi mdi-refresh"></i> ATUALIZAR
+              </button>
+            </div>
+            <div class="table-responsive">
+              <table class="users-table audit-table">
+                <thead>
+                  <tr>
+                    <th>Data/hora</th>
+                    <th>Categoria</th>
+                    <th>Ação</th>
+                    <th>Responsável</th>
+                    <th>Referência</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="auditTableBody">
+                  <tr><td colspan="6" class="table-empty">Carregando auditoria…</td></tr>
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section class="panel">
@@ -450,6 +494,6 @@
   <script src="config.js?v=20261002-kvsession1"></script>
   <script src="auth/auth.js?v=20261002-kvsession1"></script>
   <script src="dashboard-catalog.js?v=20261004-mcp1"></script>
-  <script src="app.js?v=20261004-mcp1"></script>
+  <script src="app.js?v=20261004-audit1"></script>
 </body>
 </html>
