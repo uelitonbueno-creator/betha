@@ -4146,7 +4146,8 @@ function errorResponse(request,env,error) {
     BI_RESOURCE_NOT_ALLOWED:404,
     BASE_RESOURCE_NOT_CONFIGURED:501,
     BETHA_ACCESS_TOKEN_NOT_CONFIGURED:503,
-    INVALID_SOURCE:400,\n    DETAIL_RESOURCE_NOT_ALLOWED:404
+    INVALID_SOURCE:400,
+    DETAIL_RESOURCE_NOT_ALLOWED:404
   };
   if (code.startsWith("BETHA_HTTP_") || code.startsWith("PLATFORM_HTTP_")) {
     return json(request,env,error.status===401?401:error.status===403?403:502,{error:code});
@@ -4162,7 +4163,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-04-detail-v50",
+        buildVersion:"2026-10-04-detail-v51",
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant",
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
