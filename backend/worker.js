@@ -4209,6 +4209,450 @@ async function buildDetailPage(env,tenant,resource,url) {
   };
 }
 
+
+const MCP_VIEW_LABELS = Object.freeze({
+  "visao-geral":"Visão geral",
+  arrecadacao:"Arrecadação",
+  debitos:"Lançamentos e débitos",
+  divida:"Dívida ativa",
+  parcelamentos:"Parcelamentos",
+  economicos:"Econômicos e ISS",
+  imobiliario:"Imobiliário e IPTU",
+  itbi:"Transferências e ITBI",
+  contribuintes:"Contribuintes",
+  encerramento:"Encerramento mensal",
+  obras:"Obras",
+  qualidade:"Qualidade e auditoria",
+  "receitas-creditos":"Receitas e créditos",
+  guias:"Guias e documentos",
+  indexadores:"Indexadores",
+  territorio:"Território cadastral"
+});
+
+const MCP_PERMISSION_VIEW_MAP = Object.freeze({
+  BIVisaoGeralPage:"visao-geral",
+  BIArrecadacaoPage:"arrecadacao",
+  BIDebitosPage:"debitos",
+  BIDividaPage:"divida",
+  BIParcelamentosPage:"parcelamentos",
+  BIReceitasCreditosPage:"receitas-creditos",
+  BIGuiasPage:"guias",
+  BIIndexadoresPage:"indexadores",
+  BIEncerramentoPage:"encerramento",
+  BIEconomicosPage:"economicos",
+  BIImobiliarioPage:"imobiliario",
+  BIContribuintesPage:"contribuintes",
+  BITerritorioPage:"territorio",
+  BIObrasPage:"obras",
+  BIITBIPage:"itbi",
+  BIQualidadePage:"qualidade"
+});
+
+function dashboardBuilder(view) {
+  const builders={
+    "visao-geral":buildOverviewDashboard,
+    arrecadacao:buildRevenueDashboard,
+    debitos:buildDebtsDashboard,
+    divida:buildActiveDebtDashboard,
+    parcelamentos:buildInstallmentsDashboard,
+    economicos:buildEconomicsDashboard,
+    imobiliario:buildRealEstateDashboard,
+    itbi:buildItbiDashboard,
+    contribuintes:buildTaxpayersDashboard,
+    encerramento:buildClosingDashboard,
+    obras:buildWorksDashboard,
+    qualidade:buildQualityDashboard,
+    "receitas-creditos":buildRevenueCodesDashboard,
+    guias:buildGuidesDashboard,
+    indexadores:buildIndexersDashboard,
+    territorio:buildTerritoryDashboard
+  };
+  return builders[String(view||"")] || null;
+}
+
+function permissionViewsForAccess(access) {
+  if (access && (access.admin===true || access.technical===true)) {
+    return Object.keys(MCP_VIEW_LABELS);
+  }
+
+  let serialized="";
+  try { serialized=JSON.stringify(access||{}); } catch {}
+
+  const out=[];
+  for (const [permissionId,view] of Object.entries(MCP_PERMISSION_VIEW_MAP)) {
+    if (serialized.includes(permissionId)) out.push(view);
+  }
+
+  // Fallback conservador: usuário autorizado sem Page Mapping reconhecido
+  // recebe apenas a visão executiva, nunca acesso adicional.
+  return out.length ? [...new Set(out)] : ["visao-geral"];
+}
+
+async function sha256Hex(value) {
+  const digest=await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(String(value||""))
+  );
+  return [...new Uint8Array(digest)]
+    .map(byte=>byte.toString(16).padStart(2,"0"))
+    .join("");
+}
+
+async function createMcpCredential(env,auth,tenant,{label="",ttlSeconds=8*60*60}={}) {
+  if (!env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
+
+  const ttl=Math.max(15*60,Math.min(Number(ttlSeconds)||8*60*60,8*60*60));
+  const rawToken="bimcp_"+createSessionId();
+  const hash=await sha256Hex(rawToken);
+  const exp=Date.now()+ttl*1000;
+  const allowedViews=permissionViewsForAccess(auth.access);
+
+  await env.BI_SESSIONS.put(
+    "mcp-token:"+hash,
+    JSON.stringify({
+      kind:"mcp-token",
+      tenantId:tenant.id,
+      tenantName:tenant.name,
+      userToken:auth.userToken,
+      allowedViews,
+      admin:Boolean(auth.access&&auth.access.admin),
+      technical:Boolean(auth.access&&auth.access.technical),
+      label:String(label||"").slice(0,80),
+      createdAt:new Date().toISOString(),
+      exp
+    }),
+    {expirationTtl:ttl}
+  );
+
+  return {
+    token:rawToken,
+    tokenId:hash.slice(0,16),
+    tenant:{id:tenant.id,name:tenant.name},
+    allowedViews,
+    expiresAt:new Date(exp).toISOString(),
+    expiresIn:ttl
+  };
+}
+
+async function readMcpCredential(request,env) {
+  if (!env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
+
+  const header=String(request.headers.get("Authorization")||"");
+  const match=header.match(/^Bearer\s+(bimcp_[A-Za-z0-9_-]+)$/i);
+  if (!match) throw new Error("MCP_TOKEN_REQUIRED");
+
+  const rawToken=match[1];
+  const hash=await sha256Hex(rawToken);
+  const raw=await env.BI_SESSIONS.get("mcp-token:"+hash);
+  if (!raw) throw new Error("MCP_TOKEN_INVALID");
+
+  let payload=null;
+  try { payload=JSON.parse(raw); } catch {}
+  if (!payload || payload.kind!=="mcp-token" || !payload.tenantId || !payload.userToken) {
+    await env.BI_SESSIONS.delete("mcp-token:"+hash);
+    throw new Error("MCP_TOKEN_INVALID");
+  }
+
+  if (!payload.exp || Date.now()>=Number(payload.exp)) {
+    await env.BI_SESSIONS.delete("mcp-token:"+hash);
+    throw new Error("MCP_TOKEN_EXPIRED");
+  }
+
+  // Revalida o vínculo do usuário na Betha em toda chamada MCP.
+  const tenant=resolveTenant(env,String(payload.tenantId));
+  const [accesses,context]=await Promise.all([
+    getUserAccesses(payload.userToken),
+    getTenantContext(payload.userToken,tenant)
+  ]);
+  const access=matchAccess(accesses,context);
+  if (!access) throw new Error("TENANT_ACCESS_DENIED");
+  if (access.expiresIn && new Date(access.expiresIn).getTime()<Date.now()) {
+    throw new Error("TENANT_ACCESS_EXPIRED");
+  }
+
+  const currentViews=permissionViewsForAccess(access);
+  const storedViews=Array.isArray(payload.allowedViews)?payload.allowedViews:[];
+  const allowedViews=storedViews.filter(view=>currentViews.includes(view));
+
+  return {
+    tokenId:hash.slice(0,16),
+    tenant,
+    context,
+    access,
+    userToken:payload.userToken,
+    allowedViews,
+    exp:Number(payload.exp),
+    label:String(payload.label||"")
+  };
+}
+
+function mcpToolDefinitions(credential) {
+  return [
+    {
+      name:"bi_context",
+      description:"Retorna a prefeitura vinculada à credencial MCP e os painéis que o usuário pode consultar.",
+      inputSchema:{type:"object",properties:{},additionalProperties:false}
+    },
+    {
+      name:"bi_list_dashboards",
+      description:"Lista os painéis do BI autorizados para este usuário e prefeitura.",
+      inputSchema:{type:"object",properties:{},additionalProperties:false}
+    },
+    {
+      name:"bi_get_dashboard",
+      description:"Consulta KPIs e gráficos agregados de um painel autorizado do BI para período, exercício e filtros informados.",
+      inputSchema:{
+        type:"object",
+        required:["view"],
+        properties:{
+          view:{type:"string",enum:credential.allowedViews},
+          periodo:{type:"string",description:"Período do painel, por exemplo ano, mes, trimestre ou todos."},
+          exercicio:{type:"integer",minimum:2000,maximum:2100},
+          filters:{
+            type:"object",
+            additionalProperties:{type:["string","number","boolean"]}
+          }
+        },
+        additionalProperties:false
+      }
+    },
+    {
+      name:"bi_get_kpis",
+      description:"Retorna somente os indicadores principais (KPIs) de um painel autorizado, reduzindo o volume da resposta.",
+      inputSchema:{
+        type:"object",
+        required:["view"],
+        properties:{
+          view:{type:"string",enum:credential.allowedViews},
+          periodo:{type:"string"},
+          exercicio:{type:"integer",minimum:2000,maximum:2100},
+          filters:{
+            type:"object",
+            additionalProperties:{type:["string","number","boolean"]}
+          }
+        },
+        additionalProperties:false
+      }
+    }
+  ];
+}
+
+function mcpJsonRpc(request,env,id,result,status=200,extraHeaders={}) {
+  return new Response(JSON.stringify({jsonrpc:"2.0",id,result}),{
+    status,
+    headers:{
+      "Content-Type":"application/json; charset=utf-8",
+      "MCP-Protocol-Version":"2025-11-25",
+      ...corsHeaders(request,env),
+      ...extraHeaders
+    }
+  });
+}
+
+function mcpJsonRpcError(request,env,id,code,message,status=200,data=null,extraHeaders={}) {
+  const error={code,message};
+  if (data!==null && data!==undefined) error.data=data;
+  return new Response(JSON.stringify({jsonrpc:"2.0",id:id??null,error}),{
+    status,
+    headers:{
+      "Content-Type":"application/json; charset=utf-8",
+      "MCP-Protocol-Version":"2025-11-25",
+      ...corsHeaders(request,env),
+      ...extraHeaders
+    }
+  });
+}
+
+function mcpToolResult(value) {
+  return {
+    content:[{
+      type:"text",
+      text:JSON.stringify(value,null,2)
+    }],
+    structuredContent:value,
+    isError:false
+  };
+}
+
+function mcpDashboardUrl(request,args) {
+  const url=new URL(request.url);
+  url.pathname="/api/dashboard/"+encodeURIComponent(String(args.view||""));
+  url.search="";
+  url.searchParams.set("periodo",String(args.periodo||"ano"));
+  url.searchParams.set("exercicio",String(Number(args.exercicio)||new Date().getFullYear()));
+
+  const filters=args.filters && typeof args.filters==="object" && !Array.isArray(args.filters)
+    ? args.filters
+    : {};
+  for (const [key,value] of Object.entries(filters)) {
+    if (value===null || value===undefined || value==="") continue;
+    url.searchParams.set(String(key),String(value));
+  }
+  return url;
+}
+
+async function executeMcpTool(request,env,credential,name,args={}) {
+  if (name==="bi_context") {
+    return {
+      tenant:{
+        id:credential.tenant.id,
+        name:credential.tenant.name,
+        entityId:credential.context.entity,
+        databaseId:credential.context.database
+      },
+      expiresAt:new Date(credential.exp).toISOString(),
+      allowedDashboards:credential.allowedViews.map(view=>({
+        id:view,
+        title:MCP_VIEW_LABELS[view]||view
+      }))
+    };
+  }
+
+  if (name==="bi_list_dashboards") {
+    return {
+      dashboards:credential.allowedViews.map(view=>({
+        id:view,
+        title:MCP_VIEW_LABELS[view]||view
+      }))
+    };
+  }
+
+  if (name==="bi_get_dashboard" || name==="bi_get_kpis") {
+    const view=String(args.view||"");
+    if (!credential.allowedViews.includes(view)) throw new Error("MCP_VIEW_FORBIDDEN");
+
+    const builder=dashboardBuilder(view);
+    if (!builder) throw new Error("DASHBOARD_NOT_IMPLEMENTED");
+
+    const url=mcpDashboardUrl(request,args);
+    const body=await builder(env,credential.tenant,url);
+
+    const base={
+      view:body.view,
+      tenant:body.tenant,
+      period:body.period,
+      filters:body.filters||{},
+      kpis:body.kpis||{}
+    };
+
+    if (name==="bi_get_kpis") return base;
+
+    return {
+      ...base,
+      charts:body.charts||{},
+      meta:{
+        appliedFilters:body.meta&&body.meta.appliedFilters ? body.meta.appliedFilters : {},
+        calculationBasis:body.meta&&body.meta.calculationBasis ? body.meta.calculationBasis : null
+      }
+    };
+  }
+
+  throw new Error("MCP_TOOL_NOT_FOUND");
+}
+
+async function handleMcpRequest(request,env) {
+  if (request.method!=="POST") {
+    return new Response(JSON.stringify({error:"MCP_POST_REQUIRED"}),{
+      status:405,
+      headers:{
+        "Content-Type":"application/json; charset=utf-8",
+        "Allow":"POST",
+        ...corsHeaders(request,env)
+      }
+    });
+  }
+
+  let credential;
+  try {
+    credential=await readMcpCredential(request,env);
+  } catch(error) {
+    const code=error&&error.message?error.message:"MCP_TOKEN_INVALID";
+    return new Response(JSON.stringify({error:code}),{
+      status:401,
+      headers:{
+        "Content-Type":"application/json; charset=utf-8",
+        "WWW-Authenticate":'Bearer realm="BI Tributos MCP"',
+        ...corsHeaders(request,env)
+      }
+    });
+  }
+
+  let body;
+  try { body=await request.json(); }
+  catch { return mcpJsonRpcError(request,env,null,-32700,"Parse error",400); }
+
+  if (!body || typeof body!=="object" || Array.isArray(body) || body.jsonrpc!=="2.0" || !body.method) {
+    return mcpJsonRpcError(request,env,body&&body.id,-32600,"Invalid Request",400);
+  }
+
+  const id=body.id??null;
+  const method=String(body.method||"");
+  const headerMethod=request.headers.get("Mcp-Method");
+  const headerName=request.headers.get("Mcp-Name");
+  const principalName=method==="tools/call" ? String(body.params&&body.params.name||"") : "";
+
+  if (headerMethod && headerMethod!==method) {
+    return mcpJsonRpcError(request,env,id,-32020,"MCP header/body method mismatch",400);
+  }
+  if (headerName && principalName && headerName!==principalName) {
+    return mcpJsonRpcError(request,env,id,-32020,"MCP header/body name mismatch",400);
+  }
+
+  if (method==="initialize" || method==="server/discover") {
+    const protocolVersion=method==="server/discover" ? "2026-07-28" : "2025-11-25";
+    return new Response(JSON.stringify({
+      jsonrpc:"2.0",
+      id,
+      result:{
+        protocolVersion,
+        capabilities:{tools:{listChanged:false}},
+        serverInfo:{name:"BI Tributos MCP",version:"1.0.0"},
+        instructions:"Servidor somente leitura. As respostas respeitam prefeitura, tenant e permissões vinculadas à credencial MCP."
+      }
+    }),{
+      status:200,
+      headers:{
+        "Content-Type":"application/json; charset=utf-8",
+        "MCP-Protocol-Version":protocolVersion,
+        ...corsHeaders(request,env)
+      }
+    });
+  }
+
+  if (method==="notifications/initialized") {
+    return new Response(null,{status:202,headers:corsHeaders(request,env)});
+  }
+
+  if (method==="ping") {
+    return mcpJsonRpc(request,env,id,{});
+  }
+
+  if (method==="tools/list") {
+    return mcpJsonRpc(request,env,id,{
+      tools:mcpToolDefinitions(credential)
+    });
+  }
+
+  if (method==="tools/call") {
+    const name=String(body.params&&body.params.name||"");
+    const args=body.params&&body.params.arguments&&typeof body.params.arguments==="object"
+      ? body.params.arguments
+      : {};
+    try {
+      const result=await executeMcpTool(request,env,credential,name,args);
+      return mcpJsonRpc(request,env,id,mcpToolResult(result));
+    } catch(error) {
+      const code=error&&error.message?error.message:"MCP_TOOL_FAILED";
+      return mcpJsonRpc(request,env,id,{
+        content:[{type:"text",text:code}],
+        isError:true
+      });
+    }
+  }
+
+  return mcpJsonRpcError(request,env,id,-32601,"Method not found");
+}
+
 function publicCatalog(env) {
   const base=baseResourceMap(env);
   return {
@@ -4254,7 +4698,12 @@ function errorResponse(request,env,error) {
     BASE_RESOURCE_NOT_CONFIGURED:501,
     BETHA_ACCESS_TOKEN_NOT_CONFIGURED:503,
     INVALID_SOURCE:400,
-    DETAIL_RESOURCE_NOT_ALLOWED:404
+    DETAIL_RESOURCE_NOT_ALLOWED:404,
+    MCP_TOKEN_REQUIRED:401,
+    MCP_TOKEN_INVALID:401,
+    MCP_TOKEN_EXPIRED:401,
+    MCP_VIEW_FORBIDDEN:403,
+    MCP_TOOL_NOT_FOUND:404
   };
   if (code.startsWith("BETHA_HTTP_") || code.startsWith("PLATFORM_HTTP_")) {
     return json(request,env,error.status===401?401:error.status===403?403:502,{error:code});
@@ -4270,7 +4719,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-04-detail-v51",
+        buildVersion:"2026-10-04-mcp-v52",
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant",
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
@@ -4285,7 +4734,10 @@ export default {
         sameOriginApp:true,
         sessionStoreConfigured:Boolean(env.BI_SESSIONS),
         supabaseCacheConfigured:Boolean(env.SUPABASE_CACHE_KEY),
-        devLoginConfigured:Boolean(env.BI_DEV_LOGIN_USER && env.BI_DEV_LOGIN_PASSWORD)
+        devLoginConfigured:Boolean(env.BI_DEV_LOGIN_USER && env.BI_DEV_LOGIN_PASSWORD),
+        mcpEnabled:true,
+        mcpEndpoint:"/mcp",
+        mcpAuthentication:"opaque-bearer"
       });
     }
 
@@ -4637,26 +5089,7 @@ export default {
 
         // Dashboard autorizado por sessão Betha + contexto entity/database.
         // O navegador recebe apenas agregados do tenant validado.
-        const builders={
-          "visao-geral":buildOverviewDashboard,
-          arrecadacao:buildRevenueDashboard,
-          debitos:buildDebtsDashboard,
-          divida:buildActiveDebtDashboard,
-          parcelamentos:buildInstallmentsDashboard,
-          economicos:buildEconomicsDashboard,
-          imobiliario:buildRealEstateDashboard,
-          itbi:buildItbiDashboard,
-          contribuintes:buildTaxpayersDashboard,
-          encerramento:buildClosingDashboard,
-          obras:buildWorksDashboard,
-          qualidade:buildQualityDashboard,
-          "receitas-creditos":buildRevenueCodesDashboard,
-          guias:buildGuidesDashboard,
-          indexadores:buildIndexersDashboard,
-          territorio:buildTerritoryDashboard
-        };
-
-        const builder=builders[view];
+        const builder=dashboardBuilder(view);
         if (!builder) return json(request,env,501,{error:"DASHBOARD_NOT_IMPLEMENTED",view});
 
         const body=await builder(env,tenant,url);
@@ -4786,6 +5219,32 @@ export default {
     }
 
 
+    if (url.pathname==="/api/mcp/tokens" && request.method==="POST") {
+      try {
+        const tenant=resolveTenant(env,getTenantId(request,url));
+        const auth=await authorizeTenant(request,env,tenant);
+        const body=await request.json().catch(()=>({}));
+        const ttlHours=Math.max(0.25,Math.min(Number(body.ttlHours)||8,8));
+        const credential=await createMcpCredential(env,auth,tenant,{
+          label:String(body.label||"").trim(),
+          ttlSeconds:Math.round(ttlHours*60*60)
+        });
+        return json(request,env,201,{
+          ok:true,
+          endpoint:new URL("/mcp",request.url).toString(),
+          token:credential.token,
+          tokenId:credential.tokenId,
+          tenant:credential.tenant,
+          allowedViews:credential.allowedViews,
+          expiresAt:credential.expiresAt,
+          expiresIn:credential.expiresIn,
+          authorizationHeader:"Bearer "+credential.token
+        });
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
     if (url.pathname==="/api/admin/page-mapping/status" && request.method==="GET") {
       try {
         const tenant=resolveTenant(env,getTenantId(request,url));
@@ -4894,6 +5353,10 @@ export default {
       } catch(error) {
         return errorResponse(request,env,error);
       }
+    }
+
+    if (url.pathname==="/mcp") {
+      return handleMcpRequest(request,env);
     }
 
     if (request.method==="GET" && !url.pathname.startsWith("/api/")) {
