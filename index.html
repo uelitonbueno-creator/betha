@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261004-loginminimal1">
+  <link rel="stylesheet" href="style.css?v=20261004-mcp1">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -273,6 +273,60 @@
             <div id="configPermissionList" class="config-permission-list"></div>
           </section>
 
+          <section class="panel mcp-config-panel">
+            <div class="panel-header config-panel-header">
+              <div>
+                <h2>MCP do BI</h2>
+                <p>Conecte uma IA ao BI usando uma credencial temporária vinculada à prefeitura e às permissões do usuário atual.</p>
+              </div>
+              <span id="mcpStatusBadge" class="config-status-badge">DISPONÍVEL</span>
+            </div>
+
+            <div class="mcp-config-grid">
+              <div class="field mcp-endpoint-field">
+                <label for="mcpEndpoint">Endpoint MCP</label>
+                <div class="mcp-copy-row">
+                  <input id="mcpEndpoint" class="form-input" type="text" readonly value="">
+                  <button id="copyMcpEndpoint" class="btn-secondary-betha" type="button">
+                    <i class="mdi mdi-content-copy"></i> COPIAR
+                  </button>
+                </div>
+              </div>
+
+              <div class="mcp-generate-box">
+                <div>
+                  <strong>Credencial temporária</strong>
+                  <span>Validade máxima de 8 horas. O Access Token Betha nunca é enviado para a IA.</span>
+                </div>
+                <button id="generateMcpToken" class="btn-primary-betha" type="button">
+                  <i class="mdi mdi-key-plus"></i> GERAR CREDENCIAL
+                </button>
+              </div>
+            </div>
+
+            <div id="mcpTokenResult" class="mcp-token-result" hidden>
+              <div class="field">
+                <label for="mcpTokenValue">Bearer token MCP</label>
+                <div class="mcp-copy-row">
+                  <input id="mcpTokenValue" class="form-input mcp-token-input" type="password" readonly value="">
+                  <button id="toggleMcpToken" class="btn-square" type="button" title="Mostrar/ocultar token">
+                    <i class="mdi mdi-eye-outline"></i>
+                  </button>
+                  <button id="copyMcpToken" class="btn-secondary-betha" type="button">
+                    <i class="mdi mdi-content-copy"></i> COPIAR TOKEN
+                  </button>
+                </div>
+              </div>
+              <div class="mcp-token-meta">
+                <span id="mcpTokenExpiry">—</span>
+                <span id="mcpTokenPermissions">—</span>
+              </div>
+              <div class="config-message mcp-security-note">
+                Guarde esta credencial somente no cliente MCP/IA autorizado. Ela expira automaticamente e não revela o token Betha nem o User-Access.
+              </div>
+            </div>
+          </section>
+
           <section class="panel">
             <div class="panel-header">
               <div>
@@ -395,7 +449,7 @@
 
   <script src="config.js?v=20261002-kvsession1"></script>
   <script src="auth/auth.js?v=20261002-kvsession1"></script>
-  <script src="dashboard-catalog.js?v=20261004-export1"></script>
-  <script src="app.js?v=20261004-loginminimal1"></script>
+  <script src="dashboard-catalog.js?v=20261004-mcp1"></script>
+  <script src="app.js?v=20261004-mcp1"></script>
 </body>
 </html>
