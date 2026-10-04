@@ -212,8 +212,18 @@
     const state=currentFilterState(currentView);
 
     container.innerHTML=filters.map(filter=>{
-      const options=normalizeFilterOptions(filter.options||[]);
       const current=String(state[filter.id]||"");
+      const fieldId="filter-"+filter.id;
+
+      if(filter.type==="search"){
+        return '<div class="field filter-search-field">'+
+          '<label for="'+escapeHtml(fieldId)+'">'+escapeHtml(filter.label||filter.id)+'</label>'+
+          '<div class="filter-search-wrap"><i class="mdi mdi-magnify"></i>'+
+          '<input id="'+escapeHtml(fieldId)+'" type="search" data-dashboard-filter="'+escapeHtml(filter.id)+'" '+
+          'placeholder="'+escapeHtml(filter.placeholder||"Pesquisar")+'" value="'+escapeHtml(current)+'"></div></div>';
+      }
+
+      const options=normalizeFilterOptions(filter.options||[]);
       const currentExists=options.some(item=>item.value===current);
       const all=[
         {value:"",label:"Todos"},
@@ -222,28 +232,46 @@
       ];
 
       return '<div class="field">'+
-        '<label for="filter-'+escapeHtml(filter.id)+'">'+escapeHtml(filter.label||filter.id)+'</label>'+
-        '<select id="filter-'+escapeHtml(filter.id)+'" data-dashboard-filter="'+escapeHtml(filter.id)+'">'+
+        '<label for="'+escapeHtml(fieldId)+'">'+escapeHtml(filter.label||filter.id)+'</label>'+
+        '<select id="'+escapeHtml(fieldId)+'" data-dashboard-filter="'+escapeHtml(filter.id)+'">'+
         all.map(item=>'<option value="'+escapeHtml(item.value)+'"'+(item.value===current?' selected':'')+'>'+escapeHtml(item.label)+'</option>').join("")+
         '</select></div>';
     }).join("");
 
-    container.querySelectorAll("[data-dashboard-filter]").forEach(select=>{
-      select.addEventListener("change",()=>{
-        const state=currentFilterState(currentView);
-        state[select.dataset.dashboardFilter]=select.value;
-        if(!select.value) delete state[select.dataset.dashboardFilter];
-        filterStateByView.set(currentView,state);
-        updateFilterActiveCount();
+    const applyControlValue=(control)=>{
+      const state=currentFilterState(currentView);
+      const value=String(control.value||"").trim();
+      state[control.dataset.dashboardFilter]=value;
+      if(!value) delete state[control.dataset.dashboardFilter];
+      filterStateByView.set(currentView,state);
+      updateFilterActiveCount();
 
-        const loaded=loadDashboardFromCache(currentView);
-        if(!loaded) setStatus("waiting","Filtros alterados · clique em ATUALIZAR");
+      const loaded=loadDashboardFromCache(currentView);
+      if(!loaded) setStatus("waiting","Filtros alterados · clique em ATUALIZAR");
+    };
+
+    container.querySelectorAll("select[data-dashboard-filter]").forEach(select=>{
+      select.addEventListener("change",()=>applyControlValue(select));
+    });
+
+    container.querySelectorAll('input[type="search"][data-dashboard-filter]').forEach(input=>{
+      let timer=null;
+      input.addEventListener("input",()=>{
+        clearTimeout(timer);
+        timer=setTimeout(()=>applyControlValue(input),350);
+      });
+      input.addEventListener("keydown",(event)=>{
+        if(event.key==="Enter"){
+          event.preventDefault();
+          clearTimeout(timer);
+          applyControlValue(input);
+          loadDashboardData(currentView,{force:true});
+        }
       });
     });
 
     updateFilterActiveCount();
   }
-
   function populateDashboardFilterOptions(payload) {
     const def=dashboards[currentView];
     const filters=Array.isArray(def?.filters)?def.filters:[];
@@ -253,7 +281,8 @@
     const state=currentFilterState(currentView);
 
     for(const filter of filters){
-      const select=document.querySelector('[data-dashboard-filter="'+cssEscape(filter.id)+'"]');
+      if(filter.type==="search") continue;
+      const select=document.querySelector('select[data-dashboard-filter="'+cssEscape(filter.id)+'"]');
       if(!select) continue;
 
       const options=normalizeFilterOptions(
