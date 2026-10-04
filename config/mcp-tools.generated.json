@@ -1,0 +1,663 @@
+{
+  "schemaVersion": 1,
+  "generatedFrom": [
+    "backend/worker.js",
+    "config/page-mapping.json"
+  ],
+  "mode": "read-only",
+  "auth": "oauth2.1",
+  "transport": "streamable-http",
+  "tenantIsolation": [
+    "database",
+    "entity"
+  ],
+  "toolCount": 16,
+  "missingPermissions": [
+    "receitas-creditos",
+    "guias",
+    "indexadores",
+    "territorio"
+  ],
+  "tools": [
+    {
+      "name": "get_visao_geral",
+      "panel": "visao-geral",
+      "title": "Visão geral",
+      "description": "Consulta somente leitura do painel Visão geral do BI Tributário.",
+      "permission": "BiVisaoGeral",
+      "upstream": "/api/dashboard/visao-geral",
+      "readOnly": true,
+      "tenantIsolation": [
+        "database",
+        "entity"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "description": "Opcional. Só pode selecionar um tenant já autorizado ao usuário autenticado."
+          },
+          "data_inicial": {
+            "type": "string",
+            "description": "Data inicial no formato YYYY-MM-DD."
+          },
+          "data_final": {
+            "type": "string",
+            "description": "Data final no formato YYYY-MM-DD."
+          },
+          "exercicio": {
+            "type": "integer",
+            "minimum": 1900,
+            "maximum": 2200
+          },
+          "comparar_periodo_anterior": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "get_arrecadacao",
+      "panel": "arrecadacao",
+      "title": "Arrecadação",
+      "description": "Consulta somente leitura do painel Arrecadação do BI Tributário.",
+      "permission": "BiArrecadacao",
+      "upstream": "/api/dashboard/arrecadacao",
+      "readOnly": true,
+      "tenantIsolation": [
+        "database",
+        "entity"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "description": "Opcional. Só pode selecionar um tenant já autorizado ao usuário autenticado."
+          },
+          "data_inicial": {
+            "type": "string",
+            "description": "Data inicial no formato YYYY-MM-DD."
+          },
+          "data_final": {
+            "type": "string",
+            "description": "Data final no formato YYYY-MM-DD."
+          },
+          "exercicio": {
+            "type": "integer",
+            "minimum": 1900,
+            "maximum": 2200
+          },
+          "comparar_periodo_anterior": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "get_debitos",
+      "panel": "debitos",
+      "title": "Lançamentos e débitos",
+      "description": "Consulta somente leitura do painel Lançamentos e débitos do BI Tributário.",
+      "permission": "BiDebitos",
+      "upstream": "/api/dashboard/debitos",
+      "readOnly": true,
+      "tenantIsolation": [
+        "database",
+        "entity"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "description": "Opcional. Só pode selecionar um tenant já autorizado ao usuário autenticado."
+          },
+          "data_inicial": {
+            "type": "string",
+            "description": "Data inicial no formato YYYY-MM-DD."
+          },
+          "data_final": {
+            "type": "string",
+            "description": "Data final no formato YYYY-MM-DD."
+          },
+          "exercicio": {
+            "type": "integer",
+            "minimum": 1900,
+            "maximum": 2200
+          },
+          "comparar_periodo_anterior": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "get_divida",
+      "panel": "divida",
+      "title": "Dívida ativa",
+      "description": "Consulta somente leitura do painel Dívida ativa do BI Tributário.",
+      "permission": "BiDividaAtiva",
+      "upstream": "/api/dashboard/divida",
+      "readOnly": true,
+      "tenantIsolation": [
+        "database",
+        "entity"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "description": "Opcional. Só pode selecionar um tenant já autorizado ao usuário autenticado."
+          },
+          "data_inicial": {
+            "type": "string",
+            "description": "Data inicial no formato YYYY-MM-DD."
+          },
+          "data_final": {
+            "type": "string",
+            "description": "Data final no formato YYYY-MM-DD."
+          },
+          "exercicio": {
+            "type": "integer",
+            "minimum": 1900,
+            "maximum": 2200
+          },
+          "comparar_periodo_anterior": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "get_parcelamentos",
+      "panel": "parcelamentos",
+      "title": "Parcelamentos",
+      "description": "Consulta somente leitura do painel Parcelamentos do BI Tributário.",
+      "permission": "BiParcelamentos",
+      "upstream": "/api/dashboard/parcelamentos",
+      "readOnly": true,
+      "tenantIsolation": [
+        "database",
+        "entity"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "description": "Opcional. Só pode selecionar um tenant já autorizado ao usuário autenticado."
+          },
+          "data_inicial": {
+            "type": "string",
+            "description": "Data inicial no formato YYYY-MM-DD."
+          },
+          "data_final": {
+            "type": "string",
+            "description": "Data final no formato YYYY-MM-DD."
+          },
+          "exercicio": {
+            "type": "integer",
+            "minimum": 1900,
+            "maximum": 2200
+          },
+          "comparar_periodo_anterior": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "get_economicos",
+      "panel": "economicos",
+      "title": "Econômicos e ISS",
+      "description": "Consulta somente leitura do painel Econômicos e ISS do BI Tributário.",
+      "permission": "BiEconomicosIss",
+      "upstream": "/api/dashboard/economicos",
+      "readOnly": true,
+      "tenantIsolation": [
+        "database",
+        "entity"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "description": "Opcional. Só pode selecionar um tenant já autorizado ao usuário autenticado."
+          },
+          "data_inicial": {
+            "type": "string",
+            "description": "Data inicial no formato YYYY-MM-DD."
+          },
+          "data_final": {
+            "type": "string",
+            "description": "Data final no formato YYYY-MM-DD."
+          },
+          "exercicio": {
+            "type": "integer",
+            "minimum": 1900,
+            "maximum": 2200
+          },
+          "comparar_periodo_anterior": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "get_imobiliario",
+      "panel": "imobiliario",
+      "title": "Imobiliário e IPTU",
+      "description": "Consulta somente leitura do painel Imobiliário e IPTU do BI Tributário.",
+      "permission": "BiImobiliarioIptu",
+      "upstream": "/api/dashboard/imobiliario",
+      "readOnly": true,
+      "tenantIsolation": [
+        "database",
+        "entity"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "description": "Opcional. Só pode selecionar um tenant já autorizado ao usuário autenticado."
+          },
+          "data_inicial": {
+            "type": "string",
+            "description": "Data inicial no formato YYYY-MM-DD."
+          },
+          "data_final": {
+            "type": "string",
+            "description": "Data final no formato YYYY-MM-DD."
+          },
+          "exercicio": {
+            "type": "integer",
+            "minimum": 1900,
+            "maximum": 2200
+          },
+          "comparar_periodo_anterior": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "get_itbi",
+      "panel": "itbi",
+      "title": "Transferências e ITBI",
+      "description": "Consulta somente leitura do painel Transferências e ITBI do BI Tributário.",
+      "permission": "BiTransferenciasItbi",
+      "upstream": "/api/dashboard/itbi",
+      "readOnly": true,
+      "tenantIsolation": [
+        "database",
+        "entity"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "description": "Opcional. Só pode selecionar um tenant já autorizado ao usuário autenticado."
+          },
+          "data_inicial": {
+            "type": "string",
+            "description": "Data inicial no formato YYYY-MM-DD."
+          },
+          "data_final": {
+            "type": "string",
+            "description": "Data final no formato YYYY-MM-DD."
+          },
+          "exercicio": {
+            "type": "integer",
+            "minimum": 1900,
+            "maximum": 2200
+          },
+          "comparar_periodo_anterior": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "get_contribuintes",
+      "panel": "contribuintes",
+      "title": "Contribuintes",
+      "description": "Consulta somente leitura do painel Contribuintes do BI Tributário.",
+      "permission": "BiContribuintes",
+      "upstream": "/api/dashboard/contribuintes",
+      "readOnly": true,
+      "tenantIsolation": [
+        "database",
+        "entity"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "description": "Opcional. Só pode selecionar um tenant já autorizado ao usuário autenticado."
+          },
+          "data_inicial": {
+            "type": "string",
+            "description": "Data inicial no formato YYYY-MM-DD."
+          },
+          "data_final": {
+            "type": "string",
+            "description": "Data final no formato YYYY-MM-DD."
+          },
+          "exercicio": {
+            "type": "integer",
+            "minimum": 1900,
+            "maximum": 2200
+          },
+          "comparar_periodo_anterior": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "get_encerramento",
+      "panel": "encerramento",
+      "title": "Encerramento mensal",
+      "description": "Consulta somente leitura do painel Encerramento mensal do BI Tributário.",
+      "permission": "BiEncerramento",
+      "upstream": "/api/dashboard/encerramento",
+      "readOnly": true,
+      "tenantIsolation": [
+        "database",
+        "entity"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "description": "Opcional. Só pode selecionar um tenant já autorizado ao usuário autenticado."
+          },
+          "data_inicial": {
+            "type": "string",
+            "description": "Data inicial no formato YYYY-MM-DD."
+          },
+          "data_final": {
+            "type": "string",
+            "description": "Data final no formato YYYY-MM-DD."
+          },
+          "exercicio": {
+            "type": "integer",
+            "minimum": 1900,
+            "maximum": 2200
+          },
+          "comparar_periodo_anterior": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "get_obras",
+      "panel": "obras",
+      "title": "Obras",
+      "description": "Consulta somente leitura do painel Obras do BI Tributário.",
+      "permission": "BiObras",
+      "upstream": "/api/dashboard/obras",
+      "readOnly": true,
+      "tenantIsolation": [
+        "database",
+        "entity"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "description": "Opcional. Só pode selecionar um tenant já autorizado ao usuário autenticado."
+          },
+          "data_inicial": {
+            "type": "string",
+            "description": "Data inicial no formato YYYY-MM-DD."
+          },
+          "data_final": {
+            "type": "string",
+            "description": "Data final no formato YYYY-MM-DD."
+          },
+          "exercicio": {
+            "type": "integer",
+            "minimum": 1900,
+            "maximum": 2200
+          },
+          "comparar_periodo_anterior": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "get_qualidade",
+      "panel": "qualidade",
+      "title": "Qualidade e auditoria",
+      "description": "Consulta somente leitura do painel Qualidade e auditoria do BI Tributário.",
+      "permission": "BiQualidadeAuditoria",
+      "upstream": "/api/dashboard/qualidade",
+      "readOnly": true,
+      "tenantIsolation": [
+        "database",
+        "entity"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "description": "Opcional. Só pode selecionar um tenant já autorizado ao usuário autenticado."
+          },
+          "data_inicial": {
+            "type": "string",
+            "description": "Data inicial no formato YYYY-MM-DD."
+          },
+          "data_final": {
+            "type": "string",
+            "description": "Data final no formato YYYY-MM-DD."
+          },
+          "exercicio": {
+            "type": "integer",
+            "minimum": 1900,
+            "maximum": 2200
+          },
+          "comparar_periodo_anterior": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "get_receitas_creditos",
+      "panel": "receitas-creditos",
+      "title": "Receitas e créditos",
+      "description": "Consulta somente leitura do painel Receitas e créditos do BI Tributário.",
+      "permission": null,
+      "upstream": "/api/dashboard/receitas-creditos",
+      "readOnly": true,
+      "tenantIsolation": [
+        "database",
+        "entity"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "description": "Opcional. Só pode selecionar um tenant já autorizado ao usuário autenticado."
+          },
+          "data_inicial": {
+            "type": "string",
+            "description": "Data inicial no formato YYYY-MM-DD."
+          },
+          "data_final": {
+            "type": "string",
+            "description": "Data final no formato YYYY-MM-DD."
+          },
+          "exercicio": {
+            "type": "integer",
+            "minimum": 1900,
+            "maximum": 2200
+          },
+          "comparar_periodo_anterior": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "get_guias",
+      "panel": "guias",
+      "title": "Guias e documentos",
+      "description": "Consulta somente leitura do painel Guias e documentos do BI Tributário.",
+      "permission": null,
+      "upstream": "/api/dashboard/guias",
+      "readOnly": true,
+      "tenantIsolation": [
+        "database",
+        "entity"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "description": "Opcional. Só pode selecionar um tenant já autorizado ao usuário autenticado."
+          },
+          "data_inicial": {
+            "type": "string",
+            "description": "Data inicial no formato YYYY-MM-DD."
+          },
+          "data_final": {
+            "type": "string",
+            "description": "Data final no formato YYYY-MM-DD."
+          },
+          "exercicio": {
+            "type": "integer",
+            "minimum": 1900,
+            "maximum": 2200
+          },
+          "comparar_periodo_anterior": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "get_indexadores",
+      "panel": "indexadores",
+      "title": "Indexadores",
+      "description": "Consulta somente leitura do painel Indexadores do BI Tributário.",
+      "permission": null,
+      "upstream": "/api/dashboard/indexadores",
+      "readOnly": true,
+      "tenantIsolation": [
+        "database",
+        "entity"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "description": "Opcional. Só pode selecionar um tenant já autorizado ao usuário autenticado."
+          },
+          "data_inicial": {
+            "type": "string",
+            "description": "Data inicial no formato YYYY-MM-DD."
+          },
+          "data_final": {
+            "type": "string",
+            "description": "Data final no formato YYYY-MM-DD."
+          },
+          "exercicio": {
+            "type": "integer",
+            "minimum": 1900,
+            "maximum": 2200
+          },
+          "comparar_periodo_anterior": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "get_territorio",
+      "panel": "territorio",
+      "title": "Território cadastral",
+      "description": "Consulta somente leitura do painel Território cadastral do BI Tributário.",
+      "permission": null,
+      "upstream": "/api/dashboard/territorio",
+      "readOnly": true,
+      "tenantIsolation": [
+        "database",
+        "entity"
+      ],
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "description": "Opcional. Só pode selecionar um tenant já autorizado ao usuário autenticado."
+          },
+          "data_inicial": {
+            "type": "string",
+            "description": "Data inicial no formato YYYY-MM-DD."
+          },
+          "data_final": {
+            "type": "string",
+            "description": "Data final no formato YYYY-MM-DD."
+          },
+          "exercicio": {
+            "type": "integer",
+            "minimum": 1900,
+            "maximum": 2200
+          },
+          "comparar_periodo_anterior": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    }
+  ]
+}
