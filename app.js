@@ -75,6 +75,9 @@
   let currentView = ADMIN_VIEWS.has(query.view) ? query.view :
     (query.view && dashboards[query.view] ? query.view : "visao-geral");
   let currentPayload = null;
+  let currentDetailPayload = null;
+  let currentDetailResource = "";
+  let currentDetailTitle = "";
   let authorizedTenants = [];
 
   let tenantId = query.tenant || query.entidadeId || query.entityId || "";
@@ -1770,6 +1773,288 @@
     `;
   }
 
+  function safeFilePart(value) {
+    return String(value||"arquivo")
+      .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+      .replace(/[^a-zA-Z0-9_-]+/g,"-")
+      .replace(/^-+|-+$/g,"")
+      .toLowerCase()
+      .slice(0,80) || "arquivo";
+  }
+
+  function exportContextLabel() {
+    const period=document.getElementById("periodo")?.selectedOptions?.[0]?.textContent||"Todos";
+    const exercise=document.getElementById("exercicio")?.value||"";
+    const filters=currentDashboardFilters();
+    const parts=[period,exercise].filter(Boolean);
+    const filterText=Object.entries(filters).map(([key,value])=>key+": "+value);
+    return {period,exercise,filters,summary:[...parts,...filterText].join(" · ")};
+  }
+
+  function downloadBlob(content,type,filename) {
+    const blob=content instanceof Blob ? content : new Blob([content],{type});
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement("a");
+    link.href=url;
+    link.download=filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
+
+  function csvEscape(value,separator=";") {
+    const text=String(value??"");
+    if(text.includes('"')||text.includes("\n")||text.includes("\r")||text.includes(separator)){
+      return '"'+text.replace(/"/g,'""')+'"';
+    }
+    return text;
+  }
+
+  function exportRowsText(payload,separator) {
+    const columns=Array.isArray(payload?.columns)?payload.columns:[];
+    const rows=Array.isArray(payload?.rows)?payload.rows:[];
+    const header=columns.map(col=>csvEscape(col.label||col.key,separator)).join(separator);
+    const body=rows.map(row=>columns.map(col=>
+      csvEscape(formatDetailCell(row[col.key],col.format),separator)
+    ).join(separator)).join("\r\n");
+    return header+"\r\n"+body;
+  }
+
+  async function fetchDetailExport(resource,maxRecords) {
+    const columns=[];
+    const rows=[];
+    let offset=0;
+    let first=true;
+    const seen=new Set();
+
+    while(rows.length<maxRecords && !seen.has(offset)){
+      seen.add(offset);
+      const params=new URLSearchParams({
+        periodo:document.getElementById("periodo")?.value||"todos",
+        exercicio:document.getElementById("exercicio")?.value||String(new Date().getFullYear()),
+        limit:"50",
+        offset:String(offset)
+      });
+      for(const [key,value] of Object.entries(currentDashboardFilters())) params.set(key,value);
+
+      const payload=await api(
+        "/api/detail/"+encodeURIComponent(resource)+"?"+params.toString(),
+        {timeoutMs:30000}
+      );
+
+      if(first){
+        columns.push(...(Array.isArray(payload?.columns)?payload.columns:[]));
+        first=false;
+      }
+
+      const pageRows=Array.isArray(payload?.rows)?payload.rows:[];
+      for(const row of pageRows){
+        if(rows.length>=maxRecords) break;
+        rows.push(row);
+      }
+
+      const pagination=payload?.pagination||{};
+      if(!pagination.hasMore || pagination.nextOffset===null || pagination.nextOffset===undefined) break;
+      const next=Number(pagination.nextOffset);
+      if(!Number.isFinite(next) || next<=offset) break;
+      offset=next;
+    }
+
+    return {
+      resource,
+      columns,
+      rows,
+      truncated:rows.length>=maxRecords,
+      maxRecords
+    };
+  }
+
+  function setExportBusy(busy) {
+    document.getElementById("exportDashboardPdf")?.classList.toggle("export-busy",busy);
+    document.getElementById("drawerExportActions")?.classList.toggle("export-busy",busy);
+  }
+
+  async function exportDashboardToPdf() {
+    const target=document.getElementById("dashboardView");
+    if(!target || target.hidden) return;
+    if(!window.html2canvas || !window.jspdf?.jsPDF){
+      window.alert("Bibliotecas de exportação ainda não carregaram. Atualize a página e tente novamente.");
+      return;
+    }
+
+    setExportBusy(true);
+    try{
+      const canvas=await window.html2canvas(target,{
+        scale:1.6,
+        useCORS:true,
+        backgroundColor:"#ffffff",
+        logging:false
+      });
+
+      const {jsPDF}=window.jspdf;
+      const pdf=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+      const pageWidth=pdf.internal.pageSize.getWidth();
+      const pageHeight=pdf.internal.pageSize.getHeight();
+      const margin=8;
+      const headerHeight=19;
+      const usableWidth=pageWidth-margin*2;
+      const imgHeight=canvas.height*usableWidth/canvas.width;
+      const imgData=canvas.toDataURL("image/jpeg",0.92);
+      const context=exportContextLabel();
+
+      const drawHeader=(pageNo)=>{
+        pdf.setFontSize(13);
+        pdf.text(String(dashboards[currentView]?.title||"BI Tributos"),margin,8);
+        pdf.setFontSize(8);
+        pdf.text(String(entityLabel||tenantId||"Entidade"),margin,13);
+        pdf.setTextColor(90);
+        pdf.text(context.summary||"Sem filtros adicionais",margin,17);
+        pdf.text("Página "+pageNo,pageWidth-margin-18,17);
+        pdf.setTextColor(0);
+      };
+
+      const availableHeight=pageHeight-headerHeight-margin;
+      let sourceY=0;
+      let pageNo=1;
+      while(sourceY<imgHeight){
+        if(pageNo>1) pdf.addPage();
+        drawHeader(pageNo);
+        pdf.addImage(imgData,"JPEG",margin,headerHeight,usableWidth,imgHeight,undefined,"FAST",0);
+        // Clip by page via white cover below current slice approach:
+        // shift image upward on subsequent pages.
+        if(pageNo>1){
+          // overwrite current page with shifted image
+          pdf.addImage(imgData,"JPEG",margin,headerHeight-sourceY,usableWidth,imgHeight,undefined,"FAST");
+        }
+        sourceY+=availableHeight;
+        pageNo++;
+        if(pageNo>20) break;
+      }
+
+      // Rebuild multi-page correctly if content spans more than one page.
+      if(imgHeight>availableHeight){
+        const longPdf=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+        let yOffset=0;
+        let p=1;
+        while(yOffset<imgHeight && p<=20){
+          if(p>1) longPdf.addPage();
+          longPdf.setFontSize(13);
+          longPdf.text(String(dashboards[currentView]?.title||"BI Tributos"),margin,8);
+          longPdf.setFontSize(8);
+          longPdf.text(String(entityLabel||tenantId||"Entidade"),margin,13);
+          longPdf.setTextColor(90);
+          longPdf.text(context.summary||"Sem filtros adicionais",margin,17);
+          longPdf.text("Página "+p,pageWidth-margin-18,17);
+          longPdf.setTextColor(0);
+          longPdf.addImage(imgData,"JPEG",margin,headerHeight-yOffset,usableWidth,imgHeight,undefined,"FAST");
+          yOffset+=availableHeight;
+          p++;
+        }
+        longPdf.save(
+          safeFilePart("bi-"+(entityLabel||tenantId)+"-"+(dashboards[currentView]?.title||currentView))+".pdf"
+        );
+      } else {
+        pdf.save(
+          safeFilePart("bi-"+(entityLabel||tenantId)+"-"+(dashboards[currentView]?.title||currentView))+".pdf"
+        );
+      }
+    }catch(error){
+      console.error("dashboard export",error);
+      window.alert("Não foi possível gerar o PDF deste painel.");
+    }finally{
+      setExportBusy(false);
+    }
+  }
+
+  async function exportDetailCsv() {
+    if(!currentDetailResource) return;
+    setExportBusy(true);
+    try{
+      const payload=await fetchDetailExport(currentDetailResource,10000);
+      const text="\uFEFF"+exportRowsText(payload,";");
+      const name=safeFilePart((entityLabel||tenantId)+"-"+currentDetailTitle+"-"+currentDetailResource);
+      downloadBlob(text,"text/csv;charset=utf-8",name+".csv");
+    }catch(error){
+      console.error("detail csv export",error);
+      window.alert("Não foi possível exportar o CSV.");
+    }finally{
+      setExportBusy(false);
+    }
+  }
+
+  async function exportDetailTxt() {
+    if(!currentDetailResource) return;
+    setExportBusy(true);
+    try{
+      const payload=await fetchDetailExport(currentDetailResource,10000);
+      const context=exportContextLabel();
+      const meta=[
+        "BI Tributos",
+        "Entidade: "+(entityLabel||tenantId||""),
+        "Detalhamento: "+currentDetailTitle,
+        "Período/Filtros: "+(context.summary||""),
+        "Registros exportados: "+payload.rows.length+(payload.truncated?" (limite atingido)":""),
+        ""
+      ].join("\r\n");
+      const name=safeFilePart((entityLabel||tenantId)+"-"+currentDetailTitle+"-"+currentDetailResource);
+      downloadBlob("\uFEFF"+meta+exportRowsText(payload,"\t"),"text/plain;charset=utf-8",name+".txt");
+    }catch(error){
+      console.error("detail txt export",error);
+      window.alert("Não foi possível exportar o TXT.");
+    }finally{
+      setExportBusy(false);
+    }
+  }
+
+  async function exportDetailPdf() {
+    if(!currentDetailResource || !window.jspdf?.jsPDF) return;
+    setExportBusy(true);
+    try{
+      const payload=await fetchDetailExport(currentDetailResource,1000);
+      const {jsPDF}=window.jspdf;
+      const pdf=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
+      const context=exportContextLabel();
+      const columns=payload.columns||[];
+      const head=[columns.map(col=>col.label||col.key)];
+      const body=payload.rows.map(row=>columns.map(col=>formatDetailCell(row[col.key],col.format)));
+
+      pdf.setFontSize(13);
+      pdf.text(currentDetailTitle||"Detalhamento",10,10);
+      pdf.setFontSize(8);
+      pdf.text(String(entityLabel||tenantId||"Entidade"),10,15);
+      pdf.setTextColor(90);
+      pdf.text(context.summary||"Sem filtros adicionais",10,19);
+      pdf.text(
+        "Registros: "+payload.rows.length+(payload.truncated?" · PDF limitado aos primeiros 1.000 registros":""),
+        10,23
+      );
+      pdf.setTextColor(0);
+
+      if(typeof pdf.autoTable==="function"){
+        pdf.autoTable({
+          head,
+          body,
+          startY:27,
+          styles:{fontSize:6.5,cellPadding:1.5,overflow:"linebreak"},
+          headStyles:{fontSize:6.5},
+          margin:{left:8,right:8}
+        });
+      }else{
+        pdf.setFontSize(8);
+        pdf.text("Tabela indisponível: plugin de exportação não carregado.",10,30);
+      }
+
+      const name=safeFilePart((entityLabel||tenantId)+"-"+currentDetailTitle+"-"+currentDetailResource);
+      pdf.save(name+".pdf");
+    }catch(error){
+      console.error("detail pdf export",error);
+      window.alert("Não foi possível exportar o PDF do detalhamento.");
+    }finally{
+      setExportBusy(false);
+    }
+  }
+
   async function loadDetailRecords(resource,offset=0) {
     const container=document.querySelector("[data-detail-container]");
     if(!container) return;
@@ -1786,6 +2071,11 @@
 
     try {
       const payload=await api("/api/detail/"+encodeURIComponent(resource)+"?"+params.toString(),{timeoutMs:30000});
+      currentDetailPayload=payload;
+      currentDetailResource=resource;
+      currentDetailTitle=document.getElementById("drawerTitle")?.textContent||resource;
+      const exportActions=document.getElementById("drawerExportActions");
+      if(exportActions) exportActions.hidden=false;
       const pagination=payload?.pagination||{};
       container.innerHTML=detailPageTable(payload)+`
         <div class="detail-pagination">
@@ -1905,6 +2195,11 @@
   }
 
   function openDrawer(title, html) {
+    currentDetailPayload=null;
+    currentDetailResource="";
+    currentDetailTitle=title||"Detalhamento";
+    const exportActions=document.getElementById("drawerExportActions");
+    if(exportActions) exportActions.hidden=true;
     document.getElementById("drawerTitle").textContent = title;
     document.getElementById("drawerBody").innerHTML = html;
     document.getElementById("detailDrawer").classList.add("open");
@@ -1934,6 +2229,11 @@
       loadDetailRecords(pageButton.dataset.detailPage,Number(pageButton.dataset.detailOffset||0));
     }
   });
+
+  document.getElementById("exportDashboardPdf").addEventListener("click",exportDashboardToPdf);
+  document.getElementById("exportDetailPdf").addEventListener("click",exportDetailPdf);
+  document.getElementById("exportDetailCsv").addEventListener("click",exportDetailCsv);
+  document.getElementById("exportDetailTxt").addEventListener("click",exportDetailTxt);
 
   document.getElementById("closeDrawer").addEventListener("click", () => closeDrawer("detailDrawer"));
   document.getElementById("closeIntegration").addEventListener("click", () => closeDrawer("integrationDrawer"));
