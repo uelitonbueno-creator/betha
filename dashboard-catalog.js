@@ -232,6 +232,11 @@ window.BI_DASHBOARDS = {
     title: "Transferências e ITBI",
     description: "Solicitações, transferências, valores declarados, financiamento e imposto.",
     level: "macro-micro",
+    filters: [
+      {id:"situacao",label:"Situação da transferência",type:"select"},
+      {id:"certidao",label:"Status da certidão ITBI",type:"select"},
+      {id:"cobranca",label:"Tipo de cobrança",type:"select"}
+    ],
     kpis: [
       {id:"solicitacoes",label:"Solicitações",format:"number",source:"bi:solicitacoes-transferencias-imoveis",field:"id"},
       {id:"transferencias-itbi",label:"Transferências",format:"number",source:"bi:transferencias-imoveis",field:"id"},
