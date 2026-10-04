@@ -3,6 +3,7 @@
   const SUPABASE_URL = "https://mliurxyjznxoafkwwtae.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1saXVyeHlqem54b2Fma3d3dGFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA5NjA2MjMsImV4cCI6MjEwNjUzNjYyM30.bxZPsSSLpiZTFvXD2yZjtuc-5sniwDfV5D7UMAsB9ec";
   const dashboards = window.BI_DASHBOARDS || {};
+  const ADMIN_VIEWS = new Set(["usuarios-admin","configuracoes-admin"]);
   const bethaApp = document.getElementById("bethaApp");
   const authGate = document.getElementById("authGate");
   const tenantGate = document.getElementById("tenantGate");
@@ -70,7 +71,7 @@
 
   const query = Object.fromEntries(new URLSearchParams(location.search).entries());
   const chartInstances = new Map();
-  let currentView = query.view === "usuarios-admin" ? "usuarios-admin" :
+  let currentView = ADMIN_VIEWS.has(query.view) ? query.view :
     (query.view && dashboards[query.view] ? query.view : "visao-geral");
   let currentPayload = null;
   let authorizedTenants = [];
@@ -95,23 +96,29 @@
   bethaApp.addEventListener("opcaoMenuSelecionada", (event) => {
     const detail = event.detail || {};
     const view = detail.rota || detail.id;
-    if (!dashboards[view] && view !== "usuarios-admin") return;
+    if (!dashboards[view] && !ADMIN_VIEWS.has(view)) return;
     if (detail.id && typeof bethaApp.setMenuAtivo === "function") bethaApp.setMenuAtivo(detail.id);
     navigate(view);
   });
 
   function navigate(view) {
-    if (!dashboards[view] && view !== "usuarios-admin") return;
+    if (!dashboards[view] && !ADMIN_VIEWS.has(view)) return;
     currentView = view;
     const url = new URL(location.href);
     url.searchParams.set("view", view);
     history.replaceState({}, "", url);
+
     if (view === "usuarios-admin") {
       renderUsersAdmin();
       return;
     }
+    if (view === "configuracoes-admin") {
+      renderConfigAdmin();
+      return;
+    }
+
     renderDashboard(view);
-    loadDashboardData(view); // somente snapshot local; API apenas no botão Atualizar
+    loadDashboardData(view);
   }
 
   function sourceClass(source) {
@@ -143,6 +150,7 @@
   function renderDashboard(view) {
     document.getElementById("dashboardView").hidden = false;
     document.getElementById("usersAdminView").hidden = true;
+    document.getElementById("configAdminView").hidden = true;
     destroyCharts();
     currentPayload = null;
     const def = dashboards[view];
@@ -206,8 +214,8 @@
           <canvas></canvas>
           <div class="chart-empty">
             <i class="mdi mdi-chart-box-outline"></i>
-            <strong>Estrutura do gráfico pronta</strong>
-            <span>Aguardando dados da entidade para calcular este indicador.</span>
+            <strong>Sem dados para o filtro atual</strong>
+            <span>Atualize os dados ou ajuste os filtros desta visão.</span>
           </div>
         </div>
       `;
@@ -224,7 +232,7 @@
       `<span class="source-chip"><strong>${sourceLabel(src)}</strong> · ${escapeHtml(src)}</span>`
     ).join("");
 
-    setStatus("waiting", cfg.BACKEND_URL ? "Backend configurado · carregando dados" : "Estrutura pronta · dados aguardando integração");
+    setStatus("waiting", cfg.BACKEND_URL ? "Carregando dados" : "Dados indisponíveis");
   }
 
   function chartType(type) {
@@ -1700,9 +1708,207 @@
 
   let selectedCentralUser = null;
   let wizardStep = 1;
+  let pageMappingReady = false;
+  let pageMappingStatusCache = null;
+
+  const PAGE_PERMISSION_IDS = Object.freeze({
+    "visao-geral":"BIVisaoGeralPage",
+    arrecadacao:"BIArrecadacaoPage",
+    debitos:"BIDebitosPage",
+    divida:"BIDividaPage",
+    parcelamentos:"BIParcelamentosPage",
+    "receitas-creditos":"BIReceitasCreditosPage",
+    guias:"BIGuiasPage",
+    indexadores:"BIIndexadoresPage",
+    encerramento:"BIEncerramentoPage",
+    economicos:"BIEconomicosPage",
+    imobiliario:"BIImobiliarioPage",
+    contribuintes:"BIContribuintesPage",
+    territorio:"BITerritorioPage",
+    obras:"BIObrasPage",
+    itbi:"BIITBIPage",
+    qualidade:"BIQualidadePage",
+    "usuarios-admin":"BIUsuariosPage",
+    "configuracoes-admin":"BIConfiguracoesPage"
+  });
+
+  function currentTenantInfo() {
+    return authorizedTenants.find(item=>item.id===tenantId) || null;
+  }
+
+  function hideMainViews() {
+    document.getElementById("dashboardView").hidden = true;
+    document.getElementById("usersAdminView").hidden = true;
+    document.getElementById("configAdminView").hidden = true;
+  }
+
+  function setConfigText(id,text) {
+    const el=document.getElementById(id);
+    if(el) el.textContent=text;
+  }
+
+  function renderExpectedPermissions(expected) {
+    const list=document.getElementById("configPermissionList");
+    if(!list) return;
+    const constraints=Array.isArray(expected&&expected.constraints)?expected.constraints:[];
+    if(!constraints.length){
+      list.innerHTML='<div class="table-empty">A matriz de permissões não foi carregada.</div>';
+      return;
+    }
+    list.innerHTML=constraints.map(item=>
+      '<div class="config-permission-chip"><i class="mdi mdi-check-decagram"></i><span>'+
+      escapeHtml(item.description||item.id)+'</span></div>'
+    ).join("");
+  }
+
+  function pageMappingFriendly(code) {
+    const map={
+      PAGE_MAPPING_SCOPE_REQUIRED:"A credencial de serviço precisa do escopo autorizacoes.plataforma.betha.cloud/parceiro.leitura.",
+      PAGE_MAPPING_WRITE_SCOPE_REQUIRED:"Para publicar, ative o escopo autorizacoes.plataforma.betha.cloud/parceiro.escrita na credencial de serviço e renove o token.",
+      PAGE_MAPPING_TOKEN_INVALID:"O token de serviço não foi aceito pela API de Autorizações Dados.",
+      ADMIN_REQUIRED:"Seu usuário não possui perfil de administrador para alterar esta configuração."
+    };
+    return map[code] || code;
+  }
+
+  async function readPageMappingStatus({silent=false}={}) {
+    try {
+      const result=await api("/api/admin/page-mapping/status");
+      pageMappingStatusCache=result;
+      pageMappingReady=result.configured===true;
+      renderExpectedPermissions(result.expected);
+
+      if(!silent){
+        const badge=document.getElementById("pageMappingBadge");
+        const publish=document.getElementById("publishPageMappingButton");
+        const tenant=currentTenantInfo();
+
+        setConfigText("configMappingStatus",pageMappingReady ? "Publicada" : "Não publicada");
+        setConfigText(
+          "configMappingDetail",
+          pageMappingReady
+            ? String(result.constraintCount||0)+" permissões funcionais disponíveis."
+            : "A matriz do BI ainda não está registrada para esta credencial."
+        );
+        setConfigText(
+          "pageMappingMessage",
+          pageMappingReady
+            ? "A matriz de permissões está disponível na Betha. Novos usuários podem receber permissões por módulo."
+            : "A matriz esperada está pronta no BI e pode ser publicada por um administrador."
+        );
+
+        if(badge){
+          badge.textContent=pageMappingReady?"PUBLICADA":"PENDENTE";
+          badge.className="config-status-badge "+(pageMappingReady?"ok":"warn");
+        }
+        if(publish){
+          publish.disabled=!(tenant&&tenant.admin===true);
+          publish.title=publish.disabled?"Somente administradores podem publicar permissões.":"Publicar a matriz versionada do BI na Betha.";
+        }
+      }
+
+      return result;
+    } catch(error) {
+      pageMappingReady=false;
+      pageMappingStatusCache={error:error.message};
+      if(!silent){
+        const badge=document.getElementById("pageMappingBadge");
+        const publish=document.getElementById("publishPageMappingButton");
+        const tenant=currentTenantInfo();
+        setConfigText("configMappingStatus","Ação necessária");
+        setConfigText("configMappingDetail",pageMappingFriendly(error.message));
+        setConfigText("pageMappingMessage",pageMappingFriendly(error.message));
+        if(badge){
+          badge.textContent="AÇÃO NECESSÁRIA";
+          badge.className="config-status-badge warn";
+        }
+        if(publish){
+          publish.disabled=!(tenant&&tenant.admin===true);
+        }
+      }
+      return null;
+    }
+  }
+
+  async function loadConfigAdmin() {
+    const healthPromise=api("/api/health");
+    const mappingPromise=readPageMappingStatus({silent:false});
+    const tenant=currentTenantInfo();
+
+    setConfigText("configTenantStatus",tenant ? (tenant.name||tenant.id) : "Não selecionada");
+    setConfigText(
+      "configTenantDetail",
+      tenant ? "Contexto autorizado para esta sessão." : "Selecione uma prefeitura autorizada."
+    );
+    setConfigText("configTenantId",tenantId||"—");
+    setConfigText("configEntityId",tenant&&tenant.entityId ? tenant.entityId : "—");
+    setConfigText("configDatabaseId",tenant&&tenant.databaseId ? tenant.databaseId : "—");
+
+    try {
+      const health=await healthPromise;
+      setConfigText("configAuthStatus",health.loginCredentialConfigured&&health.sessionStoreConfigured?"Operacional":"Verificar configuração");
+      setConfigText(
+        "configAuthDetail",
+        health.loginCredentialConfigured&&health.sessionStoreConfigured
+          ? "OAuth Betha e sessão server-side disponíveis."
+          : "Há componentes de autenticação pendentes."
+      );
+      setConfigText("configDataStatus",health.accessTokenConfigured&&health.tenantsConfigured?"Operacional":"Verificar configuração");
+      setConfigText(
+        "configDataDetail",
+        health.accessTokenConfigured&&health.tenantsConfigured
+          ? "Token de serviço e cadastro multi-entidade configurados."
+          : "Credencial de serviço ou cadastro de tenants pendente."
+      );
+      setConfigText("configWorkerVersion",health.buildVersion||"—");
+    } catch(error) {
+      setConfigText("configAuthStatus","Indisponível");
+      setConfigText("configAuthDetail","Não foi possível consultar a saúde do Worker.");
+      setConfigText("configDataStatus","Indisponível");
+      setConfigText("configDataDetail",error.message||"Falha na consulta.");
+    }
+
+    await mappingPromise;
+  }
+
+  function renderConfigAdmin() {
+    hideMainViews();
+    document.getElementById("configAdminView").hidden = false;
+    document.getElementById("pageContext").textContent = "CONFIGURAÇÕES";
+    loadConfigAdmin();
+  }
+
+  async function publishPageMappingFromUi() {
+    const button=document.getElementById("publishPageMappingButton");
+    const message=document.getElementById("pageMappingMessage");
+    if(button){
+      button.disabled=true;
+      button.innerHTML='<i class="mdi mdi-loading mdi-spin"></i> PUBLICANDO';
+    }
+    if(message) message.textContent="Publicando a matriz de permissões na Betha…";
+
+    try {
+      await api("/api/admin/page-mapping",{method:"PUT"});
+      if(message) message.textContent="Matriz publicada com sucesso. As permissões já podem ser usadas na gestão de usuários.";
+      await readPageMappingStatus({silent:false});
+    } catch(error) {
+      if(message) message.textContent=pageMappingFriendly(error.message);
+      const badge=document.getElementById("pageMappingBadge");
+      if(badge){
+        badge.textContent="AÇÃO NECESSÁRIA";
+        badge.className="config-status-badge warn";
+      }
+    } finally {
+      if(button){
+        button.innerHTML='<i class="mdi mdi-cloud-upload-outline"></i> PUBLICAR PERMISSÕES';
+        const tenant=currentTenantInfo();
+        button.disabled=!(tenant&&tenant.admin===true);
+      }
+    }
+  }
 
   function renderUsersAdmin() {
-    document.getElementById("dashboardView").hidden = true;
+    hideMainViews();
     document.getElementById("usersAdminView").hidden = false;
     document.getElementById("pageContext").textContent = "USUÁRIOS";
     loadUsers();
@@ -1724,6 +1930,7 @@
     }
 
     tbody.innerHTML = rows.map((item) => {
+      const accessId = item.id || item.accessId || "";
       const name = item.userName || item.name || item.nome || item.user || "Usuário";
       const login = item.user || item.login || item.idUsuario || "";
       const authorized = item.createAt || item.authorizedAt || item.autorizadoEm || "";
@@ -1732,15 +1939,21 @@
       const restrictions = item.totalRestrictions ?? item.restrictions?.length ?? 0;
       const connected = Boolean(item.connected);
       const blocked = Boolean(item.blocked);
+      const profile = item.admin ? "Administrador" : item.technical ? "Técnico" : (groups ? groups + " grupo(s)" : "Usuário");
+
       return `
-        <tr data-user-row data-search="${escapeHtml((name + " " + login).toLowerCase())}">
+        <tr data-user-row data-search="${escapeHtml((name + " " + login).toLowerCase())}" data-access-id="${escapeHtml(accessId)}">
           <td><div class="user-name">${escapeHtml(name)}</div><div class="user-login">@${escapeHtml(login)}</div></td>
           <td>${escapeHtml(formatDateTime(authorized))}</td>
           <td>${escapeHtml(formatDate(expires))}</td>
-          <td>${escapeHtml(String(groups))}</td>
+          <td>${escapeHtml(profile)}</td>
           <td><span class="user-badge ${restrictions ? "info" : "muted"}">${restrictions ? restrictions + " restrição(ões)" : "Sem restrições"}</span></td>
           <td><span class="user-badge ${blocked ? "muted" : connected ? "ok" : "muted"}">${blocked ? "Bloqueado" : connected ? "Conectado" : "Desconectado"}</span></td>
-          <td><button class="row-action" type="button" title="Detalhes"><i class="mdi mdi-cog-outline"></i></button></td>
+          <td>
+            <button class="row-action danger" type="button" data-revoke-access="${escapeHtml(accessId)}" data-user-name="${escapeHtml(name)}" title="Remover acesso" ${accessId ? "" : "disabled"}>
+              <i class="mdi mdi-account-remove-outline"></i>
+            </button>
+          </td>
         </tr>
       `;
     }).join("");
@@ -1786,6 +1999,11 @@
     wizardStep = 1;
     document.getElementById("centralUserSearch").value = "";
     document.getElementById("centralUserResult").textContent = "Informe o login exato do usuário para consultar a Central de Usuários.";
+    document.getElementById("accessExpires").value = "";
+    document.getElementById("accessAdmin").checked = false;
+    document.getElementById("accessTechnical").checked = false;
+    const defaultProfile=document.querySelector('input[name="biGroup"][value="consulta"]');
+    if(defaultProfile) defaultProfile.checked=true;
     setWizardStep(1);
     document.getElementById("userDrawer").classList.add("open");
     document.getElementById("userDrawer").setAttribute("aria-hidden","false");
@@ -1799,20 +2017,144 @@
     document.querySelectorAll(".wizard-panel").forEach(el => el.hidden = Number(el.dataset.panel) !== wizardStep);
     document.getElementById("wizardBack").disabled = wizardStep === 1;
     document.getElementById("wizardNext").hidden = wizardStep === 4;
+
     const save = document.getElementById("wizardSave");
     save.hidden = wizardStep !== 4;
-    save.disabled = true;
-    save.title = "A publicação do Page Mapping será concluída antes de habilitar a gravação.";
-    if (wizardStep === 2) renderPermissionOptions();
+
+    if (wizardStep === 2) {
+      renderPermissionOptions();
+      readPageMappingStatus({silent:true}).finally(updateWizardSaveState);
+    }
+
+    updateWizardSaveState();
   }
 
   function renderPermissionOptions() {
     const container = document.getElementById("permissionsList");
     const items = Object.entries(dashboards).map(([id, def]) => ({id, label:def.title}));
-    items.push({id:"usuarios-admin",label:"Administrando / Usuários"});
+    items.push({id:"usuarios-admin",label:"Usuários e acessos"});
+    items.push({id:"configuracoes-admin",label:"Sistema e permissões"});
+
     container.innerHTML = items.map(item =>
       '<label class="permission-item"><input type="checkbox" value="' + escapeHtml(item.id) + '" checked> ' + escapeHtml(item.label) + '</label>'
     ).join("");
+
+    applyPermissionPreset();
+  }
+
+  function selectedProfile() {
+    return document.querySelector('input[name="biGroup"]:checked')?.value || "consulta";
+  }
+
+  function applyPermissionPreset() {
+    const profile=selectedProfile();
+    const inputs=[...document.querySelectorAll('#permissionsList input[type="checkbox"]')];
+
+    for(const input of inputs){
+      if(profile==="consulta") input.checked=!ADMIN_VIEWS.has(input.value);
+      else if(profile==="gestor") input.checked=input.value!=="configuracoes-admin";
+      else input.checked=true;
+    }
+
+    if(profile==="administrador") {
+      document.getElementById("accessAdmin").checked=true;
+    }
+
+    updateWizardSaveState();
+  }
+
+  function updateWizardSaveState() {
+    const save=document.getElementById("wizardSave");
+    if(!save) return;
+
+    const profile=selectedProfile();
+    const admin=document.getElementById("accessAdmin").checked || profile==="administrador";
+    const canSave=Boolean(selectedCentralUser) && (admin || pageMappingReady);
+
+    save.disabled=!canSave;
+
+    if(!selectedCentralUser) {
+      save.title="Localize um usuário válido antes de salvar.";
+    } else if(!admin && !pageMappingReady) {
+      save.title="Publique a matriz de permissões em Configurações → Sistema e permissões antes de criar acesso limitado.";
+    } else {
+      save.title="Conceder o acesso selecionado para esta prefeitura.";
+    }
+
+    const help=document.getElementById("permissionMappingHelp");
+    if(help){
+      help.textContent=pageMappingReady
+        ? "Selecione os módulos que este usuário poderá consultar. A matriz de permissões está disponível na Betha."
+        : "Acesso limitado exige que a matriz de permissões seja publicada. Acesso de Administrador pode ser concedido diretamente.";
+    }
+  }
+
+  function selectedPermissionPayload() {
+    return [...document.querySelectorAll('#permissionsList input[type="checkbox"]:checked')]
+      .map(input=>PAGE_PERMISSION_IDS[input.value])
+      .filter(Boolean)
+      .map(id=>({id,revokedOperations:[]}));
+  }
+
+  async function saveUserAccess() {
+    if(!selectedCentralUser) return;
+
+    const save=document.getElementById("wizardSave");
+    const result=document.getElementById("centralUserResult");
+    const userId=selectedCentralUser.id || selectedCentralUser.user || selectedCentralUser.login;
+    const profile=selectedProfile();
+    const admin=document.getElementById("accessAdmin").checked || profile==="administrador";
+    const technical=document.getElementById("accessTechnical").checked;
+    const expiresIn=document.getElementById("accessExpires").value || null;
+
+    if(!admin && !pageMappingReady){
+      setWizardStep(2);
+      if(result) result.textContent="Publique a matriz de permissões antes de criar um acesso limitado.";
+      return;
+    }
+
+    const body={
+      user:String(userId),
+      admin,
+      technical,
+      permissions:admin ? [] : selectedPermissionPayload(),
+      expiresIn
+    };
+
+    save.disabled=true;
+    save.textContent="SALVANDO…";
+
+    try {
+      await api("/api/admin/users",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify(body)
+      });
+      closeDrawer("userDrawer");
+      await loadUsers();
+    } catch(error) {
+      setWizardStep(4);
+      save.disabled=false;
+      const feedback=document.getElementById("userSaveFeedback");
+      const msg=feedback || document.getElementById("centralUserResult");
+      if(msg) msg.textContent="Não foi possível conceder o acesso: "+pageMappingFriendly(error.message);
+    } finally {
+      save.textContent="SALVAR";
+      updateWizardSaveState();
+    }
+  }
+
+  async function revokeUserAccess(accessId,userName) {
+    if(!accessId) return;
+    const confirmed=window.confirm("Remover o acesso de "+(userName||"este usuário")+" nesta prefeitura?");
+    if(!confirmed) return;
+
+    try {
+      await api("/api/admin/users/"+encodeURIComponent(accessId),{method:"DELETE"});
+      await loadUsers();
+    } catch(error) {
+      window.alert("Não foi possível remover o acesso: "+pageMappingFriendly(error.message));
+    }
   }
 
   async function searchCentralUser() {
@@ -1833,6 +2175,7 @@
         return;
       }
       selectedCentralUser = user;
+      updateWizardSaveState();
       const id = user.id || user.user || user.login;
       const name = user.name || user.nome || user.fullName || user.userName || id;
       const email = user.email || user.mail || "";
@@ -1861,6 +2204,23 @@
     }
     setWizardStep(wizardStep + 1);
   });
+
+  document.getElementById("wizardSave").addEventListener("click", saveUserAccess);
+
+  document.querySelectorAll('input[name="biGroup"]').forEach(input => {
+    input.addEventListener("change", applyPermissionPreset);
+  });
+  document.getElementById("accessAdmin").addEventListener("change", updateWizardSaveState);
+  document.getElementById("accessTechnical").addEventListener("change", updateWizardSaveState);
+
+  document.getElementById("usersTableBody").addEventListener("click", (event) => {
+    const button=event.target.closest("[data-revoke-access]");
+    if(!button) return;
+    revokeUserAccess(button.dataset.revokeAccess,button.dataset.userName);
+  });
+
+  document.getElementById("refreshConfigButton").addEventListener("click", loadConfigAdmin);
+  document.getElementById("publishPageMappingButton").addEventListener("click", publishPageMappingFromUi);
 
   document.querySelectorAll("[data-user-filter]").forEach(button => {
     button.addEventListener("click", () => {
@@ -1918,6 +2278,8 @@
     if (resumeView) {
       if (currentView === "usuarios-admin") {
         renderUsersAdmin();
+      } else if (currentView === "configuracoes-admin") {
+        renderConfigAdmin();
       } else {
         renderDashboard(currentView);
         loadDashboardData(currentView);
@@ -2073,6 +2435,8 @@
 
   if (currentView === "usuarios-admin") {
     renderUsersAdmin();
+  } else if (currentView === "configuracoes-admin") {
+    renderConfigAdmin();
   } else {
     renderDashboard(currentView);
     loadDashboardData(currentView);
