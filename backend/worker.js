@@ -934,7 +934,8 @@ async function safeBethaRows(env,tenant,source,resource,options={}) {
     "debitos",
     "debitos-receitas",
     "dividas",
-    "dividas-receitas"
+    "dividas-receitas",
+    "guias-unificadas"
   ]);
 
   const requestedLimit=Number(options.limit || 0);
@@ -2439,6 +2440,12 @@ async function buildRevenueCodesDashboard(env,tenant,url) {
 
   const paymentPaths=["valorPagoLancado","vlPagoLancado","valorPago","vlPago"];
 
+  const disabledCredits=countWhere(creditos.rows,r=>{
+    const raw=firstValue(r,["desativado.valor","desativado.descricao","desativado"]);
+    if (typeof raw==="boolean") return raw;
+    return /^(true|1|sim|s|yes|desativado|inativo)$/i.test(String(raw||"").trim());
+  });
+
   return {
     view:"receitas-creditos",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
     kpis:{
@@ -2449,19 +2456,20 @@ async function buildRevenueCodesDashboard(env,tenant,url) {
     },
     charts:{
       "receitas-classificacao":chartGroups(
-        groupCount(receitas.rows,["classificacao","classificacao.descricao","tipo","tipoReceita","natureza"],12),
+        groupCount(receitas.rows,["classificacao","tipoCadastro","abreviatura"],12),
         "Receitas","number"
       ),
-      "creditos-situacao":chartGroups(
-        groupCount(creditos.rows,["situacao","situacao.descricao","status"],10),
+      "creditos-situacao":chartFixed(
+        ["Ativos","Desativados"],
+        [Math.max(0,creditos.loaded-disabledCredits),disabledCredits],
         "Créditos","number"
       ),
       "creditos-tipo":chartGroups(
-        groupCount(creditos.rows,["tipo","tipoCredito","abreviatura","descricao","nome"],12),
+        groupCount(creditos.rows,["tipoCadastro.descricao","tipoCadastro.valor","abreviatura","descricao"],12),
         "Créditos","number"
       ),
       "vinculos-receita":chartGroups(
-        groupCount(vinculos.rows,["receita.descricao","descricaoReceita","receita.nome","idReceita","receita"],12),
+        groupCount(vinculos.rows,["receita.descricao","receita.abreviatura","idReceita"],12),
         "Vínculos","number"
       ),
       "arrecadacao-credito":chartGroups(
@@ -2475,7 +2483,14 @@ async function buildRevenueCodesDashboard(env,tenant,url) {
     },
     meta:dashboardMeta([
       ["receitas",receitas],["creditos",creditos],["vinculos",vinculos],["pagamentosDetalhados",det]
-    ])
+    ],{
+      fieldMapping:{
+        receitaClassificacao:"classificacao",
+        creditoSituacao:"desativado",
+        creditoTipo:"tipoCadastro.descricao",
+        vinculoReceita:"receita.descricao"
+      }
+    })
   };
 }
 
@@ -2484,22 +2499,28 @@ async function buildGuidesDashboard(env,tenant,url) {
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
 
   const guias=await safeBethaRows(env,tenant,"base","guias-unificadas");
-  const datePaths=["dataEmissao","dtEmissao","dataHoraEmissao","emissao"];
-  const duePaths=["dataVencimento","dtVencimento","vencimento"];
-  const amountPaths=["valor","valorGuia","vlGuia","valorTotal","vlTotal","valorOriginal"];
+  const datePaths=["dtEmissao"];
+  const duePaths=["dtVencimento"];
+  const totalPaths=["vlTotalGuiaUnificada"];
 
   const rows=guias.rows.filter(r=>periodIncludes(r,{
     periodo,exercicio,datePaths,yearPaths:["ano","exercicio"]
   }));
 
+  const hasBaixa=r=>{
+    const value=firstValue(r,["nroBaixa"]);
+    return value!==undefined && value!==null && String(value).trim()!=="";
+  };
+
   const now=Date.now();
-  const paid=countWhere(rows,r=>/pag|quit|baix/i.test(stringValue(r,["situacao","situacao.descricao","status"],"")));
+  const paid=countWhere(rows,hasBaixa);
   const overdue=countWhere(rows,r=>{
+    if (hasBaixa(r)) return false;
     const d=dateValue(r,duePaths);
-    if(!d || d.getTime()>=now) return false;
-    const status=stringValue(r,["situacao","situacao.descricao","status"],"");
-    return !/pag|quit|baix|cancel/i.test(status);
+    return Boolean(d && d.getTime()<now);
   });
+  const open=Math.max(0,rows.length-paid-overdue);
+  const registered=countWhere(rows,r=>truthyValue(r,["boletoRegistrado"]));
 
   const issue=monthlyCount(guias.rows,datePaths,periodo,exercicio);
   const due=monthlyCount(guias.rows,duePaths,periodo,exercicio);
@@ -2507,28 +2528,87 @@ async function buildGuidesDashboard(env,tenant,url) {
   return {
     view:"guias",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
     kpis:{
-      "guias-total":rows.length || guias.loaded,
-      "guias-valor":sumRows(rows,amountPaths),
+      "guias-total":rows.length,
+      "guias-valor":sumRows(rows,totalPaths),
       "guias-pagas":paid,
       "guias-vencidas":overdue
     },
     charts:{
-      "guias-emissao":{format:"number",labels:issue.labels,datasets:[{label:"Guias emitidas",data:issue.values}]},
-      "guias-situacao":chartGroups(
-        groupCount(rows,["situacao","situacao.descricao","status"],10),
+      "guias-emissao":{
+        format:"number",
+        labels:issue.labels,
+        datasets:[{label:"Guias emitidas",data:issue.values}]
+      },
+      "guias-situacao":chartFixed(
+        ["Com baixa","Vencidas sem baixa","Em aberto"],
+        [paid,overdue,open],
         "Guias","number"
       ),
-      "guias-classificacao":chartGroups(
-        groupCount(rows,["classificacao","classificacao.descricao","tipoGuia","tipo","descricao"],12),
+      "guias-boleto":chartFixed(
+        ["Boleto registrado","Sem registro"],
+        [registered,Math.max(0,rows.length-registered)],
         "Guias","number"
       ),
-      "guias-valor-classificacao":chartGroups(
-        groupSum(rows,["classificacao","classificacao.descricao","tipoGuia","tipo","descricao"],amountPaths,12),
+      "guias-composicao":chartFixed(
+        ["Tributo","Correção","Juros","Multa","Taxa de expediente"],
+        [
+          sumRows(rows,["vlTributo"]),
+          sumRows(rows,["vlTotalCorrecao"]),
+          sumRows(rows,["vlTotalJuros"]),
+          sumRows(rows,["vlTotalMulta"]),
+          sumRows(rows,["vlTaxaExpediente"])
+        ],
         "Valor","currency"
       ),
-      "guias-vencimento":{format:"number",labels:due.labels,datasets:[{label:"Vencimentos",data:due.values}]}
+      "guias-vencimento":{
+        format:"number",
+        labels:due.labels,
+        datasets:[{label:"Vencimentos",data:due.values}]
+      }
     },
-    meta:dashboardMeta([["guias",guias]])
+    meta:dashboardMeta([["guias",guias]],{
+      fieldMapping:{
+        emissao:"dtEmissao",
+        vencimento:"dtVencimento",
+        baixa:"nroBaixa",
+        boletoRegistrado:"boletoRegistrado",
+        total:"vlTotalGuiaUnificada"
+      }
+    })
+  };
+}
+
+function indexerHistorySeries(rows,periodo,exercicio) {
+  const filtered=rows
+    .map(row=>({
+      date:dateValue(row,["dtIdx"]),
+      name:stringValue(row,["moeda.nome","moeda.sigla","moeda.id"],"Não informado"),
+      value:numericValue(row,["vlIdx"])
+    }))
+    .filter(item=>item.date && periodIncludes(
+      {dtIdx:item.date.toISOString()},
+      {periodo,exercicio,datePaths:["dtIdx"],yearPaths:[]}
+    ))
+    .sort((a,b)=>a.date-b.date);
+
+  const dayKeys=[...new Set(filtered.map(item=>item.date.toISOString().slice(0,10)))].slice(-36);
+  const daySet=new Set(dayKeys);
+  const seriesNames=[...new Set(filtered.filter(item=>daySet.has(item.date.toISOString().slice(0,10))).map(item=>item.name))].slice(0,8);
+
+  const values=new Map();
+  for (const item of filtered) {
+    const day=item.date.toISOString().slice(0,10);
+    if (!daySet.has(day) || !seriesNames.includes(item.name)) continue;
+    values.set(item.name+"|"+day,item.value);
+  }
+
+  return {
+    format:"number",
+    labels:dayKeys.map(day=>new Date(day+"T12:00:00").toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"2-digit"})),
+    datasets:seriesNames.map(name=>({
+      label:name,
+      data:dayKeys.map(day=>values.has(name+"|"+day)?values.get(name+"|"+day):null)
+    }))
   };
 }
 
@@ -2541,62 +2621,61 @@ async function buildIndexersDashboard(env,tenant,url) {
     safeBethaRows(env,tenant,"bi","indexadores-valores")
   ]);
 
-  const datePaths=["data","dataValor","dtValor","dataReferencia","competencia"];
   const valRows=val.rows.filter(r=>periodIncludes(r,{
-    periodo,exercicio,datePaths,yearPaths:["ano","exercicio"]
+    periodo,exercicio,datePaths:["dtIdx"],yearPaths:["ano","exercicio"]
   }));
 
-  const monthly=monthSeries(val.rows,{
-    datePaths,
-    valuePaths:["valor","valorIndice","indice","percentual","vlIndice"],
-    periodo,exercicio
-  });
-
-  const active=countWhere(idx.rows,r=>{
-    const s=stringValue(r,["situacao","situacao.descricao","status"],"");
-    if(s) return !/inativ|desativ|cancel/i.test(s);
-    return !truthyValue(r,["desativado","inativo"]);
-  });
+  const current=countWhere(idx.rows,r=>truthyValue(r,["corrente"]));
 
   return {
     view:"indexadores",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
     kpis:{
       "indexadores-total":idx.loaded,
-      "indexadores-ativos":active,
+      "indexadores-ativos":current,
       "valores-indexadores":val.loaded,
       "valores-periodo":valRows.length
     },
     charts:{
       "indexadores-tipo":chartGroups(
-        groupCount(idx.rows,["tipo","tipoIndexador","descricao","nome","sigla"],12),
+        groupCount(idx.rows,["nome","sigla"],12),
         "Indexadores","number"
       ),
-      "indexadores-situacao":chartGroups(
-        groupCount(idx.rows,["situacao","situacao.descricao","status"],10),
+      "indexadores-situacao":chartFixed(
+        ["Corrente","Não corrente"],
+        [current,Math.max(0,idx.loaded-current)],
         "Indexadores","number"
       ),
       "valores-por-indexador":chartGroups(
-        groupCount(val.rows,["indexador.descricao","indexador.nome","descricaoIndexador","idIndexador","indexador"],12),
+        groupCount(val.rows,["moeda.nome","moeda.sigla","moeda.id"],12),
         "Registros","number"
       ),
-      "evolucao-indexadores":{
-        format:"number",
-        labels:monthly.labels,
-        datasets:[{label:"Valor/índice",data:monthly.values}]
-      }
+      "evolucao-indexadores":indexerHistorySeries(val.rows,periodo,exercicio)
     },
-    meta:dashboardMeta([["indexadores",idx],["indexadoresValores",val]])
+    meta:dashboardMeta([["indexadores",idx],["indexadoresValores",val]],{
+      fieldMapping:{
+        corrente:"corrente",
+        indexador:"moeda.nome",
+        data:"dtIdx",
+        valor:"vlIdx"
+      }
+    })
   };
 }
 
 async function buildTerritoryDashboard(env,tenant,url) {
-  const [bairros,distritos,logradouros,loteamentos,imoveis]=await Promise.all([
+  const [bairros,distritos,logradouros,imoveis]=await Promise.all([
     safeBethaRows(env,tenant,"base","bairros"),
     safeBethaRows(env,tenant,"base","distritos"),
     safeBethaRows(env,tenant,"base","logradouros"),
-    safeBethaRows(env,tenant,"base","loteamentos"),
     safeBethaRows(env,tenant,"bi","imoveis")
   ]);
+
+  const geocoded=countWhere(logradouros.rows,r=>{
+    const lat=firstValue(r,["latitude"]);
+    const lng=firstValue(r,["longitude"]);
+    return lat!==undefined && lat!==null && lat!=="" &&
+      lng!==undefined && lng!==null && lng!=="";
+  });
 
   return {
     view:"territorio",tenant:{id:tenant.id,name:tenant.name},
@@ -2604,35 +2683,47 @@ async function buildTerritoryDashboard(env,tenant,url) {
       "bairros-total":bairros.loaded,
       "distritos-total":distritos.loaded,
       "logradouros-total":logradouros.loaded,
-      "loteamentos-total":loteamentos.loaded,
+      "logradouros-geo":geocoded,
       "territorio-imoveis":imoveis.loaded
     },
     charts:{
       "imoveis-bairro":chartGroups(
-        groupCount(imoveis.rows,["nomeBairro","bairro.nome","bairro.descricao","idBairro"],15),
+        groupCount(imoveis.rows,["nomeBairro","iBairros"],15),
         "Imóveis","number"
       ),
       "imoveis-setor":chartGroups(
-        groupCount(imoveis.rows,["setor","setor.codigo","setor.descricao"],15),
+        groupCount(imoveis.rows,["setor","nroSecao","iSecoes"],15),
         "Imóveis","number"
       ),
       "logradouros-tipo":chartGroups(
-        groupCount(logradouros.rows,["tipo","tipoLogradouro.descricao","tipoLogradouro","abreviatura"],12),
+        groupCount(logradouros.rows,["tipoLogradouroDescricao","tipoLogradouroAbreviatura"],12),
         "Logradouros","number"
       ),
-      "loteamentos-situacao":chartGroups(
-        groupCount(loteamentos.rows,["situacao","situacao.descricao","status"],10),
-        "Loteamentos","number"
+      "bairros-zona":chartGroups(
+        groupCount(bairros.rows,["zonaRural.descricao","zonaRural.valor"],6),
+        "Bairros","number"
+      ),
+      "logradouros-zona-fiscal":chartGroups(
+        groupCount(logradouros.rows,["zonaFiscal"],12),
+        "Logradouros","number"
       ),
       "cadastros-territoriais":chartFixed(
-        ["Bairros","Distritos","Logradouros","Loteamentos"],
-        [bairros.loaded,distritos.loaded,logradouros.loaded,loteamentos.loaded],
+        ["Bairros","Distritos","Logradouros","Imóveis"],
+        [bairros.loaded,distritos.loaded,logradouros.loaded,imoveis.loaded],
         "Cadastros","number"
       )
     },
     meta:dashboardMeta([
-      ["bairros",bairros],["distritos",distritos],["logradouros",logradouros],["loteamentos",loteamentos],["imoveis",imoveis]
-    ])
+      ["bairros",bairros],["distritos",distritos],["logradouros",logradouros],["imoveis",imoveis]
+    ],{
+      fieldMapping:{
+        bairroImovel:"nomeBairro",
+        setorImovel:"setor",
+        tipoLogradouro:"tipoLogradouroDescricao",
+        zonaRural:"zonaRural.descricao",
+        zonaFiscal:"zonaFiscal"
+      }
+    })
   };
 }
 
@@ -2810,7 +2901,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-03-schema-probe-v39",
+        buildVersion:"2026-10-03-panels-refined-v40",
         dashboardAggregatePublic:true,
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
@@ -2839,45 +2930,6 @@ export default {
       } catch(error) {
         return errorResponse(request,env,error);
       }
-    }
-
-    if (url.pathname==="/api/internal/schema-probe" && request.method==="GET") {
-      const tenants=parseJsonObject(env.BETHA_TENANTS_JSON,{});
-      const firstId=Object.keys(tenants)[0] || "";
-      if (!firstId) return json(request,env,200,{ok:true,tenant:"",sources:[]});
-
-      const tenant=resolveTenant(env,firstId);
-      const specs=[
-        ["bi","receitas"],
-        ["base","creditos-tributarios"],
-        ["base","creditos-tributarios-receitas"],
-        ["base","guias-unificadas"],
-        ["bi","indexadores"],
-        ["bi","indexadores-valores"],
-        ["base","bairros"],
-        ["base","distritos"],
-        ["base","logradouros"],
-        ["base","loteamentos"],
-        ["bi","imoveis"]
-      ];
-
-      const sources=[];
-      for (const [source,resource] of specs) {
-        const src=await safeBethaRows(env,tenant,source,resource,{limit:50,maxPages:1});
-        sources.push({
-          source:source+":"+resource,
-          loaded:src.loaded,
-          error:src.error||"",
-          errorStatus:src.errorStatus||null,
-          fields:diagnosticFieldNames(src.rows,3,4)
-        });
-      }
-
-      return json(request,env,200,{
-        ok:true,
-        tenant:tenant.id,
-        sources
-      });
     }
 
     if (url.pathname==="/api/auth/logout" && request.method==="GET") {
