@@ -3259,9 +3259,7 @@ async function buildWorksDashboard(env,tenant,url) {
       "obras-medida":chartGroups(medida,"Medida","number"),
       "obras-responsaveis":chartGroups([...respGrouped.entries()],"Vínculos","number")
     },
-    meta:dashboardMeta([["obras",obras],["responsaveis",resp]],{
-      privacy:["nomes de responsáveis ocultados enquanto login oficial estiver desativado"]
-    })
+    meta:dashboardMeta([["obras",obras],["responsaveis",resp]])
   };
 }
 
@@ -3831,7 +3829,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-04-finance-filters-v47",
+        buildVersion:"2026-10-04-production-ui-v48",
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant",
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
