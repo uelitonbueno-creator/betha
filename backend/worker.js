@@ -2209,9 +2209,47 @@ function dashboardMeta(entries,extra={}) {
   };
 }
 
+
+function dashboardFilterValue(url,key) {
+  return String(url.searchParams.get(key)||"").trim();
+}
+
+function filterOptionsFromRows(rows,paths,limit=80) {
+  const seen=new Map();
+  for(const row of rows||[]) {
+    const value=stringValue(row,paths,"").trim();
+    if(!value || value==="Não informado") continue;
+    const normalized=value.toLocaleLowerCase("pt-BR");
+    if(!seen.has(normalized)) seen.set(normalized,value);
+    if(seen.size>=limit) break;
+  }
+  return [...seen.values()]
+    .sort((a,b)=>a.localeCompare(b,"pt-BR",{numeric:true,sensitivity:"base"}))
+    .map(value=>({value,label:value}));
+}
+
+function matchesDashboardFilter(row,value,paths) {
+  if(!value) return true;
+  const actual=stringValue(row,paths,"").trim();
+  return actual.localeCompare(String(value).trim(),"pt-BR",{sensitivity:"base"})===0;
+}
+
+function activeFilterObject(values) {
+  return Object.fromEntries(
+    Object.entries(values||{}).filter(([,value])=>value!==undefined&&value!==null&&String(value)!=="")
+  );
+}
+
 async function buildRevenueDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+
+  const filters={
+    tipoPagamento:dashboardFilterValue(url,"tipoPagamento"),
+    tipoBaixa:dashboardFilterValue(url,"tipoBaixa"),
+    receita:dashboardFilterValue(url,"receita"),
+    classificacaoGuia:dashboardFilterValue(url,"classificacaoGuia")
+  };
 
   const [pag,det,val]=await Promise.all([
     safeBethaRows(env,tenant,"bi","pagamentos"),
@@ -2220,73 +2258,79 @@ async function buildRevenueDashboard(env,tenant,url) {
   ]);
 
   const pagRows=pag.rows.filter(r=>periodIncludes(r,{
+    periodo,exercicio,datePaths:["dataPagamento"],yearPaths:["ano","exercicio"]
+  }));
+
+  const detPeriod=det.rows.filter(r=>periodIncludes(r,{
     periodo,exercicio,
-    datePaths:["dataPagamento"],
+    datePaths:["pagamento.dataPagamento","dataPagamento","dtPagamento"],
     yearPaths:["ano","exercicio"]
   }));
 
-  const detRows=det.rows.filter(r=>
-    !firstValue(r,["pagamento.dataHoraEstorno","pagamento.dhEstorno"]) &&
-    periodIncludes(r,{
-      periodo,exercicio,
-      datePaths:["pagamento.dataPagamento","dataPagamento","dtPagamento"],
-      yearPaths:["ano","exercicio"]
-    })
-  );
-
-  const valRows=val.rows.filter(r=>
-    !firstValue(r,["pagamento.dhEstorno","pagamento.dataHoraEstorno"]) &&
-    periodIncludes(r,{
-      periodo,exercicio,
-      datePaths:["dtPagamento","pagamento.dtPagamento"],
-      yearPaths:["ano","exercicio"]
-    })
-  );
-
-  const paidComponents={
-    tributo:["valorPagoLancado"],
-    correcao:["valorPagoCorrecao"],
-    juros:["valorPagoJuros"],
-    multa:["valorPagoMulta"]
-  };
-
-  const totalPaidRow=row=>
-    numericValue(row,paidComponents.tributo)+
-    numericValue(row,paidComponents.correcao)+
-    numericValue(row,paidComponents.juros)+
-    numericValue(row,paidComponents.multa);
-
-  const valFinancial=valRows.map(row=>({...row,__totalPaid:totalPaidRow(row)}));
+  const valPeriod=val.rows.filter(r=>periodIncludes(r,{
+    periodo,exercicio,
+    datePaths:["dtPagamento","pagamento.dtPagamento"],
+    yearPaths:["ano","exercicio"]
+  }));
 
   const paymentMeta=new Map();
   for(const row of pagRows){
     const id=String(firstValue(row,["id"])||"");
     if(!id) continue;
     paymentMeta.set(id,{
-      classification:stringValue(row,["classificacaoGuia.descricao","classificacaoGuia"],"Não informado"),
-      retroactive:truthyValue(row,["pagamentoRetroativo"]) || Boolean(firstValue(row,["dataPagamentoRetroativo"])),
-      estornado:Boolean(firstValue(row,["dataHoraEstorno"]))
+      classification:stringValue(row,["classificacaoGuia.descricao","classificacaoGuia.valor"],"Não informado"),
+      retroactive:truthyValue(row,["pagamentoRetroativo"]) || Boolean(firstValue(row,["dataPagamentoRetroativo"]))
     });
   }
 
-  const enriched=valFinancial.map(row=>{
+  const totalPaidRow=row=>
+    numericValue(row,["valorPagoLancado"])+
+    numericValue(row,["valorPagoCorrecao"])+
+    numericValue(row,["valorPagoJuros"])+
+    numericValue(row,["valorPagoMulta"]);
+
+  const enrichedAll=valPeriod.map(row=>{
     const paymentId=String(firstValue(row,["idPagamento","pagamento.id"])||"");
     const meta=paymentMeta.get(paymentId)||{};
     return {
       ...row,
       __paymentId:paymentId,
       __classification:meta.classification||"Não informado",
-      __retroactive:Boolean(meta.retroactive)
+      __retroactive:Boolean(meta.retroactive),
+      __totalPaid:totalPaidRow(row)
     };
   });
 
+  const filterOptions={
+    tipoPagamento:filterOptionsFromRows(enrichedAll,["pagamento.tipoPagamento.descricao","pagamento.tipoPagamento.valor"]),
+    tipoBaixa:filterOptionsFromRows(enrichedAll,["pagamento.tipoBaixa.descricao","pagamento.tipoBaixa.valor"]),
+    receita:filterOptionsFromRows(enrichedAll,["receita.descricao","receita.abreviatura"]),
+    classificacaoGuia:filterOptionsFromRows(enrichedAll,["__classification"])
+  };
+
+  const filteredAll=enrichedAll.filter(row=>
+    matchesDashboardFilter(row,filters.tipoPagamento,["pagamento.tipoPagamento.descricao","pagamento.tipoPagamento.valor"]) &&
+    matchesDashboardFilter(row,filters.tipoBaixa,["pagamento.tipoBaixa.descricao","pagamento.tipoBaixa.valor"]) &&
+    matchesDashboardFilter(row,filters.receita,["receita.descricao","receita.abreviatura"]) &&
+    matchesDashboardFilter(row,filters.classificacaoGuia,["__classification"])
+  );
+
+  const financialRows=filteredAll.filter(r=>!firstValue(r,["pagamento.dhEstorno","pagamento.dataHoraEstorno"]));
+  const reversedRows=filteredAll.filter(r=>Boolean(firstValue(r,["pagamento.dhEstorno","pagamento.dataHoraEstorno"])));
+
+  const activeFilterCount=Object.keys(activeFilterObject(filters)).length;
+  const allowedPaymentIds=new Set(financialRows.map(r=>r.__paymentId).filter(Boolean));
+  const detRows=activeFilterCount
+    ? detPeriod.filter(row=>allowedPaymentIds.has(String(firstValue(row,["pagamento.id","idPagamento"])||"")))
+    : detPeriod.filter(row=>!firstValue(row,["pagamento.dataHoraEstorno","pagamento.dhEstorno"]));
+
   const day=dailySeries(
-    enriched.map(r=>({dtPagamento:firstValue(r,["dtPagamento","pagamento.dtPagamento"]),__totalPaid:r.__totalPaid})),
+    financialRows.map(r=>({dtPagamento:firstValue(r,["dtPagamento","pagamento.dtPagamento"]),__totalPaid:r.__totalPaid})),
     ["dtPagamento"],["__totalPaid"],exercicio
   );
   const mon=monthSeries(
-    enriched.map(r=>({dtPagamento:firstValue(r,["dtPagamento","pagamento.dtPagamento"]),__totalPaid:r.__totalPaid})),
-    {datePaths:["dtPagamento"],valuePaths:["__totalPaid"],periodo,exercicio}
+    financialRows,
+    {datePaths:["dtPagamento","pagamento.dtPagamento"],valuePaths:["__totalPaid"],periodo,exercicio}
   );
 
   const credit=groupSum(
@@ -2295,87 +2339,68 @@ async function buildRevenueDashboard(env,tenant,url) {
     ["valorPagoLancado"],
     12
   );
-  const receita=groupSum(
-    enriched,
-    ["receita.descricao","receita.abreviatura","receita.id"],
-    ["__totalPaid"],
-    12
-  );
-  const tipo=groupSum(
-    enriched,
-    ["pagamento.tipoPagamento.descricao","pagamento.tipoPagamento"],
-    ["__totalPaid"],
-    12
-  );
-  const baixa=groupSum(
-    enriched,
-    ["pagamento.tipoBaixa.descricao","pagamento.tipoBaixa"],
-    ["__totalPaid"],
-    12
-  );
-  const guias=groupSum(enriched,["__classification"],["__totalPaid"],12);
+  const receita=groupSum(financialRows,["receita.descricao","receita.abreviatura"],["__totalPaid"],12);
+  const tipo=groupSum(financialRows,["pagamento.tipoPagamento.descricao","pagamento.tipoPagamento.valor"],["__totalPaid"],12);
+  const baixa=groupSum(financialRows,["pagamento.tipoBaixa.descricao","pagamento.tipoBaixa.valor"],["__totalPaid"],12);
+  const guias=groupSum(financialRows,["__classification"],["__totalPaid"],12);
 
   const retro=monthSeries(
-    enriched.filter(r=>r.__retroactive),
+    financialRows.filter(r=>r.__retroactive),
     {datePaths:["dtPagamento","pagamento.dtPagamento"],valuePaths:["__totalPaid"],periodo,exercicio}
   );
 
   const est=monthlyCount(
-    pagRows,
-    ["dataHoraEstorno"],
-    periodo,
-    exercicio,
-    r=>Boolean(firstValue(r,["dataHoraEstorno"]))
+    reversedRows,
+    ["pagamento.dhEstorno","pagamento.dataHoraEstorno"],
+    periodo,exercicio
   );
 
   const acres=monthlyMulti(
-    valRows,
+    financialRows,
     ["dtPagamento","pagamento.dtPagamento"],
     [
-      {label:"Correção",paths:paidComponents.correcao},
-      {label:"Juros",paths:paidComponents.juros},
-      {label:"Multa",paths:paidComponents.multa}
+      {label:"Correção",paths:["valorPagoCorrecao"]},
+      {label:"Juros",paths:["valorPagoJuros"]},
+      {label:"Multa",paths:["valorPagoMulta"]}
     ],
-    periodo,
-    exercicio
+    periodo,exercicio
   );
 
-  const descontoConcedido=
-    sumRows(valRows,["valorDescontoConcedidoLancado"])+
-    sumRows(valRows,["valorDescontoConcedidoCorrecao"])+
-    sumRows(valRows,["valorDescontoConcedidoJuros"])+
-    sumRows(valRows,["valorDescontoConcedidoMulta"]);
+  const descontosConcedidos=
+    sumRows(financialRows,["valorDescontoConcedidoLancado"])+
+    sumRows(financialRows,["valorDescontoConcedidoCorrecao"])+
+    sumRows(financialRows,["valorDescontoConcedidoJuros"])+
+    sumRows(financialRows,["valorDescontoConcedidoMulta"]);
 
-  const descontoAplicado=
-    sumRows(valRows,["valorDescontoLancado"])+
-    sumRows(valRows,["valorDescontoCorrecao"])+
-    sumRows(valRows,["valorDescontoJuros"])+
-    sumRows(valRows,["valorDescontoMulta"]);
+  const descontosAplicados=
+    sumRows(financialRows,["valorDescontoLancado"])+
+    sumRows(financialRows,["valorDescontoCorrecao"])+
+    sumRows(financialRows,["valorDescontoJuros"])+
+    sumRows(financialRows,["valorDescontoMulta"]);
 
-  const descontos=descontoConcedido||descontoAplicado;
-
+  const descontos=descontosConcedidos||descontosAplicados;
   const anistias=
-    sumRows(valRows,["valorAnistiadoLancado"])+
-    sumRows(valRows,["valorAnistiadoCorrecao"])+
-    sumRows(valRows,["valorAnistiadoJuros"])+
-    sumRows(valRows,["valorAnistiadoMulta"]);
-
+    sumRows(financialRows,["valorAnistiadoLancado"])+
+    sumRows(financialRows,["valorAnistiadoCorrecao"])+
+    sumRows(financialRows,["valorAnistiadoJuros"])+
+    sumRows(financialRows,["valorAnistiadoMulta"]);
   const remissoes=
-    sumRows(valRows,["valorRemidoLancado"])+
-    sumRows(valRows,["valorRemidoCorrecao"])+
-    sumRows(valRows,["valorRemidoJuros"])+
-    sumRows(valRows,["valorRemidoMulta"]);
+    sumRows(financialRows,["valorRemidoLancado"])+
+    sumRows(financialRows,["valorRemidoCorrecao"])+
+    sumRows(financialRows,["valorRemidoJuros"])+
+    sumRows(financialRows,["valorRemidoMulta"]);
 
-  const tributo=sumRows(valRows,paidComponents.tributo);
-  const correcao=sumRows(valRows,paidComponents.correcao);
-  const juros=sumRows(valRows,paidComponents.juros);
-  const multa=sumRows(valRows,paidComponents.multa);
+  const tributo=sumRows(financialRows,["valorPagoLancado"]);
+  const correcao=sumRows(financialRows,["valorPagoCorrecao"]);
+  const juros=sumRows(financialRows,["valorPagoJuros"]);
+  const multa=sumRows(financialRows,["valorPagoMulta"]);
   const totalPago=tributo+correcao+juros+multa;
 
   return {
     view:"arrecadacao",
     tenant:{id:tenant.id,name:tenant.name},
     period:{periodo,exercicio},
+    filters:activeFilterObject(filters),
     kpis:{
       "total-pago":totalPago,
       "tributo-pago":tributo,
@@ -2389,20 +2414,12 @@ async function buildRevenueDashboard(env,tenant,url) {
       "arrecadacao-mes":{format:"currency",labels:mon.labels,datasets:[{label:"Arrecadado",data:mon.values}]},
       "arrecadacao-credito":chartGroups(credit,"Tributo arrecadado","currency"),
       "arrecadacao-receita":chartGroups(receita,"Arrecadado","currency"),
-      "composicao-pagamento":chartFixed(
-        ["Tributo","Correção","Juros","Multa"],
-        [tributo,correcao,juros,multa],
-        "Valor","currency"
-      ),
+      "composicao-pagamento":chartFixed(["Tributo","Correção","Juros","Multa"],[tributo,correcao,juros,multa],"Valor","currency"),
       "tipo-pagamento":chartGroups(tipo,"Arrecadado","currency"),
       "tipo-baixa":chartGroups(baixa,"Arrecadado","currency"),
       retroativos:{format:"currency",labels:retro.labels,datasets:[{label:"Retroativos",data:retro.values}]},
       estornos:{format:"number",labels:est.labels,datasets:[{label:"Estornos",data:est.values}]},
-      "descontos-anistias":chartFixed(
-        ["Descontos","Anistias","Remissões"],
-        [descontos,anistias,remissoes],
-        "Valor","currency"
-      ),
+      "descontos-anistias":chartFixed(["Descontos","Anistias","Remissões"],[descontos,anistias,remissoes],"Valor","currency"),
       acrescimos:{format:"currency",labels:acres.labels,datasets:acres.datasets},
       guias:chartGroups(guias,"Arrecadado","currency")
     },
@@ -2411,6 +2428,8 @@ async function buildRevenueDashboard(env,tenant,url) {
       {
         calculationBasis:"pagamentos-detalhados-valores",
         excludesReversedPayments:true,
+        filterOptions,
+        appliedFilters:activeFilterObject(filters),
         fieldMapping:{
           data:"dtPagamento",
           tributo:"valorPagoLancado",
@@ -2428,33 +2447,31 @@ async function buildRevenueDashboard(env,tenant,url) {
 async function buildDebtsDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const filters={
+    situacao:dashboardFilterValue(url,"situacao"),
+    credito:dashboardFilterValue(url,"credito"),
+    origem:dashboardFilterValue(url,"origem"),
+    carteira:dashboardFilterValue(url,"carteira")
+  };
 
-  const [deb,rec,creditos]=await Promise.all([
+  const [deb,creditos]=await Promise.all([
     safeBethaRows(env,tenant,"bi","debitos"),
-    safeBethaRows(env,tenant,"bi","debitos-receitas"),
     safeBethaRows(env,tenant,"base","creditos-tributarios")
   ]);
 
-  const dates=["dhDebito"];
-  const rows=deb.rows.filter(r=>periodIncludes(r,{
-    periodo,exercicio,
-    datePaths:dates,
-    yearPaths:["ano"]
+  const periodRows=deb.rows.filter(r=>periodIncludes(r,{
+    periodo,exercicio,datePaths:["dhDebito"],yearPaths:["ano"]
   }));
-  const amount=["vlLancado"];
 
   const creditNames=new Map();
   for(const row of creditos.rows){
     const id=String(firstValue(row,["id"])||"");
-    if(!id) continue;
-    creditNames.set(
-      id,
-      stringValue(row,["descricao","abreviatura","nome"],id)
-    );
+    if(id) creditNames.set(id,stringValue(row,["descricao","abreviatura","nome"],id));
   }
 
-  const enriched=rows.map(row=>{
-    const id=String(firstValue(row,["idCredito"])||"");
+  const now=Date.now();
+  const enrichedAll=periodRows.map(row=>{
+    const creditId=String(firstValue(row,["idCredito"])||"");
     let origem="Outros";
     if(firstValue(row,["imovel.id","imovel.idImovel","idContribImoveis"])!==undefined) origem="Imobiliário";
     else if(firstValue(row,["economico.id","economico.idEconomico"])!==undefined) origem="Econômico";
@@ -2463,29 +2480,44 @@ async function buildDebtsDashboard(env,tenant,url) {
     else if(firstValue(row,["idTransferenciaImoveis"])!==undefined) origem="ITBI";
     else if(firstValue(row,["idNotasAvulsas"])!==undefined) origem="Nota avulsa";
 
+    const paid=Boolean(firstValue(row,["dtPgto"]));
+    const situation=stringValue(row,["situacao"],"");
+    const open=!paid && !/cancel|quit|pago|baix/i.test(situation);
+    const due=dateValue(row,["dtVcto"]);
+    const overdue=open && Boolean(due&&due.getTime()<now);
+
     return {
       ...row,
-      __creditoLabel:creditNames.get(id)||id||"Não informado",
-      __origem:origem
+      __creditoLabel:creditNames.get(creditId)||creditId||"Não informado",
+      __origem:origem,
+      __open:open,
+      __paid:paid,
+      __overdue:overdue
     };
   });
 
-  const paidRows=enriched.filter(r=>Boolean(firstValue(r,["dtPgto"])));
-  const openRows=enriched.filter(r=>{
-    if(firstValue(r,["dtPgto"])) return false;
-    const situacao=stringValue(r,["situacao"],"");
-    return !/cancel|quit|pago|baix/i.test(situacao);
+  const filterOptions={
+    situacao:filterOptionsFromRows(enrichedAll,["situacao"]),
+    credito:filterOptionsFromRows(enrichedAll,["__creditoLabel"]),
+    origem:filterOptionsFromRows(enrichedAll,["__origem"])
+  };
+
+  const rows=enrichedAll.filter(row=>{
+    if(!matchesDashboardFilter(row,filters.situacao,["situacao"])) return false;
+    if(!matchesDashboardFilter(row,filters.credito,["__creditoLabel"])) return false;
+    if(!matchesDashboardFilter(row,filters.origem,["__origem"])) return false;
+    if(filters.carteira==="aberto" && !row.__open) return false;
+    if(filters.carteira==="vencido" && !row.__overdue) return false;
+    if(filters.carteira==="pago" && !row.__paid) return false;
+    return true;
   });
 
-  const month=monthSeries(enriched,{
-    datePaths:dates,
-    valuePaths:amount,
-    periodo,exercicio
-  });
-  const sit=groupSum(enriched,["situacao"],amount,12);
-  const credito=groupSum(enriched,["__creditoLabel"],amount,12);
+  const paidRows=rows.filter(r=>r.__paid);
+  const openRows=rows.filter(r=>r.__open);
+  const month=monthSeries(rows,{datePaths:["dhDebito"],valuePaths:["vlLancado"],periodo,exercicio});
+  const sit=groupSum(rows,["situacao"],["vlLancado"],12);
+  const credito=groupSum(rows,["__creditoLabel"],["vlLancado"],12);
 
-  const now=Date.now();
   const aging=new Map();
   for(const row of openRows){
     const d=dateValue(row,["dtVcto"]);
@@ -2494,27 +2526,25 @@ async function buildDebtsDashboard(env,tenant,url) {
       const days=Math.floor((now-d.getTime())/86400000);
       label=days<=0?"A vencer":days<=30?"1–30 dias":days<=90?"31–90 dias":days<=180?"91–180 dias":days<=365?"181–365 dias":"Acima de 1 ano";
     }
-    aging.set(label,(aging.get(label)||0)+numericValue(row,amount));
+    aging.set(label,(aging.get(label)||0)+numericValue(row,["vlLancado"]));
   }
 
-  const years=groupSum(enriched,["ano"],amount,20);
-  const unica=groupSum(enriched,["unica"],amount,10);
-  const origem=groupSum(enriched,["__origem"],amount,12);
-  const descontos=groupSum(enriched,["situacao"],["vlDesconto"],12);
+  const years=groupSum(rows,["ano"],["vlLancado"],20);
+  const unica=groupSum(rows,["unica"],["vlLancado"],10);
+  const origem=groupSum(rows,["__origem"],["vlLancado"],12);
+  const descontos=groupSum(rows,["situacao"],["vlDesconto"],12);
 
   return {
     view:"debitos",
     tenant:{id:tenant.id,name:tenant.name},
     period:{periodo,exercicio},
+    filters:activeFilterObject(filters),
     kpis:{
-      "vl-lancado":sumRowsOrNull(enriched,amount),
-      "qtd-debitos":enriched.length,
-      vencidos:countWhere(openRows,r=>{
-        const d=dateValue(r,["dtVcto"]);
-        return Boolean(d&&d.getTime()<now);
-      }),
+      "vl-lancado":sumRowsOrNull(rows,["vlLancado"]),
+      "qtd-debitos":rows.length,
+      vencidos:countWhere(rows,r=>r.__overdue),
       pagos:paidRows.length,
-      "descontos-debito":sumRowsOrNull(enriched,["vlDesconto"])
+      "descontos-debito":sumRowsOrNull(rows,["vlDesconto"])
     },
     charts:{
       "lancamentos-mensais":{format:"currency",labels:month.labels,datasets:[{label:"Lançado",data:month.values}]},
@@ -2527,9 +2557,11 @@ async function buildDebtsDashboard(env,tenant,url) {
       "descontos-situacao":chartGroups(descontos,"Descontos","currency")
     },
     meta:dashboardMeta(
-      [["debitos",deb],["debitosReceitas",rec],["creditosTributarios",creditos]],
+      [["debitos",deb],["creditosTributarios",creditos]],
       {
         agingOpenOnly:true,
+        filterOptions,
+        appliedFilters:activeFilterObject(filters),
         fieldMapping:{
           dataLancamento:"dhDebito",
           vencimento:"dtVcto",
@@ -2547,6 +2579,12 @@ async function buildDebtsDashboard(env,tenant,url) {
 async function buildActiveDebtDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const filters={
+    situacao:dashboardFilterValue(url,"situacao"),
+    credito:dashboardFilterValue(url,"credito"),
+    anoDivida:dashboardFilterValue(url,"anoDivida"),
+    cobranca:dashboardFilterValue(url,"cobranca")
+  };
 
   const [div,enc,rec,payvals,baseDiv]=await Promise.all([
     safeBethaRows(env,tenant,"bi","dividas"),
@@ -2559,19 +2597,81 @@ async function buildActiveDebtDashboard(env,tenant,url) {
   const closingKey=row=>{
     const year=Number(firstValue(row,["anoEncerramento"]));
     const month=Number(firstValue(row,["mesEncerramento.valor","mesEncerramento"]));
-    if(Number.isFinite(year)&&year>1900&&Number.isFinite(month)&&month>=1&&month<=12){
-      return year*100+month;
-    }
+    if(Number.isFinite(year)&&year>1900&&Number.isFinite(month)&&month>=1&&month<=12) return year*100+month;
     const d=dateValue(row,["dataFinalMes"]);
     return d ? d.getFullYear()*100+(d.getMonth()+1) : 0;
   };
 
   const closingKeys=enc.rows.map(closingKey).filter(Boolean);
   const latestKey=closingKeys.length?Math.max(...closingKeys):0;
-  const latestRows=latestKey?enc.rows.filter(r=>closingKey(r)===latestKey):[];
+
+  const creditNames=new Map();
+  const contributorNames=new Map();
+  for(const row of baseDiv.rows){
+    const creditId=String(firstValue(row,["creditoTributario.id"])||"");
+    if(creditId&&!creditNames.has(creditId)){
+      creditNames.set(creditId,stringValue(row,["creditoTributario.descricao","creditoTributario.abreviatura"],creditId));
+    }
+    const contributorId=String(firstValue(row,["contribuinte.id"])||"");
+    if(contributorId&&!contributorNames.has(contributorId)){
+      contributorNames.set(contributorId,stringValue(row,["contribuinte.nome","contribuinte.nomeFantasia"],contributorId));
+    }
+  }
+
+  const debtState=new Map();
+  for(const row of div.rows){
+    const id=String(firstValue(row,["id"])||"");
+    if(!id) continue;
+    debtState.set(id,{
+      execucao:truthyValue(row,["sitExecucao"]),
+      protesto:truthyValue(row,["protesto"]),
+      penhora:Boolean(firstValue(row,["penhora"])),
+      cda:truthyValue(row,["possuiCdaEmitida"])
+    });
+  }
+
+  const enrichClosing=row=>{
+    const debtId=String(firstValue(row,["idDivida"])||"");
+    const creditId=String(firstValue(row,["idCreditoTributario"])||"");
+    const contributorId=String(firstValue(row,["idContribuinte"])||"");
+    const state=debtState.get(debtId)||{};
+    return {
+      ...row,
+      __debtId:debtId,
+      __creditoLabel:creditNames.get(creditId)||creditId||"Não informado",
+      __contribuinteLabel:contributorNames.get(contributorId)||("Contribuinte "+(contributorId||"não identificado")),
+      __execucao:Boolean(state.execucao),
+      __protesto:Boolean(state.protesto),
+      __penhora:Boolean(state.penhora),
+      __cda:Boolean(state.cda)
+    };
+  };
+
+  const closingAll=enc.rows.map(enrichClosing);
+  const latestAll=latestKey?closingAll.filter(r=>closingKey(r)===latestKey):[];
+
+  const filterOptions={
+    situacao:filterOptionsFromRows(latestAll,["situacaoDivida.descricao","situacaoDivida"]),
+    credito:filterOptionsFromRows(latestAll,["__creditoLabel"]),
+    anoDivida:filterOptionsFromRows(latestAll,["anoDivida"])
+  };
+
+  const passFilters=row=>{
+    if(!matchesDashboardFilter(row,filters.situacao,["situacaoDivida.descricao","situacaoDivida"])) return false;
+    if(!matchesDashboardFilter(row,filters.credito,["__creditoLabel"])) return false;
+    if(!matchesDashboardFilter(row,filters.anoDivida,["anoDivida"])) return false;
+    if(filters.cobranca==="execucao"&&!row.__execucao) return false;
+    if(filters.cobranca==="protesto"&&!row.__protesto) return false;
+    if(filters.cobranca==="penhora"&&!row.__penhora) return false;
+    return true;
+  };
+
+  const latestRows=latestAll.filter(passFilters);
+  const activeFilters=activeFilterObject(filters);
+  const closingRows=Object.keys(activeFilters).length?closingAll.filter(passFilters):closingAll;
 
   const stockByMonth=new Map();
-  for(const row of enc.rows){
+  for(const row of closingRows){
     const key=closingKey(row);
     if(!key) continue;
     stockByMonth.set(key,(stockByMonth.get(key)||0)+numericValue(row,["valorSaldo"]));
@@ -2579,11 +2679,7 @@ async function buildActiveDebtDashboard(env,tenant,url) {
   const stockEntries=[...stockByMonth.entries()].sort((a,b)=>a[0]-b[0]).slice(-24);
   const stockChart={
     format:"currency",
-    labels:stockEntries.map(([key])=>{
-      const year=Math.floor(key/100);
-      const month=key%100;
-      return String(month).padStart(2,"0")+"/"+year;
-    }),
+    labels:stockEntries.map(([key])=>String(key%100).padStart(2,"0")+"/"+Math.floor(key/100)),
     datasets:[{label:"Saldo",data:stockEntries.map(([,value])=>value)}]
   };
 
@@ -2593,11 +2689,22 @@ async function buildActiveDebtDashboard(env,tenant,url) {
   const currentMulta=sumRows(latestRows,["valorMulta"]);
   const currentPrincipal=Math.max(0,currentSaldo-currentCorrecao-currentJuros-currentMulta);
 
-  const basePeriodRows=baseDiv.rows.filter(r=>periodIncludes(r,{
-    periodo,exercicio,
-    datePaths:["dataInscricao"],
-    yearPaths:["ano"]
+  const latestDebtIds=new Set(latestRows.map(r=>r.__debtId).filter(Boolean));
+
+  const basePeriodAll=baseDiv.rows.filter(r=>periodIncludes(r,{
+    periodo,exercicio,datePaths:["dataInscricao"],yearPaths:["ano"]
   }));
+
+  const basePeriodRows=basePeriodAll.filter(row=>{
+    const creditLabel=stringValue(row,["creditoTributario.descricao","creditoTributario.abreviatura","creditoTributario.id"],"");
+    if(filters.credito&&creditLabel.localeCompare(filters.credito,"pt-BR",{sensitivity:"base"})!==0) return false;
+    if(filters.anoDivida&&!matchesDashboardFilter(row,filters.anoDivida,["ano"])) return false;
+    if(filters.situacao&&!matchesDashboardFilter(row,filters.situacao,["situacaoDivida.descricao","situacaoDivida"])) return false;
+    if(filters.cobranca==="execucao"&&!truthyValue(row,["executada.valor","executada.descricao","executada"])) return false;
+    if(filters.cobranca==="protesto"&&!truthyValue(row,["protestada.valor","protestada.descricao","protestada"])) return false;
+    if(filters.cobranca==="penhora"&&!Boolean(firstValue(row,["penhora"]))) return false;
+    return true;
+  });
 
   const inscriptionRows=basePeriodRows.map(row=>({
     ...row,
@@ -2609,70 +2716,50 @@ async function buildActiveDebtDashboard(env,tenant,url) {
   }));
 
   const inscriptions=monthSeries(inscriptionRows,{
-    datePaths:["dataInscricao"],
-    valuePaths:["__valorInscrito"],
-    periodo,exercicio
+    datePaths:["dataInscricao"],valuePaths:["__valorInscrito"],periodo,exercicio
   });
 
-  const status=groupCount(div.rows,["statusDivida","situacao"],12);
+  const status=groupCount(latestRows,["situacaoDivida.descricao","situacaoDivida"],12);
   const aging=groupSum(latestRows,["anoDivida"],["valorSaldo"],20);
-
-  const creditNames=new Map();
-  const contributorNames=new Map();
-  for(const row of baseDiv.rows){
-    const creditId=String(firstValue(row,["creditoTributario.id"])||"");
-    if(creditId && !creditNames.has(creditId)){
-      creditNames.set(creditId,stringValue(row,["creditoTributario.descricao","creditoTributario.abreviatura"],creditId));
-    }
-    const contributorId=String(firstValue(row,["contribuinte.id"])||"");
-    if(contributorId && !contributorNames.has(contributorId)){
-      contributorNames.set(contributorId,stringValue(row,["contribuinte.nome","contribuinte.nomeFantasia"],contributorId));
-    }
-  }
-
-  const latestEnriched=latestRows.map(row=>{
-    const creditId=String(firstValue(row,["idCreditoTributario"])||"");
-    const contributorId=String(firstValue(row,["idContribuinte"])||"");
-    return {
-      ...row,
-      __creditoLabel:creditNames.get(creditId)||creditId||"Não informado",
-      __contribuinteLabel:contributorNames.get(contributorId)||("Contribuinte "+(contributorId||"não identificado"))
-    };
-  });
-
-  const credito=groupSum(latestEnriched,["__creditoLabel"],["valorSaldo"],12);
-  const topDevedores=groupSum(latestEnriched,["__contribuinteLabel"],["valorSaldo"],15);
+  const credito=groupSum(latestRows,["__creditoLabel"],["valorSaldo"],12);
+  const topDevedores=groupSum(latestRows,["__contribuinteLabel"],["valorSaldo"],15);
 
   const cobranca=chartFixed(
     ["Execução","Protesto","Penhora"],
     [
-      countWhere(div.rows,r=>truthyValue(r,["sitExecucao","executada.valor","executada.descricao"])),
-      countWhere(div.rows,r=>truthyValue(r,["protesto","protestada.valor","protestada.descricao"])),
-      countWhere(div.rows,r=>Boolean(firstValue(r,["penhora"])))
+      countWhere(latestRows,r=>r.__execucao),
+      countWhere(latestRows,r=>r.__protesto),
+      countWhere(latestRows,r=>r.__penhora)
     ],
     "Dívidas","number"
   );
 
-  const recoveryRows=payvals.rows
+  const recoveryBase=payvals.rows
     .filter(r=>firstValue(r,["idDivida"])!==undefined)
-    .filter(r=>!firstValue(r,["pagamento.dhEstorno"]))
-    .map(r=>({
-      ...r,
-      __totalPaid:
-        numericValue(r,["valorPagoLancado"])+
-        numericValue(r,["valorPagoCorrecao"])+
-        numericValue(r,["valorPagoJuros"])+
-        numericValue(r,["valorPagoMulta"])
-    }));
+    .filter(r=>!firstValue(r,["pagamento.dhEstorno"]));
+
+  const recoveryRows=(Object.keys(activeFilters).length
+    ? recoveryBase.filter(r=>latestDebtIds.has(String(firstValue(r,["idDivida"])||"")))
+    : recoveryBase
+  ).map(r=>({
+    ...r,
+    __totalPaid:
+      numericValue(r,["valorPagoLancado"])+
+      numericValue(r,["valorPagoCorrecao"])+
+      numericValue(r,["valorPagoJuros"])+
+      numericValue(r,["valorPagoMulta"])
+  }));
 
   const recup=monthSeries(recoveryRows,{
-    datePaths:["dtPagamento","pagamento.dtPagamento"],
-    valuePaths:["__totalPaid"],
-    periodo,exercicio
+    datePaths:["dtPagamento","pagamento.dtPagamento"],valuePaths:["__totalPaid"],periodo,exercicio
   });
 
+  const recRows=Object.keys(activeFilters).length
+    ? rec.rows.filter(r=>latestDebtIds.has(String(firstValue(r,["idDividas"])||"")))
+    : rec.rows;
+
   const recGroups=new Map();
-  for(const row of rec.rows){
+  for(const row of recRows){
     const label=stringValue(row,["idCreditosTributariosRec"],"Não informado");
     const item=recGroups.get(label)||{inscrito:0,saldo:0};
     item.inscrito+=numericValue(row,["vlInscritoCredito"]);
@@ -2682,10 +2769,9 @@ async function buildActiveDebtDashboard(env,tenant,url) {
   const topReceitas=[...recGroups.entries()].sort((a,b)=>b[1].saldo-a[1].saldo).slice(0,12);
 
   const cancel=monthlyCount(
-    baseDiv.rows,
+    basePeriodRows,
     ["dataCancelamento","dataPrescricao"],
-    periodo,
-    exercicio,
+    periodo,exercicio,
     r=>Boolean(firstValue(r,["dataCancelamento","dataPrescricao"]))
   );
 
@@ -2693,22 +2779,19 @@ async function buildActiveDebtDashboard(env,tenant,url) {
     view:"divida",
     tenant:{id:tenant.id,name:tenant.name},
     period:{periodo,exercicio},
+    filters:activeFilters,
     kpis:{
       "saldo-divida":currentSaldo,
       inscrito:sumRows(latestRows,["valorInscrito"]),
       "qtd-dividas":latestRows.length,
-      executadas:countWhere(div.rows,r=>truthyValue(r,["sitExecucao","executada.valor","executada.descricao"])),
-      protestadas:countWhere(div.rows,r=>truthyValue(r,["protesto","protestada.valor","protestada.descricao"])),
-      cda:countWhere(div.rows,r=>truthyValue(r,["possuiCdaEmitida"]))
+      executadas:countWhere(latestRows,r=>r.__execucao),
+      protestadas:countWhere(latestRows,r=>r.__protesto),
+      cda:countWhere(latestRows,r=>r.__cda)
     },
     charts:{
       "estoque-divida":stockChart,
       "inscricoes-mes":{format:"currency",labels:inscriptions.labels,datasets:[{label:"Inscrito",data:inscriptions.values}]},
-      "composicao-divida":chartFixed(
-        ["Principal","Correção","Juros","Multa"],
-        [currentPrincipal,currentCorrecao,currentJuros,currentMulta],
-        "Saldo atual","currency"
-      ),
+      "composicao-divida":chartFixed(["Principal","Correção","Juros","Multa"],[currentPrincipal,currentCorrecao,currentJuros,currentMulta],"Saldo atual","currency"),
       "status-divida":chartGroups(status,"Dívidas","number"),
       "aging-divida":chartGroups(aging,"Saldo atual","currency"),
       "divida-credito":chartGroups(credito,"Saldo atual","currency"),
@@ -2726,17 +2809,13 @@ async function buildActiveDebtDashboard(env,tenant,url) {
       "top-devedores":chartGroups(topDevedores,"Saldo atual","currency")
     },
     meta:dashboardMeta(
-      [
-        ["dividas",div],
-        ["encerramentoDividas",enc],
-        ["dividasReceitas",rec],
-        ["pagamentosDetalhadosValores",payvals],
-        ["baseDividas",baseDiv]
-      ],
+      [["dividas",div],["encerramentoDividas",enc],["dividasReceitas",rec],["pagamentosDetalhadosValores",payvals],["baseDividas",baseDiv]],
       {
         currentClosingKey:latestKey||null,
         currentClosingRows:latestRows.length,
         calculationBasis:"último encerramento mensal disponível",
+        filterOptions,
+        appliedFilters:activeFilters,
         fieldMapping:{
           saldo:"valorSaldo",
           inscrito:"valorInscrito",
@@ -2752,6 +2831,12 @@ async function buildActiveDebtDashboard(env,tenant,url) {
 async function buildInstallmentsDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const filters={
+    situacao:dashboardFilterValue(url,"situacao"),
+    tipoEntrada:dashboardFilterValue(url,"tipoEntrada"),
+    cobranca:dashboardFilterValue(url,"cobranca"),
+    inadimplencia:dashboardFilterValue(url,"inadimplencia")
+  };
 
   const [par,parcelas,refs]=await Promise.all([
     safeBethaRows(env,tenant,"bi","parcelamentos"),
@@ -2759,31 +2844,32 @@ async function buildInstallmentsDashboard(env,tenant,url) {
     safeBethaRows(env,tenant,"bi","parcelamentos-referentes")
   ]);
 
-  const dates=["dtParcelamento","dhParcelamento"];
-  const rows=par.rows.filter(r=>periodIncludes(r,{
-    periodo,exercicio,
-    datePaths:dates,
-    yearPaths:["anoParcelamento"]
+  const periodRows=par.rows.filter(r=>periodIncludes(r,{
+    periodo,exercicio,datePaths:["dtParcelamento","dhParcelamento"],yearPaths:["anoParcelamento"]
   }));
 
-  const selectedIds=new Set(
-    rows.map(r=>String(firstValue(r,["id"])||"")).filter(Boolean)
-  );
+  const filterOptions={
+    situacao:filterOptionsFromRows(periodRows,["situacao.descricao","situacao.valor"]),
+    tipoEntrada:filterOptionsFromRows(periodRows,["tipoEntrada"])
+  };
 
-  const parcelRows=parcelas.rows.filter(r=>{
-    if(periodo==="todos") return true;
-    const id=String(firstValue(r,["idParcelamentos"])||"");
-    return selectedIds.has(id);
+  const rows=periodRows.filter(row=>{
+    if(!matchesDashboardFilter(row,filters.situacao,["situacao.descricao","situacao.valor"])) return false;
+    if(!matchesDashboardFilter(row,filters.tipoEntrada,["tipoEntrada"])) return false;
+    if(filters.cobranca==="executada"&&!truthyValue(row,["dividaExecutada.valor","dividaExecutada.descricao","dividaExecutada"])) return false;
+    if(filters.cobranca==="protestada"&&!truthyValue(row,["dividaProtestada.valor","dividaProtestada.descricao","dividaProtestada"])) return false;
+    const vencidas=numericValue(row,["qtdParcelasVencidas"]);
+    if(filters.inadimplencia==="com-vencidas"&&vencidas<=0) return false;
+    if(filters.inadimplencia==="sem-vencidas"&&vencidas>0) return false;
+    return true;
   });
 
-  const refRows=refs.rows.filter(r=>{
-    if(periodo==="todos") return true;
-    const id=String(firstValue(r,["idParcelamentos"])||"");
-    return selectedIds.has(id);
-  });
+  const selectedIds=new Set(rows.map(r=>String(firstValue(r,["id"])||"")).filter(Boolean));
+  const parcelRows=parcelas.rows.filter(r=>periodo==="todos"||selectedIds.has(String(firstValue(r,["idParcelamentos"])||"")));
+  const refRows=refs.rows.filter(r=>periodo==="todos"||selectedIds.has(String(firstValue(r,["idParcelamentos"])||"")));
 
-  const mon=monthlyCount(rows,dates,periodo,exercicio);
-  const situ=groupCount(rows,["situacao.descricao","situacao"],10);
+  const mon=monthlyCount(rows,["dtParcelamento","dhParcelamento"],periodo,exercicio);
+  const situ=groupCount(rows,["situacao.descricao","situacao.valor"],10);
 
   const qtdBuckets=new Map();
   const vencBuckets=new Map();
@@ -2798,7 +2884,6 @@ async function buildInstallmentsDashboard(env,tenant,url) {
 
   const parcelSit=groupSum(parcelRows,["situacao"],["vlParcela"],10);
   const entrada=groupSum(rows,["tipoEntrada"],["vlEntrada"],10);
-
   const cobr=chartFixed(
     ["Dívida executada","Dívida protestada"],
     [
@@ -2809,25 +2894,15 @@ async function buildInstallmentsDashboard(env,tenant,url) {
   );
 
   const origem=groupCount(refRows,["tipoReferente"],12);
-  const canc=monthlyCount(
-    rows,
-    ["dtCancelamento"],
-    periodo,
-    exercicio,
-    r=>Boolean(firstValue(r,["dtCancelamento"]))
-  );
-
+  const canc=monthlyCount(rows,["dtCancelamento"],periodo,exercicio,r=>Boolean(firstValue(r,["dtCancelamento"])));
   const paidParcelRows=parcelRows.filter(r=>Boolean(firstValue(r,["dtPgto"])));
-  const pay=monthSeries(paidParcelRows,{
-    datePaths:["dtPgto"],
-    valuePaths:["vlParcela"],
-    periodo,exercicio
-  });
+  const pay=monthSeries(paidParcelRows,{datePaths:["dtPgto"],valuePaths:["vlParcela"],periodo,exercicio});
 
   return {
     view:"parcelamentos",
     tenant:{id:tenant.id,name:tenant.name},
     period:{periodo,exercicio},
+    filters:activeFilterObject(filters),
     kpis:{
       "qtd-parcelamentos":rows.length,
       ativos:countWhere(rows,r=>/ativ|abert|vigent/i.test(stringValue(r,["situacao.descricao","situacao"],""))),
@@ -2852,6 +2927,8 @@ async function buildInstallmentsDashboard(env,tenant,url) {
       [["parcelamentos",par],["parcelas",parcelas],["referentes",refs]],
       {
         parcelRowsFilteredByAgreement:true,
+        filterOptions,
+        appliedFilters:activeFilterObject(filters),
         fieldMapping:{
           data:"dtParcelamento",
           situacao:"situacao.descricao",
@@ -3754,7 +3831,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-04-settings-v45",
+        buildVersion:"2026-10-04-finance-filters-v46",
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant",
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
