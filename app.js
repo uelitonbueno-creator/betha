@@ -1621,11 +1621,12 @@
   }
 
   function drillProgressHtml(source,drill) {
+    const detailResource=typeof detailResourceFor==="function" ? detailResourceFor(source,drill) : "";
     const nodes=[
       {label:"Visão consolidada",state:"done"},
       {label:"Composição",state:"done"},
       {label:"Origem / cadastro",state:"done"},
-      {label:drill ? "Registro individual · "+drill : "Registro individual",state:"locked"}
+      {label:detailResource ? "Registros autorizados" : "Registro individual",state:detailResource ? "done" : "locked"}
     ];
     return `
       <section class="drawer-section">
