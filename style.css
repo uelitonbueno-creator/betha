@@ -1039,3 +1039,69 @@ html,body{
   .page-actions{align-items:stretch;flex-direction:column}
   .page-actions .btn-secondary-betha{width:100%}
 }
+
+
+/* Configuração MCP */
+.mcp-config-panel{margin-top:12px}
+.mcp-config-grid{
+  display:grid;
+  grid-template-columns:minmax(0,1.5fr) minmax(280px,.8fr);
+  gap:12px;
+  padding:0 12px 14px
+}
+.mcp-copy-row{
+  display:flex;
+  align-items:center;
+  gap:6px
+}
+.mcp-copy-row .form-input{flex:1}
+.mcp-generate-box{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px;
+  border:1px solid #e2e6ea;
+  background:#fbfcfd
+}
+.mcp-generate-box strong{
+  display:block;
+  margin-bottom:3px;
+  color:#2c333a;
+  font-size:11px
+}
+.mcp-generate-box span{
+  display:block;
+  color:#6b7580;
+  font-size:9px;
+  line-height:1.45
+}
+.mcp-token-result{
+  margin:0 12px 14px;
+  padding:12px;
+  border:1px solid #cfe0f3;
+  background:#f7fbff
+}
+.mcp-token-result[hidden]{display:none !important}
+.mcp-token-input{
+  font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+  font-size:10px
+}
+.mcp-token-meta{
+  display:flex;
+  gap:14px;
+  flex-wrap:wrap;
+  margin-top:8px;
+  color:#5f6b76;
+  font-size:9px
+}
+.mcp-security-note{margin:10px 0 0}
+@media(max-width:900px){
+  .mcp-config-grid{grid-template-columns:1fr}
+}
+@media(max-width:620px){
+  .mcp-copy-row,
+  .mcp-generate-box{align-items:stretch;flex-direction:column}
+  .mcp-copy-row .btn-secondary-betha,
+  .mcp-generate-box .btn-primary-betha{width:100%}
+}
