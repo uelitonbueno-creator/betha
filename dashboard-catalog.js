@@ -167,6 +167,11 @@ window.BI_DASHBOARDS = {
     title: "Econômicos e ISS",
     description: "Perfil da atividade econômica municipal: cadastros, abertura, encerramento, atividades e localização.",
     level: "macro-micro",
+    filters: [
+      {id:"busca",label:"Empresa / nome",type:"search",placeholder:"Digite nome ou fantasia"},
+      {id:"situacao",label:"Situação",type:"select"},
+      {id:"bairro",label:"Bairro",type:"select"}
+    ],
     kpis: [
       {id:"economicos",label:"Cadastros econômicos",format:"number",source:"bi:economicos",field:"id"},
       {id:"ativos-economicos",label:"Ativos",format:"number",source:"bi:economicos",field:"situacao"},
@@ -190,6 +195,18 @@ window.BI_DASHBOARDS = {
     title: "Imobiliário e IPTU",
     description: "Estoque imobiliário, territorialização, responsáveis, movimentações e arrecadação vinculada.",
     level: "macro-micro",
+    filters: [
+      {id:"bairro",label:"Bairro",type:"select"},
+      {id:"setor",label:"Setor",type:"select"},
+      {id:"zona",label:"Zona",type:"select",options:[
+        {value:"rural",label:"Rural"},
+        {value:"urbana",label:"Urbana"}
+      ]},
+      {id:"cadastro",label:"Situação cadastral",type:"select",options:[
+        {value:"ativo",label:"Ativos"},
+        {value:"inativo",label:"Desativados / inativos"}
+      ]}
+    ],
     kpis: [
       {id:"imoveis-total",label:"Imóveis",format:"number",source:"bi:imoveis",field:"id"},
       {id:"imoveis-ativos",label:"Ativos",format:"number",source:"bi:imoveis",field:"desativado"},
@@ -240,6 +257,19 @@ window.BI_DASHBOARDS = {
     title: "Contribuintes",
     description: "Perfil cadastral, distribuição territorial, contatos e características empresariais.",
     level: "macro-micro",
+    filters: [
+      {id:"busca",label:"Contribuinte",type:"search",placeholder:"Nome, fantasia ou documento"},
+      {id:"tipoPessoa",label:"Tipo de pessoa",type:"select"},
+      {id:"simples",label:"Simples Nacional",type:"select",options:[
+        {value:"sim",label:"Optantes"},
+        {value:"nao",label:"Não optantes"}
+      ]},
+      {id:"cidade",label:"Cidade",type:"select"},
+      {id:"situacao",label:"Situação cadastral",type:"select",options:[
+        {value:"ativo",label:"Ativos"},
+        {value:"inativo",label:"Desativados / inativos"}
+      ]}
+    ],
     kpis: [
       {id:"contribuintes-total",label:"Contribuintes",format:"number",source:"bi:contribuintes",field:"id"},
       {id:"pf",label:"Pessoas físicas",format:"number",source:"bi:contribuintes",field:"tipoPessoa"},
@@ -284,6 +314,13 @@ window.BI_DASHBOARDS = {
     title: "Obras",
     description: "Visão complementar da fonte base do Tributos para obras, responsáveis e movimentações.",
     level: "macro-micro",
+    filters: [
+      {id:"situacao",label:"Situação",type:"select"},
+      {id:"liberacao",label:"Liberação",type:"select",options:[
+        {value:"liberada",label:"Liberadas"},
+        {value:"pendente",label:"Sem liberação"}
+      ]}
+    ],
     kpis: [
       {id:"obras-total",label:"Obras",format:"number",source:"base:obras",field:"id"},
       {id:"obras-situacao",label:"Em andamento",format:"number",source:"base:obras",field:"situacao"},
@@ -326,6 +363,14 @@ Object.assign(window.BI_DASHBOARDS, {
     title: "Receitas e créditos tributários",
     description: "Estrutura das receitas, créditos tributários e vínculos com a arrecadação efetivamente realizada.",
     level: "macro-micro",
+    filters: [
+      {id:"classificacaoReceita",label:"Classificação da receita",type:"select"},
+      {id:"tipoCredito",label:"Tipo de crédito",type:"select"},
+      {id:"situacaoCredito",label:"Situação do crédito",type:"select",options:[
+        {value:"ativo",label:"Ativos"},
+        {value:"inativo",label:"Desativados"}
+      ]}
+    ],
     kpis: [
       {id:"receitas-total",label:"Receitas cadastradas",format:"number",source:"bi:receitas",field:"id"},
       {id:"creditos-total",label:"Créditos tributários",format:"number",source:"base:creditos-tributarios",field:"id"},
@@ -346,6 +391,17 @@ Object.assign(window.BI_DASHBOARDS, {
     title: "Guias e documentos",
     description: "Emissão, baixas, vencimentos, registro bancário e composição financeira das guias unificadas.",
     level: "macro-micro",
+    filters: [
+      {id:"situacao",label:"Situação",type:"select",options:[
+        {value:"paga",label:"Com baixa"},
+        {value:"vencida",label:"Vencidas sem baixa"},
+        {value:"aberta",label:"Em aberto"}
+      ]},
+      {id:"boleto",label:"Boleto registrado",type:"select",options:[
+        {value:"sim",label:"Registrado"},
+        {value:"nao",label:"Sem registro"}
+      ]}
+    ],
     kpis: [
       {id:"guias-total",label:"Guias emitidas",format:"number",source:"base:guias-unificadas",field:"id"},
       {id:"guias-valor",label:"Valor total das guias",format:"currency",source:"base:guias-unificadas",field:"vlTotalGuiaUnificada"},
@@ -365,6 +421,13 @@ Object.assign(window.BI_DASHBOARDS, {
     title: "Indexadores e atualização monetária",
     description: "Indexadores cadastrados, condição corrente e histórico real dos valores de atualização.",
     level: "macro-micro",
+    filters: [
+      {id:"indexador",label:"Indexador",type:"select"},
+      {id:"corrente",label:"Situação",type:"select",options:[
+        {value:"sim",label:"Correntes"},
+        {value:"nao",label:"Não correntes"}
+      ]}
+    ],
     kpis: [
       {id:"indexadores-total",label:"Indexadores",format:"number",source:"bi:indexadores",field:"id"},
       {id:"indexadores-ativos",label:"Indexadores correntes",format:"number",source:"bi:indexadores",field:"corrente"},
