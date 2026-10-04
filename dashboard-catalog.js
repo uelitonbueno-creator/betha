@@ -298,6 +298,9 @@ window.BI_DASHBOARDS = {
     title: "Encerramento mensal",
     description: "Fotografia histórica do estoque de lançamentos e dívida no fechamento de cada competência.",
     level: "macro-micro",
+    filters: [
+      {id:"competencia",label:"Competência de encerramento",type:"select"}
+    ],
     kpis: [
       {id:"saldo-lancamentos",label:"Saldo de lançamentos",format:"currency",source:"base:encerramento-lancamentos",field:"valorSaldo"},
       {id:"saldo-dividas",label:"Saldo de dívidas",format:"currency",source:"base:encerramento-dividas",field:"valorSaldo"},
