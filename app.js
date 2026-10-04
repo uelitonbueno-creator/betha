@@ -71,6 +71,7 @@
 
   const query = Object.fromEntries(new URLSearchParams(location.search).entries());
   const chartInstances = new Map();
+  const filterStateByView = new Map();
   let currentView = ADMIN_VIEWS.has(query.view) ? query.view :
     (query.view && dashboards[query.view] ? query.view : "visao-geral");
   let currentPayload = null;
@@ -147,6 +148,134 @@
     chartInstances.clear();
   }
 
+  function filterDefinitions(view=currentView) {
+    return Array.isArray(dashboards[view]?.filters) ? dashboards[view].filters : [];
+  }
+
+  function currentFilterState(view=currentView) {
+    if (!filterStateByView.has(view)) filterStateByView.set(view,{});
+    return filterStateByView.get(view);
+  }
+
+  function currentDashboardFilters(view=currentView) {
+    const state=currentFilterState(view);
+    return Object.fromEntries(
+      Object.entries(state).filter(([,value])=>value!==undefined&&value!==null&&String(value)!=="")
+    );
+  }
+
+  function hasActiveDashboardFilters(view=currentView) {
+    return Object.keys(currentDashboardFilters(view)).length>0;
+  }
+
+  function dashboardFilterSignature(view=currentView) {
+    const values=currentDashboardFilters(view);
+    const ordered=Object.keys(values).sort().reduce((acc,key)=>{
+      acc[key]=values[key];
+      return acc;
+    },{});
+    return Object.keys(ordered).length
+      ? "filters-"+encodeURIComponent(JSON.stringify(ordered))
+      : "filters-none";
+  }
+
+  function normalizeFilterOptions(options) {
+    if (!Array.isArray(options)) return [];
+    return options.map(item=>{
+      if (item && typeof item==="object") {
+        return {value:String(item.value??item.id??item.label??""),label:String(item.label??item.value??item.id??"")};
+      }
+      return {value:String(item??""),label:String(item??"")};
+    }).filter(item=>item.value!=="");
+  }
+
+  function updateFilterActiveCount() {
+    const row=document.getElementById("advancedFilterRow");
+    if(!row) return;
+    const count=Object.keys(currentDashboardFilters()).length;
+    row.dataset.activeCount=String(count);
+  }
+
+  function renderDashboardFilters(def) {
+    const row=document.getElementById("advancedFilterRow");
+    const container=document.getElementById("advancedFilters");
+    if(!row||!container) return;
+
+    const filters=Array.isArray(def?.filters)?def.filters:[];
+    if(!filters.length){
+      row.hidden=true;
+      container.innerHTML="";
+      return;
+    }
+
+    row.hidden=false;
+    const state=currentFilterState(currentView);
+
+    container.innerHTML=filters.map(filter=>{
+      const options=normalizeFilterOptions(filter.options||[]);
+      const current=String(state[filter.id]||"");
+      const currentExists=options.some(item=>item.value===current);
+      const all=[
+        {value:"",label:"Todos"},
+        ...options,
+        ...(current&&!currentExists?[{value:current,label:current}]:[])
+      ];
+
+      return '<div class="field">'+
+        '<label for="filter-'+escapeHtml(filter.id)+'">'+escapeHtml(filter.label||filter.id)+'</label>'+
+        '<select id="filter-'+escapeHtml(filter.id)+'" data-dashboard-filter="'+escapeHtml(filter.id)+'">'+
+        all.map(item=>'<option value="'+escapeHtml(item.value)+'"'+(item.value===current?' selected':'')+'>'+escapeHtml(item.label)+'</option>').join("")+
+        '</select></div>';
+    }).join("");
+
+    container.querySelectorAll("[data-dashboard-filter]").forEach(select=>{
+      select.addEventListener("change",()=>{
+        const state=currentFilterState(currentView);
+        state[select.dataset.dashboardFilter]=select.value;
+        if(!select.value) delete state[select.dataset.dashboardFilter];
+        filterStateByView.set(currentView,state);
+        updateFilterActiveCount();
+
+        const loaded=loadDashboardFromCache(currentView);
+        if(!loaded) setStatus("waiting","Filtros alterados · clique em ATUALIZAR");
+      });
+    });
+
+    updateFilterActiveCount();
+  }
+
+  function populateDashboardFilterOptions(payload) {
+    const def=dashboards[currentView];
+    const filters=Array.isArray(def?.filters)?def.filters:[];
+    if(!filters.length) return;
+
+    const serverOptions=payload?.meta?.filterOptions||{};
+    const state=currentFilterState(currentView);
+
+    for(const filter of filters){
+      const select=document.querySelector('[data-dashboard-filter="'+cssEscape(filter.id)+'"]');
+      if(!select) continue;
+
+      const options=normalizeFilterOptions(
+        (Array.isArray(serverOptions[filter.id])&&serverOptions[filter.id].length)
+          ? serverOptions[filter.id]
+          : (filter.options||[])
+      );
+      const current=String(state[filter.id]||select.value||"");
+      const currentExists=options.some(item=>item.value===current);
+
+      select.innerHTML=[
+        {value:"",label:"Todos"},
+        ...options,
+        ...(current&&!currentExists?[{value:current,label:current}]:[])
+      ].map(item=>
+        '<option value="'+escapeHtml(item.value)+'"'+(item.value===current?' selected':'')+'>'+escapeHtml(item.label)+'</option>'
+      ).join("");
+    }
+
+    updateFilterActiveCount();
+  }
+
   function renderDashboard(view) {
     document.getElementById("dashboardView").hidden = false;
     document.getElementById("usersAdminView").hidden = true;
@@ -154,6 +283,7 @@
     destroyCharts();
     currentPayload = null;
     const def = dashboards[view];
+    renderDashboardFilters(def);
 
     document.getElementById("pageTitle").textContent = def.title;
     document.getElementById("pageDescription").textContent = def.description;
@@ -362,6 +492,7 @@
   function renderPayload(payload) {
     currentPayload = payload || {};
     const def = dashboards[currentView];
+    populateDashboardFilterOptions(payload);
     const kpis = payload.kpis || {};
     for (const kpi of def.kpis || []) {
       const el = document.querySelector(`[data-kpi="${cssEscape(kpi.id)}"] [data-value]`);
@@ -439,6 +570,7 @@
       view || currentView || "visao-geral",
       periodo,
       exercicio,
+      dashboardFilterSignature(view || currentView),
       fonte
     ].join(":");
   }
@@ -664,7 +796,8 @@
       tenantId || "no-tenant",
       view || currentView || "visao-geral",
       periodo,
-      exercicio
+      exercicio,
+      dashboardFilterSignature(view || currentView)
     ].join(":") + ":";
 
     const items=[];
@@ -722,7 +855,7 @@
   }
 
   async function loadDashboardFromSupabase(view) {
-    if (!tenantId) return false;
+    if (!tenantId || hasActiveDashboardFilters(view)) return false;
     try {
       const periodo=document.getElementById("periodo")?.value || "ano";
       const exercicio=document.getElementById("exercicio")?.value || String(new Date().getFullYear());
@@ -799,7 +932,7 @@
   }
 
   async function persistDashboardToSupabase(view,payload,state) {
-    if(!cfg.BACKEND_URL || !payload || !tenantId) return;
+    if(!cfg.BACKEND_URL || !payload || !tenantId || hasActiveDashboardFilters(view)) return;
     const periodo=document.getElementById("periodo")?.value || "ano";
     const exercicio=Number(document.getElementById("exercicio")?.value || new Date().getFullYear());
 
@@ -1317,6 +1450,10 @@
         fonte: document.getElementById("fontePreferencial").value
       });
 
+      for (const [key,value] of Object.entries(currentDashboardFilters(view))) {
+        params.set(key,value);
+      }
+
       const payload = view === "visao-geral"
         ? await loadOverviewSharded(params)
         : await api("/api/dashboard/" + encodeURIComponent(view) + "?" + params.toString());
@@ -1502,7 +1639,7 @@
             </span>
           `).join("")}
         </div>
-        <p class="detail-security-note"><i class="mdi mdi-shield-lock-outline"></i> O nível de registro individual será liberado quando o login oficial Betha estiver vinculado à entidade. Até lá, o BI exibe somente composição e origem sem expor dados pessoais.</p>
+        <p class="detail-security-note"><i class="mdi mdi-shield-lock-outline"></i> Registros individuais são exibidos somente quando a fonte possui detalhamento autorizado para a prefeitura e para a sessão atual.</p>
       </section>
     `;
   }
@@ -2411,6 +2548,13 @@
   document.getElementById("periodo").addEventListener("change", reloadLocalSelection);
   document.getElementById("exercicio").addEventListener("change", reloadLocalSelection);
   document.getElementById("fontePreferencial").addEventListener("change", reloadLocalSelection);
+
+  document.getElementById("resetDashboardFilters").addEventListener("click", () => {
+    filterStateByView.set(currentView,{});
+    const def=dashboards[currentView];
+    if(def) renderDashboardFilters(def);
+    loadDashboardData(currentView);
+  });
 
   function escapeHtml(value) {
     return String(value ?? "")
