@@ -8,5 +8,13 @@
       "binding": "BI_SESSIONS",
       "id": "32b40317f22445b1aef3c32dd437da02"
     }
-  ]
+  ],
+  "previews": {
+    "kv_namespaces": [
+      {
+        "binding": "BI_SESSIONS",
+        "id": "f14fdf3d19514516896c9a0bc38d5c5d"
+      }
+    ]
+  }
 }
