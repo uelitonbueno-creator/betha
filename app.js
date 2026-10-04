@@ -2316,6 +2316,114 @@
     if(el) el.textContent=text;
   }
 
+  function mcpEndpointUrl() {
+    return String(cfg.BACKEND_URL || location.origin).replace(/\/$/,"") + "/mcp";
+  }
+
+  async function copyTextValue(value) {
+    const text=String(value||"");
+    if(!text) return false;
+
+    try {
+      if(navigator.clipboard && window.isSecureContext){
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {}
+
+    const input=document.createElement("textarea");
+    input.value=text;
+    input.setAttribute("readonly","");
+    input.style.position="fixed";
+    input.style.opacity="0";
+    document.body.appendChild(input);
+    input.select();
+    let ok=false;
+    try { ok=document.execCommand("copy"); } catch {}
+    input.remove();
+    return ok;
+  }
+
+  function resetMcpCredentialUi() {
+    const result=document.getElementById("mcpTokenResult");
+    const token=document.getElementById("mcpTokenValue");
+    const expiry=document.getElementById("mcpTokenExpiry");
+    const permissions=document.getElementById("mcpTokenPermissions");
+    if(result) result.hidden=true;
+    if(token){
+      token.value="";
+      token.type="password";
+    }
+    if(expiry) expiry.textContent="—";
+    if(permissions) permissions.textContent="—";
+  }
+
+  async function generateMcpCredentialUi() {
+    const button=document.getElementById("generateMcpToken");
+    const result=document.getElementById("mcpTokenResult");
+    const tokenInput=document.getElementById("mcpTokenValue");
+    const badge=document.getElementById("mcpStatusBadge");
+
+    if(button){
+      button.disabled=true;
+      button.innerHTML='<i class="mdi mdi-loading mdi-spin"></i> GERANDO';
+    }
+
+    try {
+      const payload=await api("/api/mcp/tokens",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          label:"BI Tributos",
+          ttlHours:8
+        })
+      });
+
+      const endpoint=document.getElementById("mcpEndpoint");
+      if(endpoint) endpoint.value=payload.endpoint || mcpEndpointUrl();
+
+      if(tokenInput){
+        tokenInput.value=payload.token || "";
+        tokenInput.type="password";
+      }
+
+      const expiresAt=payload.expiresAt ? new Date(payload.expiresAt) : null;
+      setConfigText(
+        "mcpTokenExpiry",
+        expiresAt && !Number.isNaN(expiresAt.getTime())
+          ? "Expira em " + expiresAt.toLocaleString("pt-BR")
+          : "Validade máxima de 8 horas"
+      );
+
+      const views=Array.isArray(payload.allowedViews)?payload.allowedViews:[];
+      const labels=views.map(view=>dashboards[view]?.title || view);
+      setConfigText(
+        "mcpTokenPermissions",
+        labels.length
+          ? labels.length+" painel(is): "+labels.join(", ")
+          : "Sem painéis autorizados"
+      );
+
+      if(result) result.hidden=false;
+      if(badge){
+        badge.textContent="CREDENCIAL ATIVA";
+        badge.className="config-status-badge ok";
+      }
+    } catch(error) {
+      resetMcpCredentialUi();
+      if(badge){
+        badge.textContent="INDISPONÍVEL";
+        badge.className="config-status-badge error";
+      }
+      window.alert("Não foi possível gerar a credencial MCP: "+(error.message||"falha desconhecida"));
+    } finally {
+      if(button){
+        button.disabled=false;
+        button.innerHTML='<i class="mdi mdi-key-plus"></i> GERAR CREDENCIAL';
+      }
+    }
+  }
+
   function renderExpectedPermissions(expected) {
     const list=document.getElementById("configPermissionList");
     if(!list) return;
@@ -2413,6 +2521,10 @@
     setConfigText("configEntityId",tenant&&tenant.entityId ? tenant.entityId : "—");
     setConfigText("configDatabaseId",tenant&&tenant.databaseId ? tenant.databaseId : "—");
 
+    const mcpEndpoint=document.getElementById("mcpEndpoint");
+    if(mcpEndpoint) mcpEndpoint.value=mcpEndpointUrl();
+    resetMcpCredentialUi();
+
     try {
       const health=await healthPromise;
       setConfigText("configAuthStatus",health.loginCredentialConfigured&&health.sessionStoreConfigured?"Operacional":"Verificar configuração");
@@ -2430,6 +2542,11 @@
           : "Credencial de serviço ou cadastro de tenants pendente."
       );
       setConfigText("configWorkerVersion",health.buildVersion||"—");
+      const mcpBadge=document.getElementById("mcpStatusBadge");
+      if(mcpBadge){
+        mcpBadge.textContent=health.mcpEnabled===true ? "DISPONÍVEL" : "INDISPONÍVEL";
+        mcpBadge.className="config-status-badge "+(health.mcpEnabled===true?"ok":"warn");
+      }
     } catch(error) {
       setConfigText("configAuthStatus","Indisponível");
       setConfigText("configAuthDetail","Não foi possível consultar a saúde do Worker.");
@@ -2790,6 +2907,27 @@
 
   document.getElementById("refreshConfigButton").addEventListener("click", loadConfigAdmin);
   document.getElementById("publishPageMappingButton").addEventListener("click", publishPageMappingFromUi);
+
+  document.getElementById("generateMcpToken").addEventListener("click",generateMcpCredentialUi);
+  document.getElementById("copyMcpEndpoint").addEventListener("click",async()=>{
+    const endpoint=document.getElementById("mcpEndpoint")?.value||mcpEndpointUrl();
+    const ok=await copyTextValue(endpoint);
+    if(!ok) window.alert("Não foi possível copiar o endpoint.");
+  });
+  document.getElementById("copyMcpToken").addEventListener("click",async()=>{
+    const token=document.getElementById("mcpTokenValue")?.value||"";
+    if(!token) return;
+    const ok=await copyTextValue(token);
+    if(!ok) window.alert("Não foi possível copiar o token.");
+  });
+  document.getElementById("toggleMcpToken").addEventListener("click",()=>{
+    const input=document.getElementById("mcpTokenValue");
+    const icon=document.querySelector("#toggleMcpToken i");
+    if(!input) return;
+    const visible=input.type==="text";
+    input.type=visible?"password":"text";
+    if(icon) icon.className=visible?"mdi mdi-eye-outline":"mdi mdi-eye-off-outline";
+  });
 
   document.querySelectorAll("[data-user-filter]").forEach(button => {
     button.addEventListener("click", () => {
