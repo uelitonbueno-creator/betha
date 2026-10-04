@@ -23,105 +23,105 @@ window.BI_DASHBOARDS = {
 
   "arrecadacao": {
     title: "Arrecadação",
-    description: "Do total arrecadado até cada pagamento, receita e componente financeiro.",
+    description: "Receita efetivamente recebida, excluindo pagamentos estornados, com composição por tributo, correção, juros, multa, receita e modalidade.",
     level: "macro-micro",
     kpis: [
-      {id:"total-pago",label:"Total pago",format:"currency",source:"bi:pagamentos",field:"valorPago"},
-      {id:"tributo-pago",label:"Tributo",format:"currency",source:"bi:pagamentos",field:"valorPagoLancado"},
-      {id:"juros-pagos",label:"Juros",format:"currency",source:"bi:pagamentos",field:"valorPagoJuro"},
-      {id:"multa-paga",label:"Multa",format:"currency",source:"bi:pagamentos",field:"valorPagoMulta"},
-      {id:"correcao-paga",label:"Correção",format:"currency",source:"bi:pagamentos",field:"valorPagoCorrecao"},
-      {id:"descontos",label:"Descontos concedidos",format:"currency",source:"bi:pagamentos",field:"valorConcedidoDescontos"}
+      {id:"total-pago",label:"Total arrecadado",format:"currency",source:"bi:pagamentos-detalhados-valores",field:"componentes pagos"},
+      {id:"tributo-pago",label:"Tributo",format:"currency",source:"bi:pagamentos-detalhados-valores",field:"valorPagoLancado"},
+      {id:"juros-pagos",label:"Juros",format:"currency",source:"bi:pagamentos-detalhados-valores",field:"valorPagoJuros"},
+      {id:"multa-paga",label:"Multa",format:"currency",source:"bi:pagamentos-detalhados-valores",field:"valorPagoMulta"},
+      {id:"correcao-paga",label:"Correção",format:"currency",source:"bi:pagamentos-detalhados-valores",field:"valorPagoCorrecao"},
+      {id:"descontos",label:"Descontos concedidos",format:"currency",source:"bi:pagamentos-detalhados-valores",field:"valorDescontoConcedido*"}
     ],
     charts: [
-      {id:"arrecadacao-dia",title:"Arrecadação diária",subtitle:"Pagamentos por dia.",type:"line",source:"bi:pagamentos",dimension:"dataPagamento:dia",measures:["valorPago"],drill:"pagamentos"},
-      {id:"arrecadacao-mes",title:"Arrecadação mensal",subtitle:"Tendência mês a mês.",type:"line",source:"bi:pagamentos",dimension:"dataPagamento:mês",measures:["valorPago"],drill:"pagamentos"},
-      {id:"arrecadacao-credito",title:"Por crédito tributário",subtitle:"Ranking dos créditos que mais arrecadam.",type:"bar",source:"bi:pagamentos-detalhados",dimension:"creditoTributario.descricao",measures:["valorPagoLancado"],drill:"pagamentos-detalhados"},
-      {id:"arrecadacao-receita",title:"Por receita",subtitle:"Distribuição pela classificação de receita.",type:"bar",source:"bi:pagamentos-detalhados",dimension:"receita.descricao",measures:["valorPagoLancado"],drill:"pagamentos-detalhados"},
-      {id:"composicao-pagamento",title:"Composição do pagamento",subtitle:"Tributo, correção, juros e multa.",type:"doughnut",source:"bi:pagamentos",dimension:"componente",measures:["valorPagoLancado","valorPagoCorrecao","valorPagoJuro","valorPagoMulta"],drill:"pagamentos"},
-      {id:"tipo-pagamento",title:"Tipo de pagamento",subtitle:"Quantidade e valor por modalidade.",type:"bar",source:"bi:pagamentos",dimension:"tipoPagamento",measures:["valorPago","count"],drill:"pagamentos"},
-      {id:"tipo-baixa",title:"Tipo de baixa",subtitle:"Distribuição das baixas registradas.",type:"bar",source:"bi:pagamentos",dimension:"tipoBaixa",measures:["valorPago"],drill:"pagamentos"},
-      {id:"retroativos",title:"Pagamentos retroativos",subtitle:"Evolução de pagamentos marcados como retroativos.",type:"line",source:"bi:pagamentos",dimension:"dataPagamento:mês",filter:"pagamentoRetroativo",measures:["valorPago"],drill:"pagamentos"},
-      {id:"estornos",title:"Estornos",subtitle:"Valor e quantidade de pagamentos estornados.",type:"line",source:"bi:pagamentos",dimension:"dataHoraEstorno:mês",measures:["valorPago","count"],drill:"pagamentos"},
-      {id:"descontos-anistias",title:"Descontos, anistias e remissões",subtitle:"Benefícios aplicados aos pagamentos.",type:"bar",source:"bi:pagamentos-detalhados-valores",dimension:"benefício",measures:["descontos","anistias","remissões"],drill:"pagamentos-detalhados"},
-      {id:"acrescimos",title:"Acréscimos arrecadados",subtitle:"Correção, juros e multa ao longo do tempo.",type:"line",source:"bi:pagamentos",dimension:"dataPagamento:mês",measures:["valorPagoCorrecao","valorPagoJuro","valorPagoMulta"],drill:"pagamentos"},
-      {id:"guias",title:"Classificação das guias",subtitle:"Arrecadação por classificação/tipo de guia.",type:"bar",source:"bi:pagamentos",dimension:"classificacaoGuia",measures:["valorPago"],drill:"pagamentos"}
+      {id:"arrecadacao-dia",title:"Arrecadação diária",subtitle:"Valor efetivamente recebido por dia, sem estornos.",type:"line",source:"bi:pagamentos-detalhados-valores",dimension:"dtPagamento:dia",measures:["componentes pagos"],drill:"pagamentos-detalhados-valores"},
+      {id:"arrecadacao-mes",title:"Arrecadação mensal",subtitle:"Evolução mensal da receita efetivamente recebida.",type:"line",source:"bi:pagamentos-detalhados-valores",dimension:"dtPagamento:mês",measures:["componentes pagos"],drill:"pagamentos-detalhados-valores"},
+      {id:"arrecadacao-credito",title:"Tributo por crédito tributário",subtitle:"Ranking do tributo arrecadado por crédito.",type:"bar",source:"bi:pagamentos-detalhados",dimension:"creditoTributario.descricao",measures:["valorPagoLancado"],drill:"pagamentos-detalhados"},
+      {id:"arrecadacao-receita",title:"Arrecadação por receita",subtitle:"Valor recebido por receita vinculada.",type:"bar",source:"bi:pagamentos-detalhados-valores",dimension:"receita.descricao",measures:["componentes pagos"],drill:"pagamentos-detalhados-valores"},
+      {id:"composicao-pagamento",title:"Composição da arrecadação",subtitle:"Tributo, correção, juros e multa.",type:"doughnut",source:"bi:pagamentos-detalhados-valores",dimension:"componente",measures:["valorPagoLancado","valorPagoCorrecao","valorPagoJuros","valorPagoMulta"],drill:"pagamentos-detalhados-valores"},
+      {id:"tipo-pagamento",title:"Tipo de pagamento",subtitle:"Arrecadação por modalidade de pagamento.",type:"bar",source:"bi:pagamentos-detalhados-valores",dimension:"pagamento.tipoPagamento.descricao",measures:["componentes pagos"],drill:"pagamentos-detalhados-valores"},
+      {id:"tipo-baixa",title:"Tipo de baixa",subtitle:"Arrecadação por modalidade de baixa.",type:"bar",source:"bi:pagamentos-detalhados-valores",dimension:"pagamento.tipoBaixa.descricao",measures:["componentes pagos"],drill:"pagamentos-detalhados-valores"},
+      {id:"retroativos",title:"Pagamentos retroativos",subtitle:"Receita vinculada a pagamentos marcados como retroativos.",type:"line",source:"bi:pagamentos|bi:pagamentos-detalhados-valores",dimension:"dtPagamento:mês",filter:"pagamentoRetroativo",measures:["componentes pagos"],drill:"pagamentos"},
+      {id:"estornos",title:"Estornos",subtitle:"Quantidade de estornos registrados por mês.",type:"line",source:"bi:pagamentos",dimension:"dataHoraEstorno:mês",measures:["count"],drill:"pagamentos"},
+      {id:"descontos-anistias",title:"Descontos, anistias e remissões",subtitle:"Benefícios concedidos sobre os componentes do pagamento.",type:"bar",source:"bi:pagamentos-detalhados-valores",dimension:"benefício",measures:["descontos","anistias","remissões"],drill:"pagamentos-detalhados-valores"},
+      {id:"acrescimos",title:"Acréscimos arrecadados",subtitle:"Correção, juros e multa recebidos ao longo do tempo.",type:"line",source:"bi:pagamentos-detalhados-valores",dimension:"dtPagamento:mês",measures:["valorPagoCorrecao","valorPagoJuros","valorPagoMulta"],drill:"pagamentos-detalhados-valores"},
+      {id:"guias",title:"Classificação das guias",subtitle:"Arrecadação agrupada pela classificação da guia.",type:"bar",source:"bi:pagamentos|bi:pagamentos-detalhados-valores",dimension:"classificacaoGuia.descricao",measures:["componentes pagos"],drill:"pagamentos"}
     ]
   },
 
   "debitos": {
     title: "Lançamentos e débitos",
-    description: "Carteira lançada: origem, vencimento, situação, descontos e conversão em pagamento.",
+    description: "Carteira lançada, situação, vencimentos, origem cadastral e descontos, com aging restrito aos débitos ainda em aberto.",
     level: "macro-micro",
     kpis: [
       {id:"vl-lancado",label:"Valor lançado",format:"currency",source:"bi:debitos",field:"vlLancado"},
       {id:"qtd-debitos",label:"Débitos",format:"number",source:"bi:debitos",field:"id"},
-      {id:"vencidos",label:"Débitos vencidos",format:"number",source:"bi:debitos",field:"dtVcto"},
+      {id:"vencidos",label:"Vencidos em aberto",format:"number",source:"bi:debitos",field:"dtVcto"},
       {id:"pagos",label:"Débitos pagos",format:"number",source:"bi:debitos",field:"dtPgto"},
       {id:"descontos-debito",label:"Descontos",format:"currency",source:"bi:debitos",field:"vlDesconto"}
     ],
     charts: [
-      {id:"lancamentos-mensais",title:"Lançamentos por mês",subtitle:"Volume lançado ao longo do exercício.",type:"line",source:"bi:debitos",dimension:"dhDebito:mês",measures:["vlLancado"],drill:"debitos"},
-      {id:"debitos-situacao",title:"Débitos por situação",subtitle:"Quantidade e valor por situação.",type:"bar",source:"bi:debitos",dimension:"situacao",measures:["vlLancado","count"],drill:"debitos"},
-      {id:"debitos-credito",title:"Débitos por crédito",subtitle:"Ranking do valor lançado por crédito.",type:"bar",source:"bi:debitos",dimension:"idCredito",measures:["vlLancado"],drill:"debitos"},
-      {id:"aging-debitos",title:"Aging de vencimentos",subtitle:"Faixas de atraso da carteira em aberto.",type:"bar",source:"bi:debitos",dimension:"faixaAtraso",measures:["vlLancado"],drill:"debitos"},
+      {id:"lancamentos-mensais",title:"Lançamentos por mês",subtitle:"Valor lançado por dhDebito.",type:"line",source:"bi:debitos",dimension:"dhDebito:mês",measures:["vlLancado"],drill:"debitos"},
+      {id:"debitos-situacao",title:"Débitos por situação",subtitle:"Valor lançado por situação cadastral.",type:"bar",source:"bi:debitos",dimension:"situacao",measures:["vlLancado"],drill:"debitos"},
+      {id:"debitos-credito",title:"Débitos por crédito",subtitle:"Ranking do valor lançado por crédito tributário.",type:"bar",source:"bi:debitos|base:creditos-tributarios",dimension:"idCredito",measures:["vlLancado"],drill:"debitos"},
+      {id:"aging-debitos",title:"Aging da carteira em aberto",subtitle:"Faixas de atraso considerando somente débitos sem pagamento/cancelamento.",type:"bar",source:"bi:debitos",dimension:"dtVcto:faixa",measures:["vlLancado"],drill:"debitos"},
       {id:"debitos-ano",title:"Carteira por exercício",subtitle:"Valor lançado por ano de origem.",type:"bar",source:"bi:debitos",dimension:"ano",measures:["vlLancado"],drill:"debitos"},
-      {id:"unica-parcelada",title:"Parcela única × parcelada",subtitle:"Distribuição pela característica do débito.",type:"doughnut",source:"bi:debitos",dimension:"unica",measures:["vlLancado"],drill:"debitos"},
-      {id:"origem-cadastro",title:"Origem cadastral",subtitle:"Imobiliário, econômico, receita diversa, obra, ITBI e demais referentes.",type:"bar",source:"bi:debitos",dimension:"referente/tipo",measures:["vlLancado"],drill:"debitos"},
-      {id:"devido-pago-receita",title:"Devido × pago por receita",subtitle:"Comparação entre valor devido e realizado.",type:"bar",source:"bi:debitos-receitas",dimension:"idReceitasCreditos",measures:["vlDevido","vlPago"],drill:"debitos-receitas"}
+      {id:"unica-parcelada",title:"Parcela única × parcelada",subtitle:"Distribuição conforme o campo única.",type:"doughnut",source:"bi:debitos",dimension:"unica",measures:["vlLancado"],drill:"debitos"},
+      {id:"origem-cadastro",title:"Origem cadastral",subtitle:"Imobiliário, econômico, receita diversa, obra, ITBI e demais origens.",type:"bar",source:"bi:debitos",dimension:"origem derivada",measures:["vlLancado"],drill:"debitos"},
+      {id:"descontos-situacao",title:"Descontos por situação",subtitle:"Valor de descontos concedidos por situação do débito.",type:"bar",source:"bi:debitos",dimension:"situacao",measures:["vlDesconto"],drill:"debitos"}
     ]
   },
 
   "divida": {
     title: "Dívida ativa",
-    description: "Estoque, inscrições, recuperação, cobrança, execução e detalhamento por contribuinte.",
+    description: "Estoque atual pelo último encerramento mensal disponível, inscrições, recuperação, cobrança e maiores devedores.",
     level: "macro-micro",
     kpis: [
-      {id:"saldo-divida",label:"Saldo atual",format:"currency",source:"base:encerramento-dividas",field:"valorSaldo"},
-      {id:"inscrito",label:"Valor inscrito",format:"currency",source:"base:encerramento-dividas",field:"valorInscrito"},
-      {id:"qtd-dividas",label:"Dívidas",format:"number",source:"bi:dividas",field:"id"},
+      {id:"saldo-divida",label:"Saldo atual",format:"currency",source:"base:encerramento-dividas",field:"valorSaldo no último encerramento"},
+      {id:"inscrito",label:"Valor inscrito do estoque",format:"currency",source:"base:encerramento-dividas",field:"valorInscrito no último encerramento"},
+      {id:"qtd-dividas",label:"Dívidas em estoque",format:"number",source:"base:encerramento-dividas",field:"idDivida no último encerramento"},
       {id:"executadas",label:"Em execução",format:"number",source:"bi:dividas",field:"sitExecucao"},
       {id:"protestadas",label:"Protestadas",format:"number",source:"bi:dividas",field:"protesto"},
       {id:"cda",label:"Com CDA emitida",format:"number",source:"bi:dividas",field:"possuiCdaEmitida"}
     ],
     charts: [
-      {id:"estoque-divida",title:"Estoque da dívida ativa",subtitle:"Saldo no encerramento de cada mês.",type:"line",source:"base:encerramento-dividas",dimension:"mesEncerramento",measures:["valorSaldo"],drill:"dividas"},
-      {id:"inscricoes-mes",title:"Novas inscrições",subtitle:"Valor inscrito por mês.",type:"line",source:"base:encerramento-dividas",dimension:"dataInscricao:mês",measures:["valorInscrito"],drill:"dividas"},
-      {id:"composicao-divida",title:"Composição do estoque",subtitle:"Tributo, correção, juros e multa.",type:"bar",source:"base:encerramento-dividas",dimension:"mesEncerramento",measures:["valorSaldo","valorCorrecao","valorJuros","valorMulta"],drill:"dividas"},
-      {id:"status-divida",title:"Situação da dívida",subtitle:"Quantidade por status.",type:"doughnut",source:"bi:dividas",dimension:"statusDivida",measures:["count"],drill:"dividas"},
-      {id:"aging-divida",title:"Idade da dívida",subtitle:"Saldo por ano de inscrição/origem.",type:"bar",source:"base:encerramento-dividas",dimension:"anoDivida",measures:["valorSaldo"],drill:"dividas"},
-      {id:"divida-credito",title:"Dívida por crédito",subtitle:"Saldo por crédito tributário.",type:"bar",source:"base:encerramento-dividas",dimension:"idCreditoTributario",measures:["valorSaldo"],drill:"dividas"},
+      {id:"estoque-divida",title:"Evolução do estoque",subtitle:"Saldo total por encerramento mensal.",type:"line",source:"base:encerramento-dividas",dimension:"anoEncerramento/mesEncerramento",measures:["valorSaldo"],drill:"dividas"},
+      {id:"inscricoes-mes",title:"Novas inscrições",subtitle:"Valor inscrito por mês, calculado na fonte de dívidas.",type:"line",source:"base:dividas",dimension:"dataInscricao:mês",measures:["valorTributoInscrito","valorCorrecaoInscrito","valorJurosInscrito","valorMultaInscrito"],drill:"dividas"},
+      {id:"composicao-divida",title:"Composição do saldo atual",subtitle:"Principal, correção, juros e multa no último encerramento.",type:"bar",source:"base:encerramento-dividas",dimension:"componente",measures:["valorSaldo","valorCorrecao","valorJuros","valorMulta"],drill:"dividas"},
+      {id:"status-divida",title:"Situação da dívida",subtitle:"Quantidade por status cadastral.",type:"doughnut",source:"bi:dividas",dimension:"statusDivida",measures:["count"],drill:"dividas"},
+      {id:"aging-divida",title:"Idade do estoque",subtitle:"Saldo atual por ano da dívida.",type:"bar",source:"base:encerramento-dividas",dimension:"anoDivida",measures:["valorSaldo"],drill:"dividas"},
+      {id:"divida-credito",title:"Dívida por crédito",subtitle:"Saldo atual por crédito tributário.",type:"bar",source:"base:encerramento-dividas|base:dividas",dimension:"idCreditoTributario",measures:["valorSaldo"],drill:"dividas"},
       {id:"cobranca",title:"Execução, protesto e penhora",subtitle:"Ações de cobrança incidentes sobre a carteira.",type:"bar",source:"bi:dividas",dimension:"ação",measures:["count"],drill:"dividas"},
-      {id:"recuperacao",title:"Recuperação da dívida",subtitle:"Pagamentos associados a dívida ativa.",type:"line",source:"bi:pagamentos-detalhados",dimension:"pagamento.dataPagamento:mês",filter:"idDivida",measures:["valorPagoLancado"],drill:"pagamentos-detalhados"},
-      {id:"saldo-receitas-divida",title:"Saldo por receita da dívida",subtitle:"Inscrito e saldo por receita vinculada.",type:"bar",source:"bi:dividas-receitas",dimension:"idCreditosTributariosRec",measures:["vlInscritoCredito","vlSaldo"],drill:"dividas-receitas"},
-      {id:"cancelamentos",title:"Cancelamentos e prescrições",subtitle:"Evolução das saídas administrativas da carteira.",type:"line",source:"base:dividas",dimension:"dataCancelamento/dataPrescricao:mês",measures:["count"],drill:"dividas"},
-      {id:"top-devedores",title:"Maiores devedores",subtitle:"Ranking de contribuintes por saldo da dívida.",type:"bar",source:"base:dividas",dimension:"contribuinte",measures:["saldoCalculado"],drill:"dividas"}
+      {id:"recuperacao",title:"Recuperação da dívida",subtitle:"Pagamentos não estornados vinculados à dívida ativa.",type:"line",source:"bi:pagamentos-detalhados-valores",dimension:"dtPagamento:mês",filter:"idDivida",measures:["componentes pagos"],drill:"pagamentos-detalhados-valores"},
+      {id:"saldo-receitas-divida",title:"Saldo por vínculo de receita",subtitle:"Inscrito e saldo na fonte de receitas da dívida.",type:"bar",source:"bi:dividas-receitas",dimension:"idCreditosTributariosRec",measures:["vlInscritoCredito","vlSaldo"],drill:"dividas-receitas"},
+      {id:"cancelamentos",title:"Cancelamentos e prescrições",subtitle:"Saídas administrativas por data de cancelamento/prescrição.",type:"line",source:"base:dividas",dimension:"dataCancelamento/dataPrescricao:mês",measures:["count"],drill:"dividas"},
+      {id:"top-devedores",title:"Maiores devedores",subtitle:"Ranking autorizado por saldo atual no último encerramento.",type:"bar",source:"base:encerramento-dividas|base:dividas",dimension:"contribuinte",measures:["valorSaldo"],drill:"dividas"}
     ]
   },
 
   "parcelamentos": {
     title: "Parcelamentos",
-    description: "Acordos, entradas, parcelas, inadimplência, cancelamentos e origem dos débitos.",
+    description: "Acordos, entradas, parcelas, inadimplência, cancelamentos, cobrança e recebimentos, usando apenas as fontes BI vinculadas ao período selecionado.",
     level: "macro-micro",
     kpis: [
       {id:"qtd-parcelamentos",label:"Parcelamentos",format:"number",source:"bi:parcelamentos",field:"id"},
-      {id:"ativos",label:"Ativos",format:"number",source:"bi:parcelamentos",field:"situacao"},
+      {id:"ativos",label:"Ativos",format:"number",source:"bi:parcelamentos",field:"situacao.descricao"},
       {id:"parcelas-vencidas",label:"Parcelas vencidas",format:"number",source:"bi:parcelamentos",field:"qtdParcelasVencidas"},
       {id:"entradas",label:"Valor de entrada",format:"currency",source:"bi:parcelamentos",field:"vlEntrada"},
       {id:"qtd-parcelas",label:"Parcelas contratadas",format:"number",source:"bi:parcelamentos",field:"qtdParcela"},
       {id:"cancelados",label:"Cancelados",format:"number",source:"bi:parcelamentos",field:"dtCancelamento"}
     ],
     charts: [
-      {id:"parcelamentos-mes",title:"Novos parcelamentos",subtitle:"Quantidade de acordos por mês.",type:"line",source:"bi:parcelamentos",dimension:"dtParcelamento:mês",measures:["count"],drill:"parcelamentos"},
-      {id:"situacao-parcelamentos",title:"Situação dos acordos",subtitle:"Ativos, quitados, cancelados e demais situações.",type:"doughnut",source:"bi:parcelamentos",dimension:"situacao",measures:["count"],drill:"parcelamentos"},
-      {id:"faixa-parcelas",title:"Quantidade de parcelas",subtitle:"Distribuição por faixas de prazo.",type:"bar",source:"bi:parcelamentos",dimension:"qtdParcela:faixa",measures:["count"],drill:"parcelamentos"},
+      {id:"parcelamentos-mes",title:"Novos parcelamentos",subtitle:"Quantidade de acordos por dtParcelamento.",type:"line",source:"bi:parcelamentos",dimension:"dtParcelamento:mês",measures:["count"],drill:"parcelamentos"},
+      {id:"situacao-parcelamentos",title:"Situação dos acordos",subtitle:"Distribuição conforme situacao.descricao.",type:"doughnut",source:"bi:parcelamentos",dimension:"situacao.descricao",measures:["count"],drill:"parcelamentos"},
+      {id:"faixa-parcelas",title:"Quantidade de parcelas",subtitle:"Distribuição dos acordos por faixa de prazo.",type:"bar",source:"bi:parcelamentos",dimension:"qtdParcela:faixa",measures:["count"],drill:"parcelamentos"},
       {id:"vencidas-parcelamento",title:"Inadimplência dos parcelamentos",subtitle:"Acordos por quantidade de parcelas vencidas.",type:"bar",source:"bi:parcelamentos",dimension:"qtdParcelasVencidas:faixa",measures:["count"],drill:"parcelamentos"},
-      {id:"parcelas-situacao",title:"Situação das parcelas",subtitle:"Quantidade e valor das parcelas.",type:"bar",source:"bi:parcelamentos-parcelas",dimension:"situacao",measures:["vlParcela","count"],drill:"parcelamentos-parcelas"},
-      {id:"entradas-tipo",title:"Entrada dos acordos",subtitle:"Valor por tipo de entrada.",type:"bar",source:"bi:parcelamentos",dimension:"tipoEntrada",measures:["vlEntrada"],drill:"parcelamentos"},
-      {id:"execucao-protesto",title:"Parcelamentos com dívida executada/protestada",subtitle:"Perfil de cobrança dos acordos.",type:"bar",source:"bi:parcelamentos",dimension:"cobrança",measures:["count"],drill:"parcelamentos"},
-      {id:"origem-parcelamento",title:"Origem dos parcelamentos",subtitle:"Distribuição por origem/referente.",type:"bar",source:"bi:parcelamentos-referentes",dimension:"tipoReferente",measures:["count"],drill:"parcelamentos-referentes"},
+      {id:"parcelas-situacao",title:"Situação das parcelas",subtitle:"Valor das parcelas vinculadas aos acordos filtrados.",type:"bar",source:"bi:parcelamentos-parcelas",dimension:"situacao",measures:["vlParcela"],drill:"parcelamentos-parcelas"},
+      {id:"entradas-tipo",title:"Entrada dos acordos",subtitle:"Valor de entrada por tipo.",type:"bar",source:"bi:parcelamentos",dimension:"tipoEntrada",measures:["vlEntrada"],drill:"parcelamentos"},
+      {id:"execucao-protesto",title:"Dívida executada/protestada",subtitle:"Perfil de cobrança dos acordos.",type:"bar",source:"bi:parcelamentos",dimension:"dividaExecutada/dividaProtestada",measures:["count"],drill:"parcelamentos"},
+      {id:"origem-parcelamento",title:"Origem dos parcelamentos",subtitle:"Referentes vinculados aos acordos do período.",type:"bar",source:"bi:parcelamentos-referentes",dimension:"tipoReferente",measures:["count"],drill:"parcelamentos-referentes"},
       {id:"cancelamentos-parcelamento",title:"Cancelamentos",subtitle:"Acordos cancelados por mês.",type:"line",source:"bi:parcelamentos",dimension:"dtCancelamento:mês",measures:["count"],drill:"parcelamentos"},
-      {id:"pagamentos-parcelas",title:"Recebimento de parcelas",subtitle:"Tributo, correção, juros e multa das parcelas quitadas.",type:"bar",source:"base:parcelamentos-parcelas",dimension:"dtQuitacao:mês",measures:["vlPagoTributo","vlPagoCorrecao","vlPagoJuro","vlPagoMulta"],drill:"parcelamentos-parcelas"}
+      {id:"pagamentos-parcelas",title:"Recebimento de parcelas",subtitle:"Valor das parcelas com dtPgto no período.",type:"line",source:"bi:parcelamentos-parcelas",dimension:"dtPgto:mês",measures:["vlParcela"],drill:"parcelamentos-parcelas"}
     ]
   },
 
