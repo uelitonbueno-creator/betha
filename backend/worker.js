@@ -3870,43 +3870,63 @@ function indexerHistorySeries(rows,periodo,exercicio) {
 async function buildIndexersDashboard(env,tenant,url) {
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const filters={
+    indexador:dashboardFilterValue(url,"indexador"),
+    corrente:dashboardFilterValue(url,"corrente")
+  };
 
   const [idx,val]=await Promise.all([
     safeBethaRows(env,tenant,"bi","indexadores"),
     safeBethaRows(env,tenant,"bi","indexadores-valores")
   ]);
 
-  const valRows=val.rows.filter(r=>periodIncludes(r,{
+  const idxPaths=["nome","sigla"];
+  const valIdxPaths=["moeda.nome","moeda.sigla","moeda.id"];
+  const idxRows=idx.rows.filter(r=>{
+    if(filters.indexador&&!matchesDashboardFilter(r,filters.indexador,idxPaths)) return false;
+    const corrente=truthyValue(r,["corrente"]);
+    if(filters.corrente==="sim"&&!corrente) return false;
+    if(filters.corrente==="nao"&&corrente) return false;
+    return true;
+  });
+  const valIndexadorRows=val.rows.filter(r=>!filters.indexador||matchesDashboardFilter(r,filters.indexador,valIdxPaths));
+  const valRows=valIndexadorRows.filter(r=>periodIncludes(r,{
     periodo,exercicio,datePaths:["dtIdx"],yearPaths:["ano","exercicio"]
   }));
 
-  const current=countWhere(idx.rows,r=>truthyValue(r,["corrente"]));
+  const current=countWhere(idxRows,r=>truthyValue(r,["corrente"]));
 
   return {
     view:"indexadores",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
+    filters:activeFilterObject(filters),
+    filterOptions:{
+      indexador:filterOptionsFromRows([...idx.rows,...val.rows],[...idxPaths,...valIdxPaths])
+    },
     kpis:{
-      "indexadores-total":idx.loaded,
+      "indexadores-total":idxRows.length,
       "indexadores-ativos":current,
-      "valores-indexadores":val.loaded,
+      "valores-indexadores":valIndexadorRows.length,
       "valores-periodo":valRows.length
     },
     charts:{
       "indexadores-tipo":chartGroups(
-        groupCount(idx.rows,["nome","sigla"],12),
+        groupCount(idxRows,idxPaths,12),
         "Indexadores","number"
       ),
       "indexadores-situacao":chartFixed(
         ["Corrente","Não corrente"],
-        [current,Math.max(0,idx.loaded-current)],
+        [current,Math.max(0,idxRows.length-current)],
         "Indexadores","number"
       ),
       "valores-por-indexador":chartGroups(
-        groupCount(val.rows,["moeda.nome","moeda.sigla","moeda.id"],12),
+        groupCount(valIndexadorRows,valIdxPaths,12),
         "Registros","number"
       ),
-      "evolucao-indexadores":indexerHistorySeries(val.rows,periodo,exercicio)
+      "evolucao-indexadores":indexerHistorySeries(valIndexadorRows,periodo,exercicio)
     },
     meta:dashboardMeta([["indexadores",idx],["indexadoresValores",val]],{
+      appliedFilters:activeFilterObject(filters),
+      filteredRows:{indexadores:idxRows.length,valores:valIndexadorRows.length,valoresPeriodo:valRows.length},
       fieldMapping:{
         corrente:"corrente",
         indexador:"moeda.nome",
