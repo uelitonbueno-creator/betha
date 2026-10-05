@@ -2743,6 +2743,130 @@ html,body{
   }
 }
 
+
+/* Fontes da visão recolhíveis · informação de apoio · 2026-10-05 */
+.source-disclosure{
+  margin-top:2px;
+  overflow:hidden;
+}
+.source-disclosure-summary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-height:48px;
+  padding:11px 14px;
+  list-style:none;
+  cursor:pointer;
+  user-select:none;
+  background:var(--ui-bg-soft);
+}
+.source-disclosure-summary::-webkit-details-marker{display:none}
+.source-disclosure-summary h2{
+  margin:0 0 2px;
+  color:#4f5c70;
+  font-size:10px;
+  font-weight:700;
+}
+.source-disclosure-summary p{
+  margin:0;
+  color:#8a94a4;
+  font-size:8.5px;
+  line-height:1.35;
+}
+.source-disclosure-summary>i{
+  flex:0 0 auto;
+  color:#8f99a8;
+  font-size:18px;
+  transition:transform .16s ease,color .16s ease;
+}
+.source-disclosure-summary:hover{
+  background:#f4f7fa;
+}
+.source-disclosure[open] .source-disclosure-summary{
+  border-bottom:1px solid var(--ui-border);
+  background:#fff;
+}
+.source-disclosure[open] .source-disclosure-summary>i{
+  color:var(--ui-primary);
+  transform:rotate(180deg);
+}
+.source-disclosure .source-summary{
+  padding:11px 14px 13px;
+  background:#fff;
+}
+@media(max-width:640px){
+  .source-disclosure-summary{
+    min-height:44px;
+    padding:10px 11px;
+  }
+  .source-disclosure-summary p{
+    display:none;
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  .source-disclosure-summary>i{transition:none}
+}
+
+
+/* Toolbar compacta em larguras intermediárias · 2026-10-05 */
+@media(min-width:821px) and (max-width:1199px){
+  .page-heading{
+    align-items:flex-start;
+    gap:18px;
+  }
+  .page-heading>div:first-child{
+    min-width:0;
+    flex:1 1 auto;
+  }
+  .page-actions{
+    flex:0 0 auto;
+    max-width:430px;
+    align-items:center;
+    justify-content:flex-end;
+    gap:6px;
+  }
+  .productivity-toolbar{
+    order:initial;
+    width:auto;
+    justify-content:flex-end;
+    gap:2px;
+    padding:2px;
+  }
+  .toolbar-action:not(.toolbar-action-primary){
+    position:relative;
+    width:34px;
+    min-width:34px;
+    min-height:34px;
+    padding:0;
+  }
+  .toolbar-action:not(.toolbar-action-primary)>span{
+    position:absolute;
+    width:1px;
+    height:1px;
+    padding:0;
+    margin:-1px;
+    overflow:hidden;
+    clip:rect(0,0,0,0);
+    white-space:nowrap;
+    border:0;
+  }
+  .toolbar-action-primary{
+    min-height:34px;
+    padding:0 10px;
+  }
+  .last-updated{
+    min-height:26px;
+    padding:0 4px;
+    font-size:8.5px;
+  }
+  .api-status{
+    min-height:30px;
+    padding:6px 9px;
+    font-size:9px;
+  }
+}
+
 /* Busca global inteligente · 2026-10-05 */
 .global-search-overlay[hidden]{display:none !important}
 .global-search-overlay{
