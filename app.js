@@ -2493,6 +2493,37 @@
     }).filter(Boolean).slice(0,4);
   }
 
+  function recordIdentity(row) {
+    const pick=(keys)=>keys.map(key=>row?.[key]).find(value=>value!==undefined&&value!==null&&String(value).trim()!=="");
+    return {
+      name:pick(["nomeContribuinte","contribuinte","razaoSocial","nomeFantasia","empresa","nome","descricao"])||"Registro",
+      document:pick(["cpfCnpj","cpf","cnpj","documento"]),
+      contributorId:pick(["idContribuinte","contribuinteId"]),
+      economicId:pick(["idEconomico","economicoId"]),
+      propertyId:pick(["idImovel","imovelId","inscricaoImobiliaria","inscricao"])
+    };
+  }
+
+  function record360Html(row) {
+    const identity=recordIdentity(row);
+    const targets=relatedRecordTargets(row);
+    const sections=[
+      {view:"contribuintes",label:"Cadastro",icon:"mdi-account-card-outline"},
+      {view:"imoveis",label:"Imóveis",icon:"mdi-home-city-outline"},
+      {view:"economicos",label:"Econômicos / ISS",icon:"mdi-store-outline"},
+      {view:"debitos",label:"Débitos",icon:"mdi-file-document-outline"},
+      {view:"divida",label:"Dívida ativa",icon:"mdi-bank-outline"},
+      {view:"parcelamentos",label:"Parcelamentos",icon:"mdi-calendar-check-outline"},
+      {view:"arrecadacao",label:"Pagamentos",icon:"mdi-cash-check"}
+    ].filter(item=>dashboards[item.view]&&isViewAllowed(item.view));
+    const identityMeta=[identity.document&&("CPF/CNPJ "+identity.document),identity.contributorId&&("ID "+identity.contributorId)].filter(Boolean).join(" · ");
+    return '<section class="record-360"><div class="record-360-head"><div class="record-360-avatar"><i class="mdi mdi-account-circle-outline"></i></div><div><small>VISÃO 360°</small><strong>'+escapeHtml(identity.name)+'</strong>'+(identityMeta?'<span>'+escapeHtml(identityMeta)+'</span>':'')+'</div></div><div class="record-360-nav">'+sections.map(item=>{
+      const target=targets.find(t=>t.view===item.view);
+      const disabled=!target||item.view===currentView;
+      return '<button type="button" data-360-view="'+escapeHtml(item.view)+'" '+(disabled?'disabled':'data-360-target="'+escapeHtml(target.value)+'"')+'><i class="mdi '+item.icon+'"></i><span>'+escapeHtml(item.label)+'</span>'+(item.view===currentView?'<small>Atual</small>':target?'<i class="mdi mdi-chevron-right"></i>':'<small>Sem vínculo</small>')+'</button>';
+    }).join("")+'</div></section>';
+  }
+
   function openRelatedRecord(target) {
     if(!target||!isViewAllowed(target.view)) return;
     const origin={view:currentView,title:currentDetailTitle||dashboardLabel(currentView),filters:{...currentDashboardFilters(currentView)},scrollY:window.scrollY};
@@ -2577,8 +2608,14 @@
       if(!row) return;
       const related=relatedRecordTargets(row);
       preview.hidden=false;
-      preview.innerHTML='<div class="detail-record-preview-head"><div><small>REGISTRO SELECIONADO</small><strong>Visão 360° do registro</strong></div><button type="button" data-close-record-preview aria-label="Fechar detalhes"><i class="mdi mdi-close"></i></button></div><dl>'+columns.map(col=>'<div><dt>'+escapeHtml(col.label||col.key)+'</dt><dd>'+escapeHtml(formatDetailCell(row[col.key],col.format))+'</dd></div>').join("")+'</dl>'+(related.length?'<div class="detail-related"><small>EXPLORAR DADOS RELACIONADOS</small><div>'+related.map((item,i)=>'<button type="button" data-related-index="'+i+'"><i class="mdi '+item.icon+'"></i><span>'+escapeHtml(item.label)+'</span><i class="mdi mdi-arrow-right"></i></button>').join("")+'</div></div>':'');
+      preview.innerHTML='<div class="detail-record-preview-head"><div><small>REGISTRO SELECIONADO</small><strong>Detalhes do registro</strong></div><button type="button" data-close-record-preview aria-label="Fechar detalhes"><i class="mdi mdi-close"></i></button></div>'+record360Html(row)+'<dl>'+columns.map(col=>'<div><dt>'+escapeHtml(col.label||col.key)+'</dt><dd>'+escapeHtml(formatDetailCell(row[col.key],col.format))+'</dd></div>').join("")+'</dl>'+(related.length?'<div class="detail-related"><small>ATALHOS RELACIONADOS</small><div>'+related.map((item,i)=>'<button type="button" data-related-index="'+i+'"><i class="mdi '+item.icon+'"></i><span>'+escapeHtml(item.label)+'</span><i class="mdi mdi-arrow-right"></i></button>').join("")+'</div></div>':'');
       preview.querySelectorAll("[data-related-index]").forEach(button=>button.addEventListener("click",()=>openRelatedRecord(related[Number(button.dataset.relatedIndex)])));
+      preview.querySelectorAll("[data-360-target]").forEach(button=>{
+        button.addEventListener("click",()=>{
+          const target=related.find(item=>item.view===button.dataset.view);
+          if(target) openRelatedRecord(target);
+        });
+      });
       preview.scrollIntoView({behavior:"smooth",block:"nearest"});
     });
     preview?.addEventListener("click",event=>{ if(event.target.closest("[data-close-record-preview]")) preview.hidden=true; });
