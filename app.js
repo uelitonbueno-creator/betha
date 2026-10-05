@@ -2364,11 +2364,11 @@
 
   const DETAIL_SUPPORTED = new Set([
     "pagamentos-detalhados-valores","pagamentos-detalhados",
-    "debitos","dividas","parcelamentos","parcelamentos-parcelas",
+    "debitos","debitos-receitas","dividas","parcelamentos","parcelamentos-parcelas","pagamentos-parcelamentos",
     "guias-unificadas","contribuintes","imoveis","imoveis-responsaveis","imoveis-corresponsaveis","economicos","economicos-atividades",
     "receitas","creditos-tributarios","indexadores-valores",
     "logradouros","imoveis-campos-adicionais","planta-valores","obras",
-    "solicitacoes-transferencias-imoveis","solicitacoes-transferencias-imoveis-itens","transferencias-imoveis"
+    "solicitacoes-transferencias-imoveis","solicitacoes-transferencias-imoveis-itens","solicitacoes-transferencias-imoveis-movimentacoes","transferencias-imoveis"
   ]);
 
   const DETAIL_RESOURCE_LABELS = Object.freeze({
@@ -2379,9 +2379,11 @@
     economicos:"Econômicos",
     "economicos-atividades":"Atividades dos econômicos",
     debitos:"Débitos",
+    "debitos-receitas":"Receitas dos débitos",
     dividas:"Dívidas",
     parcelamentos:"Parcelamentos",
     "parcelamentos-parcelas":"Parcelas",
+    "pagamentos-parcelamentos":"Pagamentos dos parcelamentos",
     "guias-unificadas":"Guias",
     receitas:"Receitas",
     "creditos-tributarios":"Créditos tributários",
@@ -2392,6 +2394,7 @@
     obras:"Obras",
     "solicitacoes-transferencias-imoveis":"Solicitações de transferência",
     "solicitacoes-transferencias-imoveis-itens":"Itens das solicitações",
+    "solicitacoes-transferencias-imoveis-movimentacoes":"Movimentações das solicitações",
     "transferencias-imoveis":"Transferências",
     "pagamentos-detalhados":"Pagamentos",
     "pagamentos-detalhados-valores":"Valores de pagamentos"
