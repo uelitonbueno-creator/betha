@@ -55,6 +55,10 @@
   const filterStateByView = new Map();
   const restoredPreferenceScopes = new Set();
   let toastTimer = null;
+  let globalSearchTimer = null;
+  let globalSearchRequestSeq = 0;
+  let globalSearchResultsState = [];
+  let globalSearchActiveIndex = -1;
   let currentView = ADMIN_VIEWS.has(query.view) ? query.view :
     (query.view && dashboards[query.view] ? query.view : "visao-geral");
   let currentPayload = null;
@@ -166,6 +170,169 @@
 
     renderDashboard(view);
     loadDashboardData(view);
+  }
+
+  function normalizeGlobalSearchText(value) {
+    return String(value??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR").trim();
+  }
+
+  function dashboardSearchScore(view,term) {
+    const def=dashboards[view];
+    if(!def) return 0;
+    const normalized=normalizeGlobalSearchText(term);
+    if(!normalized) return 0;
+    const title=normalizeGlobalSearchText(def.title||view);
+    if(title===normalized) return 100;
+    if(title.startsWith(normalized)) return 88;
+    const haystack=[
+      def.title,def.description,
+      ...(def.kpis||[]).map(item=>item.label),
+      ...(def.charts||[]).flatMap(item=>[item.title,item.subtitle])
+    ].filter(Boolean).join(" ");
+    return normalizeGlobalSearchText(haystack).includes(normalized) ? 65 : 0;
+  }
+
+  function localDashboardSearch(term) {
+    return [...currentAllowedViews]
+      .filter(view=>dashboards[view])
+      .map(view=>({view,score:dashboardSearchScore(view,term)}))
+      .filter(item=>item.score>0)
+      .sort((a,b)=>b.score-a.score)
+      .slice(0,6)
+      .map(item=>({kind:"dashboard",resultType:"dashboard",view:item.view,title:dashboards[item.view].title,subtitle:dashboards[item.view].description||"Abrir painel",icon:"view-dashboard-outline"}));
+  }
+
+  function searchResultIcon(item) {
+    return item?.icon || (item?.kind==="dashboard" ? "view-dashboard-outline" : "magnify");
+  }
+
+  function setGlobalSearchStatus(text,state="") {
+    const el=document.getElementById("globalSearchStatus");
+    if(!el) return;
+    el.textContent=String(text||"");
+    el.dataset.state=state;
+  }
+
+  function renderGlobalSearchResults(term,remotePayload=null) {
+    const container=document.getElementById("globalSearchResults");
+    if(!container) return;
+    const dashboardsFound=term ? localDashboardSearch(term) : [];
+    const records=(Array.isArray(remotePayload?.results)?remotePayload.results:[]).map(item=>({...item,resultType:"record"}));
+    globalSearchResultsState=[...dashboardsFound,...records];
+    globalSearchActiveIndex=globalSearchResultsState.length ? 0 : -1;
+
+    if(!term){
+      const quick=[...currentAllowedViews].filter(view=>dashboards[view]).slice(0,6);
+      let quickHtml="";
+      if(quick.length){
+        quickHtml='<div class="global-search-quick"><small>ACESSO RÁPIDO</small>'+quick.map(view=>
+          '<button type="button" data-search-view="'+escapeHtml(view)+'"><i class="mdi mdi-view-dashboard-outline"></i><span>'+escapeHtml(dashboards[view].title)+'</span></button>'
+        ).join("")+'</div>';
+      }
+      container.innerHTML='<div class="global-search-empty"><i class="mdi mdi-magnify"></i><strong>Encontre qualquer área do BI em um só lugar</strong><span>Digite nome, CPF/CNPJ, cadastro, ID ou o nome de um painel.</span></div>'+quickHtml;
+      setGlobalSearchStatus("Digite para pesquisar");
+      return;
+    }
+
+    if(!globalSearchResultsState.length){
+      container.innerHTML='<div class="global-search-empty"><i class="mdi mdi-database-search-outline"></i><strong>Nenhum resultado encontrado</strong><span>Tente outro nome, documento, cadastro ou termo do painel.</span></div>';
+      setGlobalSearchStatus(remotePayload ? "Nenhum resultado" : "Buscando dados…",remotePayload?"empty":"loading");
+      return;
+    }
+
+    let dashboardHtml="";
+    if(dashboardsFound.length){
+      dashboardHtml='<section class="global-search-group"><div class="global-search-group-title"><strong>Painéis</strong><span>'+dashboardsFound.length+'</span></div>';
+      dashboardsFound.forEach((item,index)=>{
+        dashboardHtml+='<button type="button" class="global-search-result '+(index===globalSearchActiveIndex?"is-active":"")+'" data-search-index="'+index+'" data-search-view="'+escapeHtml(item.view)+'" role="option" aria-selected="'+String(index===globalSearchActiveIndex)+'"><span class="global-search-result-icon"><i class="mdi mdi-'+escapeHtml(searchResultIcon(item))+'"></i></span><span class="global-search-result-copy"><strong>'+escapeHtml(item.title)+'</strong><small>'+escapeHtml(item.subtitle)+'</small></span><span class="global-search-result-kind">PAINEL</span><i class="mdi mdi-chevron-right"></i></button>';
+      });
+      dashboardHtml+="</section>";
+    }
+
+    const groups=new Map();
+    records.forEach((item,recordIndex)=>{
+      const category=item.category||"Registros";
+      if(!groups.has(category)) groups.set(category,[]);
+      groups.get(category).push({...item,__index:dashboardsFound.length+recordIndex});
+    });
+    let recordHtml="";
+    for(const [category,items] of groups){
+      recordHtml+='<section class="global-search-group"><div class="global-search-group-title"><strong>'+escapeHtml(category)+'</strong><span>'+items.length+'</span></div>';
+      items.forEach(item=>{
+        const idx=item.__index;
+        recordHtml+='<button type="button" class="global-search-result '+(idx===globalSearchActiveIndex?"is-active":"")+'" data-search-index="'+idx+'" role="option" aria-selected="'+String(idx===globalSearchActiveIndex)+'"><span class="global-search-result-icon"><i class="mdi mdi-'+escapeHtml(searchResultIcon(item))+'"></i></span><span class="global-search-result-copy"><strong>'+escapeHtml(item.title||category)+'</strong><small>'+escapeHtml(item.subtitle||"Registro autorizado")+'</small></span><span class="global-search-result-kind">'+escapeHtml(String(category).toUpperCase())+'</span><i class="mdi mdi-chevron-right"></i></button>';
+      });
+      recordHtml+="</section>";
+    }
+    container.innerHTML=dashboardHtml+recordHtml;
+    const partial=remotePayload?.partial===true;
+    const scanned=Number(remotePayload?.scanned||0);
+    setGlobalSearchStatus(partial ? "Resultados encontrados · busca parcial" : (scanned ? "Resultados encontrados" : "Painéis encontrados"),partial?"partial":"ready");
+  }
+
+  function updateGlobalSearchActive(nextIndex) {
+    if(!globalSearchResultsState.length) return;
+    const total=globalSearchResultsState.length;
+    globalSearchActiveIndex=(nextIndex+total)%total;
+    document.querySelectorAll("#globalSearchResults [data-search-index]").forEach(button=>{
+      const active=Number(button.dataset.searchIndex)===globalSearchActiveIndex;
+      button.classList.toggle("is-active",active);
+      button.setAttribute("aria-selected",String(active));
+      if(active) button.scrollIntoView({block:"nearest"});
+    });
+  }
+
+  function closeGlobalSearch() {
+    const overlay=document.getElementById("globalSearchOverlay");
+    if(!overlay) return;
+    overlay.hidden=true;
+    document.body.classList.remove("global-search-open");
+    clearTimeout(globalSearchTimer);
+    globalSearchRequestSeq++;
+  }
+
+  function openGlobalSearch() {
+    const overlay=document.getElementById("globalSearchOverlay");
+    const input=document.getElementById("globalSearchInput");
+    if(!overlay||!input) return;
+    overlay.hidden=false;
+    document.body.classList.add("global-search-open");
+    renderGlobalSearchResults(input.value.trim(),null);
+    setTimeout(()=>{input.focus();input.select();},0);
+  }
+
+  function openGlobalSearchRecord(item) {
+    closeGlobalSearch();
+    const targetView=item?.view&&isViewAllowed(item.view)?item.view:"";
+    let sourceButton="";
+    if(targetView){
+      sourceButton='<button class="btn-primary-betha search-open-source" type="button" data-search-open-view="'+escapeHtml(targetView)+'"><i class="mdi mdi-open-in-new"></i> ABRIR PAINEL RELACIONADO</button>';
+    }
+    const html=
+      '<section class="drawer-section detail-hero search-result-hero"><small>'+escapeHtml(String(item?.category||"REGISTRO").toUpperCase())+'</small><strong class="search-result-title">'+escapeHtml(item?.title||"Resultado")+'</strong><span>'+escapeHtml(item?.subtitle||"Registro localizado na prefeitura atual.")+'</span></section>'+
+      '<section class="drawer-section"><h3>Origem do resultado</h3><div class="detail-summary-grid"><div class="detail-stat"><span>Tipo</span><strong>'+escapeHtml(item?.category||"Registro")+'</strong></div><div class="detail-stat"><span>ID</span><strong>'+escapeHtml(item?.id||"—")+'</strong></div><div class="detail-stat"><span>Fonte</span><strong>'+escapeHtml(item?.resource||"—")+'</strong></div></div>'+sourceButton+'</section>'+
+      '<section class="drawer-section"><div class="detail-empty-state compact"><i class="mdi mdi-shield-check-outline"></i><strong>Resultado respeita as permissões do usuário</strong><span>A busca global não amplia acessos e não mantém o termo pesquisado salvo.</span></div></section>';
+    openDrawer(item?.title||item?.category||"Resultado",html);
+  }
+
+  async function runGlobalSearch(term) {
+    const normalized=String(term||"").trim();
+    const seq=++globalSearchRequestSeq;
+    renderGlobalSearchResults(normalized,null);
+    if(normalized.length<2){
+      setGlobalSearchStatus(normalized ? "Digite pelo menos 2 caracteres" : "Digite para pesquisar",normalized?"hint":"");
+      return;
+    }
+    setGlobalSearchStatus("Buscando dados autorizados…","loading");
+    try{
+      const payload=await api("/api/search?q="+encodeURIComponent(normalized)+"&limit=20",{timeoutMs:25000});
+      if(seq!==globalSearchRequestSeq) return;
+      renderGlobalSearchResults(normalized,payload);
+    }catch(error){
+      if(seq!==globalSearchRequestSeq) return;
+      renderGlobalSearchResults(normalized,{results:[]});
+      setGlobalSearchStatus(error?.message==="REQUEST_TIMEOUT" ? "Busca demorou demais · refine o termo" : "Dados indisponíveis · painéis continuam pesquisáveis","error");
+    }
   }
 
   function sourceClass(source) {
@@ -3008,6 +3175,12 @@
     const pageButton=event.target.closest("[data-detail-page]");
     if(pageButton){
       loadDetailRecords(pageButton.dataset.detailPage,Number(pageButton.dataset.detailOffset||0),pageButton.dataset.detailQualityIssue||"");
+      return;
+    }
+    const searchViewButton=event.target.closest("[data-search-open-view]");
+    if(searchViewButton?.dataset.searchOpenView){
+      closeDrawer("detailDrawer");
+      navigate(searchViewButton.dataset.searchOpenView);
     }
   });
 
@@ -4046,6 +4219,74 @@
       if (window.BIAuth) BIAuth.logout();
     });
   }
+
+  document.getElementById("globalSearchButton")?.addEventListener("click",openGlobalSearch);
+  document.getElementById("closeGlobalSearch")?.addEventListener("click",closeGlobalSearch);
+  document.getElementById("globalSearchOverlay")?.addEventListener("click",(event)=>{
+    if(event.target===event.currentTarget) closeGlobalSearch();
+  });
+
+  document.getElementById("globalSearchInput")?.addEventListener("input",(event)=>{
+    clearTimeout(globalSearchTimer);
+    const term=event.currentTarget.value.trim();
+    renderGlobalSearchResults(term,null);
+    globalSearchTimer=setTimeout(()=>runGlobalSearch(term),550);
+  });
+
+  document.getElementById("globalSearchInput")?.addEventListener("keydown",(event)=>{
+    if(event.key==="ArrowDown"){
+      event.preventDefault();
+      updateGlobalSearchActive(globalSearchActiveIndex+1);
+      return;
+    }
+    if(event.key==="ArrowUp"){
+      event.preventDefault();
+      updateGlobalSearchActive(globalSearchActiveIndex-1);
+      return;
+    }
+    if(event.key==="Enter"){
+      event.preventDefault();
+      const item=globalSearchResultsState[globalSearchActiveIndex];
+      if(!item) return;
+      if(item.resultType==="dashboard"){
+        closeGlobalSearch();
+        navigate(item.view);
+      }else{
+        openGlobalSearchRecord(item);
+      }
+    }
+  });
+
+  document.getElementById("globalSearchResults")?.addEventListener("click",(event)=>{
+    const button=event.target.closest("[data-search-view],[data-search-index]");
+    if(!button) return;
+    if(button.dataset.searchView){
+      closeGlobalSearch();
+      navigate(button.dataset.searchView);
+      return;
+    }
+    const item=globalSearchResultsState[Number(button.dataset.searchIndex)];
+    if(item?.resultType==="record") openGlobalSearchRecord(item);
+  });
+
+  document.addEventListener("keydown",(event)=>{
+    const target=event.target;
+    const editing=target&&["INPUT","TEXTAREA","SELECT"].includes(target.tagName);
+    if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="k"){
+      event.preventDefault();
+      openGlobalSearch();
+      return;
+    }
+    if(event.key==="/"&&!editing&&document.getElementById("globalSearchOverlay")?.hidden!==false){
+      event.preventDefault();
+      openGlobalSearch();
+      return;
+    }
+    if(event.key==="Escape"&&document.getElementById("globalSearchOverlay")?.hidden===false){
+      event.preventDefault();
+      closeGlobalSearch();
+    }
+  });
 
   document.getElementById("refreshButton").addEventListener("click", () => loadDashboardData(currentView, {force:true}));
 
