@@ -658,6 +658,37 @@ const DETAIL_RESOURCES = Object.freeze({
       ["fim","Fim",["dataFim","dtFim"],"date"]
     ]
   },
+  "solicitacoes-transferencias-imoveis":{
+    source:"bi",resource:"solicitacoes-transferencias-imoveis",
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["codigo","Código",["codigo"],"number"],
+      ["protocolo","Protocolo",["protocolo"],"text"],
+      ["dataHora","Solicitação",["dataHoraSolicitacao"],"date"],
+      ["situacao","Situação",["situacao"],"text"],
+      ["solicitante","Solicitante",["solicitante.nome"],"text"],
+      ["documento","Documento solicitante",["solicitante.cpfCnpj"],"document"],
+      ["responsavel","Responsável",["responsavel.nome"],"text"],
+      ["cartorio","Cartório",["cartorio.nome"],"text"],
+      ["motivo","Motivo",["motivo","motivoTransferencia.motivo.descricao"],"text"]
+    ]
+  },
+  "solicitacoes-transferencias-imoveis-itens":{
+    source:"bi",resource:"solicitacoes-transferencias-imoveis-itens",
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["solicitacao","ID solicitação",["solicitacaoTransferencia.id"],"text"],
+      ["protocolo","Protocolo",["solicitacaoTransferencia.protocolo"],"text"],
+      ["imovel","Imóvel",["imovel.codigo","imovel.id"],"text"],
+      ["denominacao","Denominação",["denominacao"],"text"],
+      ["declarado","Valor declarado",["valorDeclarado"],"currency"],
+      ["declaradoAjustado","Declarado ajustado",["valorDeclaradoAjustado"],"currency"],
+      ["itbi","ITBI",["valorITBI"],"currency"],
+      ["itbiAjustado","ITBI ajustado",["valorITBIAjustado"],"currency"],
+      ["financiado","Financiado",["valorFinanciado"],"currency"],
+      ["avista","À vista",["valorAvista"],"currency"]
+    ]
+  },
   "transferencias-imoveis":{
     source:"bi",resource:"transferencias-imoveis",
     columns:[
