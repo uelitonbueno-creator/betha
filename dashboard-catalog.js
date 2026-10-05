@@ -485,27 +485,31 @@ Object.assign(window.BI_DASHBOARDS, {
 });
 
 window.BI_MENU = [
-  { id:"visao-geral", descricao:"Visão geral", icone:"view-dashboard-outline", rota:"visao-geral", possuiPermissao:true },
-  { id:"arrecadacao", descricao:"Arrecadação", icone:"chart-line", rota:"arrecadacao", possuiPermissao:true },
-  { id:"carteira", descricao:"Débitos e dívida", icone:"file-document-outline", possuiPermissao:true, submenus:[
-    {id:"debitos",descricao:"Lançamentos e débitos",icone:"file-document-edit-outline",rota:"debitos",possuiPermissao:true},
-    {id:"divida",descricao:"Dívida ativa",icone:"bank-outline",rota:"divida",possuiPermissao:true},
-    {id:"parcelamentos",descricao:"Parcelamentos",icone:"calendar-check-outline",rota:"parcelamentos",possuiPermissao:true}
-  ]},
-  { id:"economicos", descricao:"Econômicos e ISS", icone:"storefront-outline", rota:"economicos", possuiPermissao:true },
-  { id:"imobiliario", descricao:"Imobiliário e IPTU", icone:"home-city-outline", rota:"imobiliario", possuiPermissao:true },
-  { id:"itbi", descricao:"Transferências e ITBI", icone:"home-switch-outline", rota:"itbi", possuiPermissao:true },
-  { id:"contribuintes", descricao:"Contribuintes", icone:"account-group-outline", rota:"contribuintes", possuiPermissao:true },
-  { id:"obras", descricao:"Obras", icone:"hammer-wrench", rota:"obras", possuiPermissao:true },
-  { id:"outras-analises", descricao:"Outras análises", icone:"chart-box-outline", possuiPermissao:true, submenus:[
-    {id:"receitas-creditos",descricao:"Receitas e créditos",icone:"cash-multiple",rota:"receitas-creditos",possuiPermissao:true},
-    {id:"guias",descricao:"Guias e documentos",icone:"receipt",rota:"guias",possuiPermissao:true},
-    {id:"indexadores",descricao:"Indexadores",icone:"chart-timeline-variant",rota:"indexadores",possuiPermissao:true},
+  { id:"grupo-executivo", descricao:"Executivo", icone:"view-dashboard-outline", possuiPermissao:true, submenus:[
+    {id:"visao-geral",descricao:"Visão geral",icone:"view-dashboard-outline",rota:"visao-geral",possuiPermissao:true},
     {id:"encerramento",descricao:"Encerramento mensal",icone:"calendar-month-outline",rota:"encerramento",possuiPermissao:true},
-    {id:"territorio",descricao:"Território cadastral",icone:"map-marker-outline",rota:"territorio",possuiPermissao:true},
     {id:"qualidade",descricao:"Qualidade e auditoria",icone:"shield-check-outline",rota:"qualidade",possuiPermissao:true}
   ]},
-  { id:"configuracoes", descricao:"Configurações", icone:"cog-outline", possuiPermissao:true, submenus:[
+  { id:"grupo-arrecadacao", descricao:"Arrecadação", icone:"chart-line", possuiPermissao:true, submenus:[
+    {id:"arrecadacao",descricao:"Arrecadação",icone:"chart-line",rota:"arrecadacao",possuiPermissao:true},
+    {id:"debitos",descricao:"Lançamentos e débitos",icone:"file-document-edit-outline",rota:"debitos",possuiPermissao:true},
+    {id:"divida",descricao:"Dívida ativa",icone:"bank-outline",rota:"divida",possuiPermissao:true},
+    {id:"parcelamentos",descricao:"Parcelamentos",icone:"calendar-check-outline",rota:"parcelamentos",possuiPermissao:true},
+    {id:"receitas-creditos",descricao:"Receitas e créditos",icone:"cash-multiple",rota:"receitas-creditos",possuiPermissao:true},
+    {id:"guias",descricao:"Guias e documentos",icone:"receipt",rota:"guias",possuiPermissao:true}
+  ]},
+  { id:"grupo-cadastros", descricao:"Cadastros", icone:"database-outline", possuiPermissao:true, submenus:[
+    {id:"contribuintes",descricao:"Contribuintes",icone:"account-group-outline",rota:"contribuintes",possuiPermissao:true},
+    {id:"economicos",descricao:"Econômicos e ISS",icone:"storefront-outline",rota:"economicos",possuiPermissao:true},
+    {id:"imobiliario",descricao:"Imobiliário e IPTU",icone:"home-city-outline",rota:"imobiliario",possuiPermissao:true},
+    {id:"indexadores",descricao:"Indexadores",icone:"chart-timeline-variant",rota:"indexadores",possuiPermissao:true}
+  ]},
+  { id:"grupo-fiscalizacao", descricao:"Fiscalização e território", icone:"map-marker-path", possuiPermissao:true, submenus:[
+    {id:"itbi",descricao:"Transferências e ITBI",icone:"home-switch-outline",rota:"itbi",possuiPermissao:true},
+    {id:"obras",descricao:"Obras",icone:"hammer-wrench",rota:"obras",possuiPermissao:true},
+    {id:"territorio",descricao:"Território cadastral",icone:"map-marker-outline",rota:"territorio",possuiPermissao:true}
+  ]},
+  { id:"grupo-administracao", descricao:"Administração", icone:"cog-outline", possuiPermissao:true, submenus:[
     {id:"usuarios-admin",descricao:"Usuários e acessos",icone:"account-cog-outline",rota:"usuarios-admin",possuiPermissao:true},
     {id:"configuracoes-admin",descricao:"Sistema e permissões",icone:"tune-variant",rota:"configuracoes-admin",possuiPermissao:true}
   ]}
