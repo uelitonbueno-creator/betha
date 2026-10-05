@@ -2537,11 +2537,15 @@
       {view:"arrecadacao",label:"Pagamentos",icon:"mdi-cash-check"}
     ].filter(item=>dashboards[item.view]&&isViewAllowed(item.view));
     const identityMeta=[identity.document&&("CPF/CNPJ "+identity.document),identity.contributorId&&("ID "+identity.contributorId)].filter(Boolean).join(" · ");
-    return '<section class="record-360"><div class="record-360-head"><div class="record-360-avatar"><i class="mdi mdi-account-circle-outline"></i></div><div><small>VISÃO 360°</small><strong>'+escapeHtml(identity.name)+'</strong>'+(identityMeta?'<span>'+escapeHtml(identityMeta)+'</span>':'')+'</div></div><div class="record-360-nav">'+sections.map(item=>{
+    const nav=sections.map(item=>{
       const target=targets.find(t=>t.view===item.view);
       const disabled=!target||item.view===currentView;
       return '<button type="button" data-360-view="'+escapeHtml(item.view)+'" '+(disabled?'disabled':'data-360-target="'+escapeHtml(target.value)+'"')+'><i class="mdi '+item.icon+'"></i><span>'+escapeHtml(item.label)+'</span>'+(item.view===currentView?'<small>Atual</small>':target?'<i class="mdi mdi-chevron-right"></i>':'<small>Sem vínculo</small>')+'</button>';
-    }).join("")+'  function openRelatedRecord(target) {
+    }).join("");
+    return '<section class="record-360"><div class="record-360-head"><div class="record-360-avatar"><i class="mdi mdi-account-circle-outline"></i></div><div><small>VISÃO 360°</small><strong>'+escapeHtml(identity.name)+'</strong>'+(identityMeta?'<span>'+escapeHtml(identityMeta)+'</span>':'')+'</div></div><div class="record-360-nav">'+nav+'</div>'+fiscalTimelineHtml(row)+'</section>';
+  }
+
+  function openRelatedRecord(target) {
     if(!target||!isViewAllowed(target.view)) return;
     const origin={view:currentView,title:currentDetailTitle||dashboardLabel(currentView),filters:{...currentDashboardFilters(currentView)},scrollY:window.scrollY};
     try { sessionStorage.setItem("betha_bi_drill_origin_v1",JSON.stringify(origin)); } catch {}
