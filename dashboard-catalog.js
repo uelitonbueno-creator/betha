@@ -84,7 +84,8 @@ window.BI_DASHBOARDS = {
       {id:"debitos-ano",title:"Carteira por exercício",subtitle:"Valor lançado por ano de origem.",type:"bar",source:"bi:debitos",dimension:"ano",measures:["vlLancado"],drill:"debitos"},
       {id:"unica-parcelada",title:"Parcela única × parcelada",subtitle:"Distribuição conforme o campo única.",type:"doughnut",source:"bi:debitos",dimension:"unica",measures:["vlLancado"],drill:"debitos"},
       {id:"origem-cadastro",title:"Origem cadastral",subtitle:"Imobiliário, econômico, receita diversa, obra, ITBI e demais origens.",type:"bar",source:"bi:debitos",dimension:"origem derivada",measures:["vlLancado"],drill:"debitos"},
-      {id:"descontos-situacao",title:"Descontos por situação",subtitle:"Valor de descontos concedidos por situação do débito.",type:"bar",source:"bi:debitos",dimension:"situacao",measures:["vlDesconto"],drill:"debitos"}
+      {id:"descontos-situacao",title:"Descontos por situação",subtitle:"Valor de descontos concedidos por situação do débito.",type:"bar",source:"bi:debitos",dimension:"situacao",measures:["vlDesconto"],drill:"debitos"},
+      {id:"debitos-receita",title:"Débitos por receita",subtitle:"Composição dos lançamentos pelas receitas vinculadas.",type:"bar",source:"bi:debitos-receitas",dimension:"receita",measures:["valor lançado"],drill:"debitos-receitas"}
     ]
   },
 
@@ -159,7 +160,7 @@ window.BI_DASHBOARDS = {
       {id:"execucao-protesto",title:"Dívida executada/protestada",subtitle:"Perfil de cobrança dos acordos.",type:"bar",source:"bi:parcelamentos",dimension:"dividaExecutada/dividaProtestada",measures:["count"],drill:"parcelamentos"},
       {id:"origem-parcelamento",title:"Origem dos parcelamentos",subtitle:"Referentes vinculados aos acordos do período.",type:"bar",source:"bi:parcelamentos-referentes",dimension:"tipoReferente",measures:["count"],drill:"parcelamentos-referentes"},
       {id:"cancelamentos-parcelamento",title:"Cancelamentos",subtitle:"Acordos cancelados por mês.",type:"line",source:"bi:parcelamentos",dimension:"dtCancelamento:mês",measures:["count"],drill:"parcelamentos"},
-      {id:"pagamentos-parcelas",title:"Recebimento de parcelas",subtitle:"Valor das parcelas com dtPgto no período.",type:"line",source:"bi:parcelamentos-parcelas",dimension:"dtPgto:mês",measures:["vlParcela"],drill:"parcelamentos-parcelas"}
+      {id:"pagamentos-parcelas",title:"Recebimento de parcelas",subtitle:"Pagamentos vinculados aos acordos filtrados; usa a fonte específica de pagamentos de parcelamentos quando disponível.",type:"line",source:"bi:pagamentos-parcelamentos|bi:parcelamentos-parcelas",dimension:"dataPagamento:mês",measures:["valorPago"],drill:"pagamentos-parcelamentos"}
     ]
   },
 
@@ -255,6 +256,7 @@ window.BI_DASHBOARDS = {
       {id:"itbi-ajustado",title:"ITBI original × ajustado",subtitle:"Comparação do imposto calculado.",type:"bar",source:"bi:solicitacoes-transferencias-imoveis-itens",dimension:"competência",measures:["valorITBI","valorITBIAjustado"],drill:"solicitacoes-transferencias-imoveis-itens"},
       {id:"financiamento",title:"Financiamento nas operações",subtitle:"Valor financiado e à vista.",type:"bar",source:"bi:solicitacoes-transferencias-imoveis-itens",dimension:"competência",measures:["valorFinanciado","valorAvista"],drill:"solicitacoes-transferencias-imoveis-itens"},
       {id:"tipo-cobranca",title:"Tipo de cobrança",subtitle:"Distribuição das transferências por cobrança.",type:"bar",source:"bi:transferencias-imoveis",dimension:"tipoCobranca",measures:["count"],drill:"transferencias-imoveis"},
+      {id:"movimentacoes-itbi",title:"Movimentações das solicitações",subtitle:"Etapas e situações registradas durante a tramitação do ITBI.",type:"bar",source:"bi:solicitacoes-transferencias-imoveis-movimentacoes",dimension:"situação/movimentação",measures:["count"],drill:"solicitacoes-transferencias-imoveis-movimentacoes"},
       {id:"compradores",title:"Compradores e participação vendida",subtitle:"Detalhamento dos compradores e percentual vendido.",type:"bar",source:"bi:transferencias-imoveis-compra",dimension:"comprador",measures:["percVendido"],drill:"transferencias-imoveis-compra"}
     ]
   },
