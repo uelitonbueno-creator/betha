@@ -2929,6 +2929,39 @@
     }
   }
 
+  function installmentSummaryHtml(payload) {
+    if(payload?.resource!=="parcelamentos-parcelas") return "";
+    const rows=Array.isArray(payload?.rows)?payload.rows:[];
+    if(!rows.length) return "";
+    const money=value=>{
+      const n=Number(value);
+      return Number.isFinite(n)?n:0;
+    };
+    const total=rows.reduce((sum,row)=>sum+money(row.valor),0);
+    const descontos=rows.reduce((sum,row)=>sum+money(row.desconto),0);
+    const paidRows=rows.filter(row=>row.pagamento||/pago|quitad/i.test(String(row.situacao||"")));
+    const paid=paidRows.reduce((sum,row)=>sum+money(row.valor),0);
+    const open=Math.max(0,total-paid);
+    const overdue=rows.filter(row=>{
+      if(row.pagamento||/pago|quitad|cancel/i.test(String(row.situacao||""))) return false;
+      const due=new Date(row.vencimento);
+      return !Number.isNaN(due.getTime())&&due.getTime()<Date.now();
+    });
+    const overdueValue=overdue.reduce((sum,row)=>sum+money(row.valor),0);
+    const currency=value=>Number(value||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+    return `
+      <section class="detail-installment-summary">
+        <div class="detail-stat"><span>Parcelas exibidas</span><strong>${rows.length.toLocaleString("pt-BR")}</strong></div>
+        <div class="detail-stat"><span>Valor das parcelas</span><strong>${escapeHtml(currency(total))}</strong></div>
+        <div class="detail-stat"><span>Pago</span><strong>${escapeHtml(currency(paid))}</strong></div>
+        <div class="detail-stat"><span>Em aberto</span><strong>${escapeHtml(currency(open))}</strong></div>
+        <div class="detail-stat"><span>Vencidas</span><strong>${overdue.length.toLocaleString("pt-BR")} · ${escapeHtml(currency(overdueValue))}</strong></div>
+        <div class="detail-stat"><span>Descontos</span><strong>${escapeHtml(currency(descontos))}</strong></div>
+      </section>
+      <p class="detail-summary-note">Resumo calculado sobre as parcelas exibidas nesta página do analítico.</p>
+    `;
+  }
+
   async function loadDetailRecords(resource,offset=0,qualityIssue="") {
     const container=document.querySelector("[data-detail-container]");
     if(!container) return;
@@ -2988,7 +3021,7 @@
             <i class="mdi mdi-filter-remove-outline"></i><span>Limpar</span>
           </button>
         </div>`;
-      container.innerHTML=detailContextHtml()+microFilters+detailPageTable(payload)+`
+      container.innerHTML=detailContextHtml()+installmentSummaryHtml(payload)+microFilters+detailPageTable(payload)+`
         <div class="detail-pagination">
           <div class="detail-page-summary">
             <strong>Página ${pageNumber.toLocaleString("pt-BR")}</strong>
