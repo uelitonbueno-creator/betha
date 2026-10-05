@@ -2504,6 +2504,26 @@
     };
   }
 
+  function fiscalTimelineHtml(row) {
+    const pick=(keys)=>keys.map(key=>row?.[key]).find(value=>value!==undefined&&value!==null&&String(value).trim()!=="");
+    const events=[
+      {label:"Lançamento",icon:"mdi-file-document-plus-outline",date:pick(["dhDebito","dataLancamento","dtLancamento","dataDebito"]),value:pick(["vlLancado","valorLancado"]),status:pick(["situacao","situacaoDebito"])},
+      {label:"Vencimento",icon:"mdi-calendar-alert-outline",date:pick(["dtVcto","dataVencimento"]),value:null,status:null},
+      {label:"Pagamento",icon:"mdi-cash-check",date:pick(["dtPagamento","dataPagamento","dtPgto"]),value:pick(["valorPago","valorPagoLancado","vlPago"]),status:pick(["tipoPagamento","tipoBaixa"])},
+      {label:"Parcelamento",icon:"mdi-calendar-check-outline",date:pick(["dtParcelamento","dataParcelamento"]),value:pick(["vlEntrada","valorEntrada"]),status:pick(["situacaoParcelamento"])},
+      {label:"Inscrição em dívida",icon:"mdi-bank-plus",date:pick(["dataInscricao","dtInscricao"]),value:pick(["valorTributoInscrito","valorInscrito","valorSaldo"]),status:pick(["statusDivida"])},
+      {label:"Cobrança",icon:"mdi-gavel",date:pick(["dataProtesto","dataExecucao","dtExecucao"]),value:null,status:pick(["sitExecucao","protesto","penhora"])}
+    ].filter(item=>item.date||item.value!==undefined&&item.value!==null||item.status);
+    if(!events.length) return '<section class="fiscal-timeline fiscal-timeline-empty"><div class="fiscal-timeline-title"><span><i class="mdi mdi-timeline-clock-outline"></i><strong>Linha do tempo fiscal</strong></span><small>Os eventos aparecem quando a fonte do registro fornece datas ou situações fiscais.</small></div></section>';
+    const toTime=value=>{const d=new Date(value||0);return Number.isNaN(d.getTime())?Number.MAX_SAFE_INTEGER:d.getTime();};
+    events.sort((a,b)=>toTime(a.date)-toTime(b.date));
+    return '<section class="fiscal-timeline"><div class="fiscal-timeline-title"><span><i class="mdi mdi-timeline-clock-outline"></i><strong>Linha do tempo fiscal</strong></span><small>'+events.length+' evento(s) identificado(s) neste registro</small></div><div class="fiscal-timeline-list">'+events.map(item=>{
+      const date=item.date?formatDetailCell(item.date,"date"):"Data não informada";
+      const value=item.value!==undefined&&item.value!==null&&item.value!==""?formatDetailCell(item.value,"currency"):"";
+      return '<div class="fiscal-event"><span class="fiscal-event-marker"><i class="mdi '+item.icon+'"></i></span><div><small>'+escapeHtml(date)+'</small><strong>'+escapeHtml(item.label)+'</strong><span>'+escapeHtml([value,item.status].filter(Boolean).join(" · ")||"Evento vinculado ao registro")+'</span></div></div>';
+    }).join("")+'</div></section>';
+  }
+
   function record360Html(row) {
     const identity=recordIdentity(row);
     const targets=relatedRecordTargets(row);
@@ -2521,10 +2541,7 @@
       const target=targets.find(t=>t.view===item.view);
       const disabled=!target||item.view===currentView;
       return '<button type="button" data-360-view="'+escapeHtml(item.view)+'" '+(disabled?'disabled':'data-360-target="'+escapeHtml(target.value)+'"')+'><i class="mdi '+item.icon+'"></i><span>'+escapeHtml(item.label)+'</span>'+(item.view===currentView?'<small>Atual</small>':target?'<i class="mdi mdi-chevron-right"></i>':'<small>Sem vínculo</small>')+'</button>';
-    }).join("")+'</div></section>';
-  }
-
-  function openRelatedRecord(target) {
+    }).join("")+'  function openRelatedRecord(target) {
     if(!target||!isViewAllowed(target.view)) return;
     const origin={view:currentView,title:currentDetailTitle||dashboardLabel(currentView),filters:{...currentDashboardFilters(currentView)},scrollY:window.scrollY};
     try { sessionStorage.setItem("betha_bi_drill_origin_v1",JSON.stringify(origin)); } catch {}
