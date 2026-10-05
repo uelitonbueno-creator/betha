@@ -224,7 +224,8 @@ window.BI_DASHBOARDS = {
       {id:"tipo-imovel",title:"Tipo de imóvel",subtitle:"Classificação detalhada disponível na fonte base.",type:"bar",source:"base:imoveis",dimension:"tipoImovel",measures:["count"],drill:"imoveis"},
       {id:"planta-valores",title:"Valor do m² por região",subtitle:"Planta de valores por bairro/logradouro.",type:"bar",source:"base:planta-valores",dimension:"bairro/logradouro",measures:["vlMetroQuadrado"],drill:"planta-valores"},
       {id:"iptu-pagamentos",title:"Arrecadação imobiliária",subtitle:"Pagamentos vinculados a imóveis por mês.",type:"line",source:"bi:pagamentos-detalhados",dimension:"pagamento.dataPagamento:mês",filter:"idImovel",measures:["valorPagoLancado"],drill:"pagamentos-detalhados"},
-      {id:"responsabilidade",title:"Percentual de titularidade",subtitle:"Distribuição dos vínculos de responsáveis.",type:"bar",source:"bi:imoveis-responsaveis",dimension:"percentual:faixa",measures:["count"],drill:"imoveis-responsaveis"}
+      {id:"responsabilidade",title:"Percentual de titularidade",subtitle:"Distribuição dos vínculos de responsáveis.",type:"bar",source:"bi:imoveis-responsaveis",dimension:"percentual:faixa",measures:["count"],drill:"imoveis-responsaveis"},
+      {id:"corresponsaveis-tipo",title:"Corresponsáveis por tipo",subtitle:"Composição dos vínculos de corresponsabilidade dos imóveis.",type:"bar",source:"bi:imoveis-corresponsaveis",dimension:"tipoCorresponsavel.descricao",measures:["count"],drill:"imoveis-corresponsaveis"}
     ]
   },
 
