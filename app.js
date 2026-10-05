@@ -175,25 +175,51 @@
 
   function updateFilterActiveCount() {
     const row=document.getElementById("advancedFilterRow");
-    if(!row) return;
+    const toggle=document.getElementById("moreFiltersButton");
+    const badge=document.getElementById("activeFilterCount");
     const count=Object.keys(currentDashboardFilters()).length;
-    row.dataset.activeCount=String(count);
+    if(row) row.dataset.activeCount=String(count);
+    if(toggle){
+      toggle.classList.toggle("has-active-filters",count>0);
+      toggle.setAttribute("aria-label",count>0 ? "Mais filtros, "+count+" ativo(s)" : "Mais filtros");
+    }
+    if(badge){
+      badge.textContent=String(count);
+      badge.hidden=count===0;
+    }
   }
 
   function renderDashboardFilters(def) {
     const row=document.getElementById("advancedFilterRow");
     const container=document.getElementById("advancedFilters");
+    const toggle=document.getElementById("moreFiltersButton");
     if(!row||!container) return;
 
     const filters=Array.isArray(def?.filters)?def.filters:[];
     if(!filters.length){
       row.hidden=true;
       container.innerHTML="";
+      if(toggle){
+        toggle.hidden=true;
+        toggle.setAttribute("aria-expanded","false");
+      }
+      updateFilterActiveCount();
       return;
     }
 
-    row.hidden=false;
     const state=currentFilterState(currentView);
+    const hasActive=Object.keys(currentDashboardFilters()).length>0;
+    if(toggle){
+      toggle.hidden=false;
+      const expanded=toggle.dataset.view===currentView
+        ? toggle.getAttribute("aria-expanded")==="true"
+        : hasActive;
+      toggle.dataset.view=currentView;
+      toggle.setAttribute("aria-expanded",String(expanded));
+      row.hidden=!expanded;
+    }else{
+      row.hidden=false;
+    }
 
     container.innerHTML=filters.map(filter=>{
       const current=String(state[filter.id]||"");
@@ -3470,6 +3496,19 @@
 
   document.getElementById("refreshButton").addEventListener("click", () => loadDashboardData(currentView, {force:true}));
 
+  document.getElementById("moreFiltersButton")?.addEventListener("click",()=>{
+    const toggle=document.getElementById("moreFiltersButton");
+    const row=document.getElementById("advancedFilterRow");
+    if(!toggle||!row) return;
+    const expanded=toggle.getAttribute("aria-expanded")==="true";
+    toggle.setAttribute("aria-expanded",String(!expanded));
+    toggle.dataset.view=currentView;
+    row.hidden=expanded;
+    if(!expanded){
+      row.querySelector("input,select,button")?.focus({preventScroll:true});
+    }
+  });
+
   const reloadLocalSelection = () => {
     renderDashboard(currentView);
     loadDashboardData(currentView);
@@ -3481,8 +3520,14 @@
 
   document.getElementById("resetDashboardFilters").addEventListener("click", () => {
     filterStateByView.set(currentView,{});
+    const toggle=document.getElementById("moreFiltersButton");
+    if(toggle){
+      toggle.setAttribute("aria-expanded","true");
+      toggle.dataset.view=currentView;
+    }
     const def=dashboards[currentView];
     if(def) renderDashboardFilters(def);
+    updateFilterActiveCount();
     loadDashboardData(currentView);
   });
 
