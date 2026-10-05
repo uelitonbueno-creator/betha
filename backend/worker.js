@@ -4683,6 +4683,53 @@ const DETAIL_PERMISSION_VIEWS = Object.freeze({
   "transferencias-imoveis":["imobiliario","itbi"]
 });
 
+const DATA_PERMISSION_VIEWS = Object.freeze({
+  "bi:contribuintes":["contribuintes","qualidade"],
+  "bi:imoveis":["imobiliario","qualidade","territorio"],
+  "bi:imoveis-responsaveis":["imobiliario"],
+  "bi:imoveis-corresponsaveis":["imobiliario"],
+  "bi:imoveis-campos-adicionais":["qualidade"],
+  "bi:economicos":["economicos","qualidade"],
+  "bi:economicos-atividades":["economicos","qualidade"],
+  "bi:indexadores":["indexadores"],
+  "bi:indexadores-valores":["indexadores"],
+  "bi:receitas":["receitas-creditos"],
+  "bi:debitos":["debitos"],
+  "bi:debitos-receitas":["debitos"],
+  "bi:dividas":["divida"],
+  "bi:dividas-receitas":["divida"],
+  "bi:parcelamentos":["parcelamentos"],
+  "bi:parcelamentos-referentes":["parcelamentos"],
+  "bi:parcelamentos-parcelas":["parcelamentos"],
+  "bi:pagamentos":["arrecadacao"],
+  "bi:pagamentos-parcelamentos":["arrecadacao","parcelamentos"],
+  "bi:pagamentos-detalhados":["arrecadacao","economicos","imobiliario","receitas-creditos"],
+  "bi:pagamentos-detalhados-valores":["arrecadacao","divida"],
+  "bi:solicitacoes-transferencias-imoveis":["itbi"],
+  "bi:solicitacoes-transferencias-imoveis-itens":["itbi"],
+  "bi:solicitacoes-transferencias-imoveis-movimentacoes":["itbi"],
+  "bi:transferencias-imoveis":["imobiliario","itbi"],
+  "bi:transferencias-imoveis-compra":["itbi"],
+  "base:imoveis":["imobiliario","territorio"],
+  "base:bairros":["territorio"],
+  "base:distritos":["territorio"],
+  "base:logradouros":["territorio"],
+  "base:loteamentos":["imobiliario","territorio"],
+  "base:contribuintes":["contribuintes","qualidade"],
+  "base:planta-valores":["imobiliario"],
+  "base:obras":["obras"],
+  "base:obras-responsaveis":["obras"],
+  "base:creditos-tributarios":["debitos","receitas-creditos"],
+  "base:creditos-tributarios-receitas":["receitas-creditos"],
+  "base:guias-unificadas":["guias"],
+  "base:parcelamentos":["parcelamentos"],
+  "base:parcelamentos-parcelas":["parcelamentos"],
+  "base:encerramento-dividas":["divida","encerramento"],
+  "base:encerramento-lancamentos":["encerramento"],
+  "base:dividas":["divida"],
+  "base:imoveis-transferencias":["imobiliario","itbi"]
+});
+
 function accessHasConstraintPermission(access,permissionId) {
   if (!access || !permissionId) return false;
   if (access.admin===true || access.technical===true) return true;
@@ -4718,6 +4765,17 @@ function requireDetailPermission(auth,resource) {
   const allowedViews=permissionViewsForAccess(auth&&auth.access);
   if (!requiredViews.some(view=>allowedViews.includes(view))) {
     throw new Error("PAGE_PERMISSION_DENIED");
+  }
+}
+
+function requireDataPermission(auth,source,resource) {
+  if (auth&&auth.access&&(auth.access.admin===true||auth.access.technical===true)) return;
+  const key=String(source||"")+":"+String(resource||"");
+  const requiredViews=DATA_PERMISSION_VIEWS[key];
+  if (!requiredViews) throw new Error("DATA_RESOURCE_PERMISSION_DENIED");
+  const allowedViews=permissionViewsForAccess(auth&&auth.access);
+  if (!requiredViews.some(view=>allowedViews.includes(view))) {
+    throw new Error("DATA_RESOURCE_PERMISSION_DENIED");
   }
 }
 
@@ -5526,6 +5584,7 @@ function errorResponse(request,env,error) {
     USER_TOKEN_REQUIRED:401,
     ADMIN_REQUIRED:403,
     PAGE_PERMISSION_DENIED:403,
+    DATA_RESOURCE_PERMISSION_DENIED:403,
     PAGE_MAPPING_SCOPE_REQUIRED:503,
     PAGE_MAPPING_WRITE_SCOPE_REQUIRED:503,
     PAGE_MAPPING_TOKEN_INVALID:503,
@@ -5577,10 +5636,11 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-05-permission-navigation-v56",
+        buildVersion:"2026-10-05-data-resource-permissions-v57",
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
         detailAuthorization:"betha-session+tenant+resource-permission",
+        dataAuthorization:"betha-session+tenant+source-resource-permission",
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
         tenantsConfigured:Boolean(env.BETHA_TENANTS_JSON),
@@ -6293,6 +6353,10 @@ export default {
         const auth=await authorizeTenant(request,env,tenant);
         const resource=dataMatch[1];
         const source=(url.searchParams.get("source") || "bi").toLowerCase();
+        // Valida primeiro a allowlist técnica e depois a permissão funcional.
+        // Recursos customizados sem mapeamento permanecem fail-closed para usuários comuns.
+        resolveResource(env,source,resource);
+        requireDataPermission(auth,source,resource);
         const query=buildForwardedQuery(url);
         const body=await bethaGet(env,tenant,source,resource,query);
         return json(request,env,200,{
