@@ -2376,7 +2376,10 @@ html,body{
   border-radius:6px;
   background:transparent;
   color:#49576a;
-  font:600 10px/1.2 inherit;
+  font-family:inherit;
+  font-size:10px;
+  font-weight:600;
+  line-height:1.2;
   cursor:pointer;
   transition:background .16s ease,color .16s ease,transform .12s ease,box-shadow .16s ease;
 }
