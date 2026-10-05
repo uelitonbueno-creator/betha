@@ -3132,10 +3132,11 @@ async function buildInstallmentsDashboard(env,tenant,url) {
     inadimplencia:dashboardFilterValue(url,"inadimplencia")
   };
 
-  const [par,parcelas,refs]=await Promise.all([
+  const [par,parcelas,refs,pagPar]=await Promise.all([
     safeBethaRows(env,tenant,"bi","parcelamentos"),
     safeBethaRows(env,tenant,"bi","parcelamentos-parcelas"),
-    safeBethaRows(env,tenant,"bi","parcelamentos-referentes")
+    safeBethaRows(env,tenant,"bi","parcelamentos-referentes"),
+    safeBethaRows(env,tenant,"bi","pagamentos-parcelamentos")
   ]);
 
   const periodRows=par.rows.filter(r=>periodIncludes(r,{
@@ -3190,7 +3191,16 @@ async function buildInstallmentsDashboard(env,tenant,url) {
   const origem=groupCount(refRows,["tipoReferente"],12);
   const canc=monthlyCount(rows,["dtCancelamento"],periodo,exercicio,r=>Boolean(firstValue(r,["dtCancelamento"])));
   const paidParcelRows=parcelRows.filter(r=>Boolean(firstValue(r,["dtPgto"])));
-  const pay=monthSeries(paidParcelRows,{datePaths:["dtPgto"],valuePaths:["vlParcela"],periodo,exercicio});
+  const linkedPaymentRows=pagPar.rows.filter(row=>{
+    const agreementId=String(firstValue(row,["idParcelamento","idParcelamentos","parcelamento.id"])||"");
+    return periodo==="todos" || !agreementId || selectedIds.has(agreementId);
+  });
+  const paymentRows=linkedPaymentRows.length ? linkedPaymentRows : paidParcelRows;
+  const pay=monthSeries(paymentRows,{
+    datePaths:["dtPagamento","dataPagamento","pagamento.dataPagamento","dtPgto"],
+    valuePaths:["valorPago","vlPago","valor","vlParcela"],
+    periodo,exercicio
+  });
 
   return {
     view:"parcelamentos",
@@ -3218,7 +3228,7 @@ async function buildInstallmentsDashboard(env,tenant,url) {
       "pagamentos-parcelas":{format:"currency",labels:pay.labels,datasets:[{label:"Parcelas recebidas",data:pay.values}]}
     },
     meta:dashboardMeta(
-      [["parcelamentos",par],["parcelas",parcelas],["referentes",refs]],
+      [["parcelamentos",par],["parcelas",parcelas],["referentes",refs],["pagamentosParcelamentos",pagPar]],
       {
         parcelRowsFilteredByAgreement:true,
         filterOptions,
