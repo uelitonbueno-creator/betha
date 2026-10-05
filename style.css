@@ -2870,3 +2870,55 @@ html,body{
     font-size:9px;
   }
 }
+
+
+/* KPIs semânticos · valor financeiro x quantidade · 2026-10-05 */
+.kpi-card .kpi-kind-icon{
+  position:absolute;
+  right:12px;
+  bottom:9px;
+  z-index:0;
+  font-size:28px;
+  line-height:1;
+  pointer-events:none;
+  opacity:.12;
+}
+.kpi-card>small,
+.kpi-card>strong,
+.kpi-card>span{
+  position:relative;
+  z-index:1;
+}
+.kpi-card>span{
+  padding-right:34px;
+}
+.kpi-card-currency{
+  border-top:2px solid rgba(53,106,230,.32);
+  background:linear-gradient(180deg,#fff 0%,#fff 72%,rgba(53,106,230,.028) 100%);
+}
+.kpi-card-currency .kpi-kind-icon{
+  color:#356ae6;
+}
+.kpi-card-number{
+  border-top:2px solid rgba(22,138,98,.28);
+  background:linear-gradient(180deg,#fff 0%,#fff 72%,rgba(22,138,98,.026) 100%);
+}
+.kpi-card-number .kpi-kind-icon{
+  color:#168a62;
+}
+.kpi-card-currency:hover{
+  border-top-color:rgba(53,106,230,.52);
+}
+.kpi-card-number:hover{
+  border-top-color:rgba(22,138,98,.48);
+}
+#dashboardView[data-dashboard="visao-geral"] .kpi-card .kpi-kind-icon{
+  bottom:11px;
+}
+@media(max-width:640px){
+  .kpi-card .kpi-kind-icon{
+    right:10px;
+    bottom:8px;
+    font-size:24px;
+  }
+}
