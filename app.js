@@ -2996,6 +2996,10 @@
       ${detailRecordsSection(kpi.source,detailResource,{qualityIssue:detailIssue})}
       ${drillProgressHtml(kpi.source,detailResource)}
     `);
+
+    if(detailResource){
+      loadDetailRecords(detailResource,0,detailIssue);
+    }
   }
 
   function openChartDetail(chartDef, selected) {
@@ -3041,6 +3045,11 @@
       ${detailRecordsSection(chartDef.source,chartDef.drill)}
       ${drillProgressHtml(chartDef.source,chartDef.drill)}
     `);
+
+    const detailResource=detailResourceFor(chartDef.source,chartDef.drill);
+    if(detailResource){
+      loadDetailRecords(detailResource,0);
+    }
   }
 
   function buildRowsTable(rows) {
