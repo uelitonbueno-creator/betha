@@ -2557,11 +2557,16 @@
     return `
       <div class="detail-table-wrap">
         <table class="detail-table">
-          <thead><tr>${columns.map(col=>'<th>'+escapeHtml(col.label||col.key)+'</th>').join("")}</tr></thead>
+          <thead><tr>${columns.map(col=>'<th>'+escapeHtml(col.label||col.key)+'</th>').join("")}${rows.some(row=>row?._drill)?'<th>Detalhar</th>':''}</tr></thead>
           <tbody>
-            ${rows.map(row=>'<tr>'+columns.map(col=>
-              '<td>'+escapeHtml(formatDetailCell(row[col.key],col.format))+'</td>'
-            ).join("")+'</tr>').join("")}
+            ${rows.map(row=>{
+              const drill=row?._drill;
+              const cells=columns.map(col=>'<td>'+escapeHtml(formatDetailCell(row[col.key],col.format))+'</td>').join("");
+              const action=drill
+                ? '<td><button type="button" class="btn-secondary-betha detail-row-drill" data-row-drill-resource="'+escapeHtml(drill.resource||"")+'" data-row-drill-key="'+escapeHtml(drill.filterKey||"")+'" data-row-drill-value="'+escapeHtml(drill.filterValue||"")+'" data-row-drill-label="'+escapeHtml(drill.label||"Detalhamento")+'"><span>Parcelas</span><i class="mdi mdi-chevron-right"></i></button></td>'
+                : (rows.some(item=>item?._drill)?'<td></td>':'');
+              return '<tr class="'+(drill?'detail-row-clickable':'')+'">'+cells+action+'</tr>';
+            }).join("")}
           </tbody>
         </table>
       </div>
@@ -2946,6 +2951,9 @@
       const microSituation=container.querySelector("[data-detail-situation]")?.value||"";
       if(microSearch) params.set("busca",microSearch);
       if(microSituation) params.set("situacao",microSituation);
+      const relationKey=container.dataset.relationKey||"";
+      const relationValue=container.dataset.relationValue||"";
+      if(relationKey&&relationValue) params.set(relationKey,relationValue);
 
       const payload=await api("/api/detail/"+encodeURIComponent(resource)+"?"+params.toString(),{timeoutMs:30000});
       currentDetailPayload=payload;
@@ -3003,6 +3011,20 @@
         if(search) search.value="";
         if(situation) situation.value="";
         loadDetailRecords(resource,0,qualityIssue);
+      });
+      container.querySelectorAll("[data-row-drill-resource]").forEach(button=>{
+        button.addEventListener("click",()=>{
+          const childResource=button.dataset.rowDrillResource||"";
+          if(!childResource) return;
+          container.dataset.relationKey=button.dataset.rowDrillKey||"";
+          container.dataset.relationValue=button.dataset.rowDrillValue||"";
+          container.dataset.detailResource=childResource;
+          const heading=button.dataset.rowDrillLabel||"Parcelas";
+          loadDetailRecords(childResource,0,qualityIssue).then(()=>{
+            const context=container.querySelector(".detail-context-bar");
+            if(context) context.insertAdjacentHTML("afterbegin",'<span class="detail-context-chip"><small>Detalhamento</small><strong>'+escapeHtml(heading)+'</strong></span>');
+          });
+        });
       });
       container.querySelector("[data-detail-search]")?.addEventListener("keydown",event=>{
         if(event.key==="Enter"){
