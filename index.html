@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261005-productivity1">
+  <link rel="stylesheet" href="style.css?v=20261005-personalhome2">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -101,6 +101,9 @@
             </div>
 
             <div class="productivity-toolbar" role="toolbar" aria-label="Ações do painel">
+              <button id="favoriteDashboardButton" class="toolbar-action dashboard-favorite-action" type="button" title="Adicionar este painel à Minha Home" aria-pressed="false">
+                <i class="mdi mdi-star-outline"></i><span>Favoritar</span>
+              </button>
               <button id="saveViewButton" class="toolbar-action" type="button" title="Salvar período, fonte e filtros estruturados desta visão">
                 <i class="mdi mdi-content-save-outline"></i><span>Salvar visão</span>
               </button>
@@ -135,6 +138,8 @@
             </div>
           </div>
         </header>
+
+        <section id="personalHome" class="personal-home" aria-label="Minha Home personalizada" hidden></section>
 
         <section class="filter-row" aria-label="Filtros">
           <div class="field">
@@ -543,6 +548,6 @@
   <script src="auth/auth.js?v=20261002-kvsession1"></script>
   <script src="dashboard-catalog.js?v=20261005-nav2"></script>
   <div id="uiToast" class="ui-toast" role="status" aria-live="polite" aria-atomic="true"></div>
-  <script src="app.js?v=20261005-permission-nav1"></script>
+  <script src="app.js?v=20261005-personalhome2"></script>
 </body>
 </html>
