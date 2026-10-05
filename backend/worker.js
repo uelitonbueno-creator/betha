@@ -4698,6 +4698,13 @@ function requireConstraintPermission(auth,permissionId) {
   }
 }
 
+function adminViewsForAccess(access) {
+  const out=[];
+  if (accessHasConstraintPermission(access,"BIUsuariosPage")) out.push("usuarios-admin");
+  if (accessHasConstraintPermission(access,"BIConfiguracoesPage")) out.push("configuracoes-admin");
+  return out;
+}
+
 function requireViewPermission(auth,view) {
   const allowedViews=permissionViewsForAccess(auth&&auth.access);
   if (!allowedViews.includes(String(view||""))) {
@@ -5570,7 +5577,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-05-page-permissions-v55",
+        buildVersion:"2026-10-05-permission-navigation-v56",
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
         detailAuthorization:"betha-session+tenant+resource-permission",
@@ -6038,7 +6045,9 @@ export default {
               entityId:context.entity,
               databaseId:context.database,
               admin:Boolean(access.admin),
-              technical:Boolean(access.technical)
+              technical:Boolean(access.technical),
+              allowedViews:permissionViewsForAccess(access),
+              allowedAdminViews:adminViewsForAccess(access)
             });
             await authTrace(env,"TENANT_AUTHORIZED",{tenant:id});
           } catch(error) {
