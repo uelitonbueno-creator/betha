@@ -2452,6 +2452,32 @@
     return String(value);
   }
 
+  function collectionWorkbenchContext() {
+    const tenant=String(tenantId||"sem-tenant");
+    const tokenScope=preferenceTokenScope();
+    const scope=tokenScope?"user-"+tokenScope:"session";
+    let storage=null;
+    try { storage=tokenScope?window.localStorage:window.sessionStorage; } catch {}
+    return {storage,key:"betha_bi_collection_workbench_v1:"+scope+":"+tenant};
+  }
+
+  function readCollectionWorkbench() {
+    const context=collectionWorkbenchContext();
+    if(!context.storage) return {};
+    try { return JSON.parse(context.storage.getItem(context.key)||"{}")||{}; } catch { return {}; }
+  }
+
+  function writeCollectionWorkbench(state) {
+    const context=collectionWorkbenchContext();
+    if(!context.storage) return false;
+    try { context.storage.setItem(context.key,JSON.stringify(state||{})); return true; } catch { return false; }
+  }
+
+  function collectionRecordKey(row,index) {
+    const pick=(keys)=>keys.map(key=>row?.[key]).find(value=>value!==undefined&&value!==null&&String(value).trim()!=="");
+    return String(pick(["idDebito","idDivida","idParcelamento","idContribuinte","cpfCnpj","cnpj","cpf","id"])||("row-"+currentView+"-"+index));
+  }
+
   function detailPageTable(payload) {
     const columns=Array.isArray(payload?.columns)?payload.columns:[];
     const rows=Array.isArray(payload?.rows)?payload.rows:[];
@@ -2462,6 +2488,13 @@
       <div class="detail-analytic-toolbar">
         <label class="detail-search"><i class="mdi mdi-magnify"></i><input type="search" data-detail-search placeholder="Buscar nos ${rows.length} registros desta página" aria-label="Buscar nos registros exibidos"></label>
         <span class="detail-visible-count" data-detail-visible-count>${rows.length.toLocaleString("pt-BR")} exibidos</span>
+        <div class="collection-workbench-actions" data-collection-workbench-actions>
+          <label><input type="checkbox" data-collection-select-all> Selecionar página</label>
+          <select data-collection-status aria-label="Status de acompanhamento"><option value="">Status…</option><option>Novo</option><option>Em análise</option><option>Contato realizado</option><option>Negociação</option><option>Aguardando pagamento</option><option>Concluído</option></select>
+          <input type="text" data-collection-owner placeholder="Carteira / responsável" aria-label="Carteira ou responsável">
+          <input type="text" data-collection-note placeholder="Observação para os selecionados" aria-label="Observação">
+          <button type="button" data-collection-apply><i class="mdi mdi-content-save-outline"></i> Aplicar</button>
+        </div>
         <div class="collection-queue-tools" data-collection-queue>
           <button type="button" data-queue-filter="priority"><i class="mdi mdi-alert-outline"></i> Crítica/Alta</button>
           <button type="button" data-queue-filter="overdue"><i class="mdi mdi-calendar-alert"></i> Vencidos</button>
@@ -2473,9 +2506,9 @@
       </div>
       <div class="detail-table-wrap" tabindex="0" aria-label="Tabela analítica; cabeçalho permanece visível durante a rolagem">
         <table class="detail-table detail-table-analytic">
-          <thead><tr>${columns.map((col,index)=>'<th><button type="button" class="detail-sort" data-detail-sort="'+index+'" aria-label="Ordenar por '+escapeHtml(col.label||col.key)+'"><span>'+escapeHtml(col.label||col.key)+'</span><i class="mdi mdi-unfold-more-horizontal"></i></button></th>').join("")}<th class="detail-action-column"><span class="sr-only">Ações</span></th></tr></thead>
+          <thead><tr><th class="collection-select-cell"><span class="sr-only">Selecionar</span></th>${columns.map((col,index)=>'<th><button type="button" class="detail-sort" data-detail-sort="'+index+'" aria-label="Ordenar por '+escapeHtml(col.label||col.key)+'"><span>'+escapeHtml(col.label||col.key)+'</span><i class="mdi mdi-unfold-more-horizontal"></i></button></th>').join("")}<th class="detail-action-column"><span class="sr-only">Ações</span></th></tr></thead>
           <tbody data-detail-tbody>
-            ${rows.map((row,rowIndex)=>{const risk=collectionRiskData(row);return '<tr data-detail-row="'+rowIndex+'" data-risk-score="'+risk.score+'" data-risk-level="'+risk.level.key+'" data-risk-flags="'+risk.flags.join(" ")+'">'+columns.map(col=>
+            ${rows.map((row,rowIndex)=>{const risk=collectionRiskData(row);const recordKey=collectionRecordKey(row,rowIndex);return '<tr data-detail-row="'+rowIndex+'" data-collection-key="'+escapeHtml(recordKey)+'" data-risk-score="'+risk.score+'" data-risk-level="'+risk.level.key+'" data-risk-flags="'+risk.flags.join(" ")+'"><td class="collection-select-cell"><input type="checkbox" data-collection-select aria-label="Selecionar registro"></td>'+columns.map(col=>
               '<td data-sort-value="'+escapeHtml(String(row[col.key]??""))+'">'+escapeHtml(formatDetailCell(row[col.key],col.format))+'</td>'
             ).join("")+'<td class="detail-row-action"><button type="button" data-detail-record="'+rowIndex+'" title="Abrir registro" aria-label="Abrir detalhes deste registro"><i class="mdi mdi-chevron-right"></i></button></td></tr>';}).join("")}
           </tbody>
@@ -2639,6 +2672,15 @@
     const search=container.querySelector("[data-detail-search]");
     const count=container.querySelector("[data-detail-visible-count]");
     const preview=container.querySelector("[data-detail-record-preview]");
+    const workbench=readCollectionWorkbench();
+    const syncWorkbenchRows=()=>{
+      [...tbody?.querySelectorAll("tr")||[]].forEach(row=>{
+        const state=workbench[row.dataset.collectionKey]||{};
+        row.dataset.collectionStatus=state.status||"";
+        row.dataset.collectionOwner=state.owner||"";
+        row.title=[state.status,state.owner,state.note].filter(Boolean).join(" · ");
+      });
+    };
     if(!tbody) return;
 
     const visibleRows=()=>[...tbody.querySelectorAll("tr")].filter(row=>!row.hidden);
@@ -2660,6 +2702,29 @@
     container.querySelector("[data-queue-sort]")?.addEventListener("click",()=>{
       [...tbody.querySelectorAll("tr")].sort((a,b)=>Number(b.dataset.riskScore||0)-Number(a.dataset.riskScore||0)).forEach(row=>tbody.appendChild(row));
       showToast("Fila ordenada por prioridade de cobrança.");
+    });
+
+    syncWorkbenchRows();
+    container.querySelector("[data-collection-select-all]")?.addEventListener("change",event=>{
+      visibleRows().forEach(row=>{const box=row.querySelector("[data-collection-select]");if(box) box.checked=event.target.checked;});
+    });
+    container.querySelector("[data-collection-apply]")?.addEventListener("click",()=>{
+      const selected=[...tbody.querySelectorAll("[data-collection-select]:checked")].map(box=>box.closest("tr")).filter(Boolean);
+      if(!selected.length){showToast("Selecione ao menos um registro da fila.");return;}
+      const status=container.querySelector("[data-collection-status]")?.value||"";
+      const owner=container.querySelector("[data-collection-owner]")?.value?.trim()||"";
+      const note=container.querySelector("[data-collection-note]")?.value?.trim()||"";
+      const now=new Date().toISOString();
+      selected.forEach(row=>{
+        const key=row.dataset.collectionKey;
+        const previous=workbench[key]||{history:[]};
+        const history=Array.isArray(previous.history)?previous.history:[];
+        const changes={...(status?{status}:{}),...(owner?{owner}:{}),...(note?{note}:{}),updatedAt:now};
+        workbench[key]={...previous,...changes,history:[...history,{at:now,status:status||previous.status||"",owner:owner||previous.owner||"",note:note||""}].slice(-20)};
+      });
+      writeCollectionWorkbench(workbench);
+      syncWorkbenchRows();
+      showToast(selected.length+" registro(s) atualizado(s) na carteira local.");
     });
 
     search?.addEventListener("input",()=>{
