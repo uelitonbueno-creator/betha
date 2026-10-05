@@ -388,6 +388,41 @@
     return "bar";
   }
 
+  function compactChartValue(value, format) {
+    const n=Number(value || 0);
+    const abs=Math.abs(n);
+    const compact=(divisor,suffix)=>{
+      const scaled=n/divisor;
+      const digits=Math.abs(scaled)>=100?0:Math.abs(scaled)>=10?1:1;
+      return scaled.toLocaleString("pt-BR",{minimumFractionDigits:0,maximumFractionDigits:digits})+" "+suffix;
+    };
+    if(format==="currency"){
+      const sign=n<0?"-":"";
+      const positive=Math.abs(n);
+      const moneyCompact=(divisor,suffix)=>{
+        const scaled=positive/divisor;
+        const digits=scaled>=100?0:1;
+        return sign+"R$ "+scaled.toLocaleString("pt-BR",{minimumFractionDigits:0,maximumFractionDigits:digits})+" "+suffix;
+      };
+      if(abs>=1000000000) return moneyCompact(1000000000,"bi");
+      if(abs>=1000000) return moneyCompact(1000000,"mi");
+      if(abs>=1000) return moneyCompact(1000,"mil");
+      return n.toLocaleString("pt-BR",{style:"currency",currency:"BRL",maximumFractionDigits:0});
+    }
+    if(abs>=1000000000) return compact(1000000000,"bi");
+    if(abs>=1000000) return compact(1000000,"mi");
+    if(abs>=1000) return compact(1000,"mil");
+    return n.toLocaleString("pt-BR",{maximumFractionDigits:1});
+  }
+
+  function fullChartValue(value, format) {
+    const n=Number(value || 0);
+    if(format==="currency"){
+      return n.toLocaleString("pt-BR",{style:"currency",currency:"BRL",minimumFractionDigits:2,maximumFractionDigits:2});
+    }
+    return n.toLocaleString("pt-BR",{maximumFractionDigits:2});
+  }
+
   function renderChartData(chartDef, data) {
     const card = document.querySelector(`[data-chart="${cssEscape(chartDef.id)}"]`);
     if (!card || !data || !Array.isArray(data.labels) || !Array.isArray(data.datasets)) return;
@@ -400,7 +435,7 @@
       chartInstances.delete(chartDef.id);
     }
 
-    const bethaPalette = ["#0b6ff4","#2fa36b","#7c5cff","#f0a202","#00a6a6","#dc5f73","#556070","#9a6dd7"];
+    const bethaPalette = ["#356ae6","#168a62","#7b68c8","#d99224","#3a8f9d","#c65e72","#657184","#9671bd"];
     const chartDatasets = data.datasets.map((dataset,index) => {
       const color=bethaPalette[index % bethaPalette.length];
       const base={...dataset};
@@ -419,25 +454,27 @@
         return {
           ...base,
           borderColor:dataset.borderColor||color,
-          backgroundColor:dataset.backgroundColor||color+"18",
+          backgroundColor:dataset.backgroundColor||color+"12",
           pointBackgroundColor:dataset.pointBackgroundColor||color,
           pointBorderColor:"#ffffff",
           pointBorderWidth:2,
-          pointRadius:2.5,
-          pointHoverRadius:5,
-          borderWidth:2.25,
-          tension:.32,
+          pointRadius:0,
+          pointHoverRadius:4,
+          pointHitRadius:12,
+          borderWidth:2,
+          tension:.34,
           fill:false
         };
       }
 
       return {
         ...base,
-        backgroundColor:dataset.backgroundColor||color+"CC",
-        borderColor:dataset.borderColor||color,
-        borderWidth:1,
-        borderRadius:5,
-        maxBarThickness:34
+        backgroundColor:dataset.backgroundColor||color+"B8",
+        borderColor:"transparent",
+        borderWidth:0,
+        borderRadius:6,
+        borderSkipped:false,
+        maxBarThickness:30
       };
     });
 
@@ -468,28 +505,41 @@
             }
           },
           tooltip: {
+            backgroundColor:"#172033",
+            titleColor:"#ffffff",
+            bodyColor:"#eef2f7",
+            borderColor:"rgba(255,255,255,.08)",
+            borderWidth:1,
+            cornerRadius:10,
+            padding:11,
+            displayColors:data.datasets.length>1 || chartDef.type==="doughnut",
+            boxPadding:4,
+            titleFont:{size:11,weight:"600"},
+            bodyFont:{size:11,weight:"500"},
             callbacks: {
               label(context) {
                 const label = context.dataset.label ? context.dataset.label + ": " : "";
-                const value = context.raw;
-                if (data.format === "currency") {
-                  return label + Number(value || 0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
-                }
-                return label + Number(value || 0).toLocaleString("pt-BR");
+                return label + fullChartValue(context.raw,data.format);
               }
             }
           }
         },
         scales: chartDef.type === "doughnut" ? undefined : {
           x: {
-            ticks:{font:{size:9},color:"#7b8794",maxRotation:35,minRotation:0},
+            ticks:{font:{size:9,weight:"500"},color:"#7a8495",maxRotation:30,minRotation:0,padding:6},
             grid:{display:false},
             border:{display:false}
           },
           y: {
             beginAtZero:true,
-            ticks:{font:{size:9},color:"#7b8794",padding:8},
-            grid:{color:"rgba(80,96,112,.08)"},
+            ticks:{
+              font:{size:9,weight:"500"},
+              color:"#8a94a4",
+              padding:10,
+              maxTicksLimit:6,
+              callback(value){ return compactChartValue(value,data.format); }
+            },
+            grid:{color:"rgba(107,116,133,.075)",drawTicks:false},
             border:{display:false}
           }
         },
