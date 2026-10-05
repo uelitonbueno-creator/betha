@@ -3431,9 +3431,10 @@ async function buildItbiDashboard(env,tenant,url) {
     certidao:dashboardFilterValue(url,"certidao"),
     cobranca:dashboardFilterValue(url,"cobranca")
   };
-  const [sol,itens,trans,compra]=await Promise.all([
+  const [sol,itens,mov,trans,compra]=await Promise.all([
     safeBethaRows(env,tenant,"bi","solicitacoes-transferencias-imoveis"),
     safeBethaRows(env,tenant,"bi","solicitacoes-transferencias-imoveis-itens"),
+    safeBethaRows(env,tenant,"bi","solicitacoes-transferencias-imoveis-movimentacoes"),
     safeBethaRows(env,tenant,"bi","transferencias-imoveis"),
     safeBethaRows(env,tenant,"bi","transferencias-imoveis-compra")
   ]);
@@ -3462,6 +3463,12 @@ async function buildItbiDashboard(env,tenant,url) {
   }
   const comps=[...compGroups.entries()].sort((a,b)=>String(a[0]).localeCompare(String(b[0]))).slice(-12);
   const cobr=groupCount(transRows,["tipoCobranca","tipoCobranca.descricao","cobranca"],10);
+  const movRows=mov.rows.filter(row=>periodIncludes(row,{
+    periodo,exercicio,
+    datePaths:["dataHoraMovimentacao","dhMovimentacao","dataMovimentacao","dataHora","dhOperacao"],
+    yearPaths:["ano","exercicio"]
+  }));
+  const movStatus=groupCount(movRows,["situacao","situacao.descricao","status","tipoMovimentacao","tipoMovimentacao.descricao"],12);
   const soldGroups=new Map();
   for(const r of compra.rows){
     const p=numericValue(r,["percVendido","percentualVendido","percentual"]);
@@ -3502,9 +3509,10 @@ async function buildItbiDashboard(env,tenant,url) {
         {label:"À vista",data:comps.map(([,v])=>v.vista)}
       ]},
       "tipo-cobranca":chartGroups(cobr,"Transferências","number"),
+      "movimentacoes-itbi":chartGroups(movStatus,"Movimentações","number"),
       compradores:chartGroups([...soldGroups.entries()],"Operações","number")
     },
-    meta:dashboardMeta([["solicitacoes",sol],["itens",itens],["transferencias",trans],["compras",compra]],{filteredRows:{transferencias:transRows.length}})
+    meta:dashboardMeta([["solicitacoes",sol],["itens",itens],["movimentacoes",mov],["transferencias",trans],["compras",compra]],{filteredRows:{transferencias:transRows.length,movimentacoes:movRows.length}})
   };
 }
 
