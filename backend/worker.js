@@ -4980,15 +4980,37 @@ async function listAuditEvents(env,tenantId,limit=100) {
 function analyzeAuditSecurity(events,{now=Date.now(),windowMinutes=10,warningThreshold=5,criticalThreshold=10}={}) {
   const windowMs=Math.max(1,Number(windowMinutes)||10)*60*1000;
   const cutoff=Number(now)-windowMs;
+  const previousCutoff=cutoff-windowMs;
   const counters=new Map();
+  const surfaceCounts=new Map();
+  const targetCounts=new Map();
+  let currentBlocked=0;
+  let previousBlocked=0;
+  let latestBlockedAt="";
 
   for(const event of (Array.isArray(events)?events:[])){
     if(event?.category!=="security" || event?.status!=="blocked") continue;
     const ts=Date.parse(event.ts||"");
-    if(!Number.isFinite(ts) || ts<cutoff || ts>Number(now)+60*1000) continue;
-    const actor=String(event.actor||"").trim();
-    if(!actor || actor==="authenticated-user") continue;
-    counters.set(actor,(counters.get(actor)||0)+1);
+    if(!Number.isFinite(ts) || ts>Number(now)+60*1000) continue;
+
+    if(ts>=cutoff){
+      currentBlocked++;
+      if(!latestBlockedAt || ts>Date.parse(latestBlockedAt)) latestBlockedAt=new Date(ts).toISOString();
+
+      const meta=event.meta&&typeof event.meta==="object" ? event.meta : {};
+      const surface=String(meta.surface||"").trim();
+      if(surface) surfaceCounts.set(surface,(surfaceCounts.get(surface)||0)+1);
+
+      const target=String(meta.view||meta.resource||event.subject||"").trim();
+      if(target) targetCounts.set(target,(targetCounts.get(target)||0)+1);
+
+      const actor=String(event.actor||"").trim();
+      if(actor && actor!=="authenticated-user"){
+        counters.set(actor,(counters.get(actor)||0)+1);
+      }
+    }else if(ts>=previousCutoff){
+      previousBlocked++;
+    }
   }
 
   const flags=new Map();
@@ -5017,7 +5039,24 @@ function analyzeAuditSecurity(events,{now=Date.now(),windowMinutes=10,warningThr
     };
   });
 
+  const topEntry=map=>{
+    let bestName="";
+    let bestCount=0;
+    for(const [name,count] of map.entries()){
+      if(count>bestCount || (count===bestCount && bestName && String(name).localeCompare(String(bestName),"pt-BR")<0)){
+        bestName=name;
+        bestCount=count;
+      }
+    }
+    return {name:bestName,count:bestCount};
+  };
+
+  const topSurface=topEntry(surfaceCounts);
+  const topTarget=topEntry(targetCounts);
+  const trendDelta=currentBlocked-previousBlocked;
+  const trend=trendDelta>0 ? "up" : (trendDelta<0 ? "down" : "stable");
   const level=maxCount>=criticalThreshold ? "high" : (flags.size ? "attention" : "normal");
+
   return {
     events:enriched,
     security:{
@@ -5028,7 +5067,18 @@ function analyzeAuditSecurity(events,{now=Date.now(),windowMinutes=10,warningThr
       windowMinutes:Number(windowMinutes)||10,
       warningThreshold,
       criticalThreshold,
-      automaticBlocking:false
+      automaticBlocking:false,
+      summary:{
+        currentBlocked,
+        previousBlocked,
+        trend,
+        trendDelta,
+        topSurface:topSurface.name,
+        topSurfaceCount:topSurface.count,
+        topTarget:topTarget.name,
+        topTargetCount:topTarget.count,
+        latestBlockedAt
+      }
     }
   };
 }
@@ -5822,13 +5872,14 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-05-audit-anomaly-v59",
+        buildVersion:"2026-10-05-security-summary-v60",
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
         detailAuthorization:"betha-session+tenant+resource-permission",
         dataAuthorization:"betha-session+tenant+source-resource-permission",
         securityAudit:"blocked-permission-events-30d",
         securityAnomalyDetection:"10m:attention>=5,high>=10,no-auto-block",
+        securityExecutiveSummary:"current-vs-previous-window+top-surface+top-target",
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
         tenantsConfigured:Boolean(env.BETHA_TENANTS_JSON),
