@@ -1684,7 +1684,7 @@
   const DETAIL_SUPPORTED = new Set([
     "pagamentos-detalhados-valores","pagamentos-detalhados",
     "debitos","dividas","parcelamentos","parcelamentos-parcelas",
-    "guias-unificadas","contribuintes","imoveis","economicos",
+    "guias-unificadas","contribuintes","imoveis","economicos","economicos-atividades",
     "receitas","creditos-tributarios","indexadores-valores",
     "logradouros","imoveis-campos-adicionais","obras","transferencias-imoveis"
   ]);
@@ -1693,6 +1693,7 @@
     contribuintes:"Contribuintes",
     imoveis:"Imóveis",
     economicos:"Econômicos",
+    "economicos-atividades":"Atividades dos econômicos",
     debitos:"Débitos",
     dividas:"Dívidas",
     parcelamentos:"Parcelamentos",
