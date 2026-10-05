@@ -3241,7 +3241,8 @@
       "tool.call":"Consulta MCP",
       "access.create":"Acesso de usuário criado",
       "access.revoke":"Acesso de usuário removido",
-      "page-mapping.publish":"Matriz de permissões publicada"
+      "page-mapping.publish":"Matriz de permissões publicada",
+      "access.denied":"Acesso bloqueado"
     };
     return map[action] || action || "Ação";
   }
@@ -3251,6 +3252,7 @@
       mcp:"MCP",
       users:"Usuários",
       permissions:"Permissões",
+      security:"Segurança",
       system:"Sistema"
     };
     return map[category] || category || "Sistema";
@@ -3319,15 +3321,29 @@
       return;
     }
 
+    const blockedCount=events.filter(event=>event?.category==="security"&&event?.status==="blocked").length;
+    const securityBadge=document.getElementById("auditSecurityBadge");
+    if(securityBadge){
+      securityBadge.textContent=blockedCount===1 ? "1 BLOQUEIO" : blockedCount+" BLOQUEIOS";
+      securityBadge.className="config-status-badge "+(blockedCount?"warn":"ok");
+    }
+
     tbody.innerHTML=events.map(event=>{
       const dt=event.ts ? new Date(event.ts) : null;
       const meta=event.meta&&typeof event.meta==="object" ? event.meta : {};
       const metaParts=[];
+      if(meta.surface) metaParts.push("origem: "+meta.surface);
       if(meta.view) metaParts.push("painel: "+meta.view);
+      if(meta.source) metaParts.push("fonte: "+meta.source);
+      if(meta.resource) metaParts.push("recurso: "+meta.resource);
+      if(meta.part) metaParts.push("bloco: "+meta.part);
+      if(meta.code) metaParts.push("motivo: "+meta.code);
       if(meta.label) metaParts.push("rótulo: "+meta.label);
       if(meta.permissionCount!==undefined) metaParts.push(meta.permissionCount+" permissão(ões)");
       if(meta.viewCount!==undefined) metaParts.push(meta.viewCount+" painel(is)");
       const status=String(event.status||"ok");
+      const statusClass=status==="ok"?"ok":(status==="blocked"?"blocked":"error");
+      const statusLabel=status==="ok"?"OK":(status==="blocked"?"BLOQUEADO":"ERRO");
       return `
         <tr>
           <td>${escapeHtml(dt&&!Number.isNaN(dt.getTime())?dt.toLocaleString("pt-BR"):(event.ts||"—"))}</td>
@@ -3335,7 +3351,7 @@
           <td><span class="audit-action">${escapeHtml(formatAuditAction(event.action))}</span>${metaParts.length?'<small class="audit-meta">'+escapeHtml(metaParts.join(" · "))+'</small>':""}</td>
           <td>${escapeHtml(event.actor||"—")}</td>
           <td>${escapeHtml(event.subject||"—")}</td>
-          <td><span class="audit-status ${status==="ok"?"ok":"error"}">${escapeHtml(status==="ok"?"OK":"ERRO")}</span></td>
+          <td><span class="audit-status ${statusClass}">${escapeHtml(statusLabel)}</span></td>
         </tr>
       `;
     }).join("");
@@ -3348,7 +3364,7 @@
       const payload=await api("/api/admin/audit?limit=100");
       renderAuditEvents(payload);
     }catch(error){
-      if(tbody) tbody.innerHTML='<tr><td colspan="6" class="table-empty">Auditoria disponível apenas para administradores/técnicos autorizados.</td></tr>';
+      if(tbody) tbody.innerHTML='<tr><td colspan="6" class="table-empty">Auditoria disponível apenas para usuários com permissão de Configurações do BI.</td></tr>';
     }
   }
 
