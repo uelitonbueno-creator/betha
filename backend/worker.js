@@ -4492,7 +4492,11 @@ function detailFilterRows(resource,rows,url,context={}) {
   } else if(resource==="parcelamentos-parcelas"){
     const parcelamentoId=dashboardFilterValue(url,"parcelamentoId");
     if(parcelamentoId){
-      out=out.filter(row=>matchesDashboardFilter(row,parcelamentoId,["idParcelamentos","idParcelamento","parcelamento.id"]));
+      out=out.filter(row=>matchesDashboardFilter(row,parcelamentoId,[
+        "idParcelamentos","idParcelamento","parcelamento.id",
+        "parcelamento.idParcelamentos","parcelamento.idParcelamento",
+        "idAcordo","acordo.id","parcelamentoId"
+      ]));
     }
   } else if(["contribuintes","imoveis","economicos"].includes(resource)){
     const situacao=dashboardFilterValue(url,"situacao");
@@ -4623,6 +4627,11 @@ async function buildDetailPage(env,tenant,resource,url) {
 
   let filtered=detailFilterRows(resource,src.rows,url,detailContext);
 
+  // Parcelas podem estar muito distantes no conjunto global. Para um
+  // parcelamento específico, a busca precisa atravessar a fonte inteira até
+  // encontrar o vínculo, não apenas as primeiras páginas.
+  const relationScan = resource==="parcelamentos-parcelas" && Boolean(dashboardFilterValue(url,"parcelamentoId"));
+
   // O dashboard pode contar registros de todo o exercício enquanto a primeira
   // página física da API não contém itens do recorte. Para o micro, avance
   // páginas até encontrar registros compatíveis (ou esgotar a fonte), em vez
@@ -4630,7 +4639,7 @@ async function buildDetailPage(env,tenant,resource,url) {
   let scanOffset=src.nextOffset;
   let scanHasMore=src.hasMore===true;
   let scanPages=1;
-  const scanMaxPages=20;
+  const scanMaxPages=relationScan ? 500 : 20;
   while(filtered.length===0 && scanHasMore && scanOffset!==null && scanOffset!==undefined && scanPages<scanMaxPages){
     const page=await safeBethaRows(env,tenant,def.source,def.resource,{
       limit,
