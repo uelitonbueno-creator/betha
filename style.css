@@ -1196,6 +1196,7 @@ html,body{
   font-weight:700
 }
 .audit-status.ok{background:#eaf7ef;color:#176b43}
+.audit-status.blocked{background:#fff4dc;color:#8b6110}
 .audit-status.error{background:#fdeaea;color:#a22f2f}
 @media(max-width:900px){
   .mcp-active-tokens{grid-template-columns:1fr}
