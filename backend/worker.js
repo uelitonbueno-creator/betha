@@ -544,6 +544,20 @@ const DETAIL_RESOURCES = Object.freeze({
       ["logradouro","Logradouro",["nomeLogradouro"],"text"]
     ]
   },
+  "economicos-atividades":{
+    source:"bi",resource:"economicos-atividades",datePaths:["dhOperacao"],
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["economico","ID econômico",["idEconomico"],"text"],
+      ["identificador","Identificador",["identificador"],"text"],
+      ["atividade","Atividade",["descricaoAtividadeEconomico","descricaoAtividade"],"text"],
+      ["tipo","Tipo",["tipo"],"text"],
+      ["principal","Principal",["principal"],"text"],
+      ["emAtividade","Em atividade",["emAtividade"],"text"],
+      ["operacao","Operação",["operacao"],"text"],
+      ["dataHora","Data / hora operação",["dhOperacao"],"date"]
+    ]
+  },
   receitas:{
     source:"bi",resource:"receitas",
     columns:[
@@ -4360,6 +4374,11 @@ function detailFilterRows(resource,rows,url,context={}) {
       }
       return true;
     });
+  } else if(resource==="economicos-atividades"&&context.economicIds instanceof Set){
+    out=out.filter(row=>{
+      const id=firstValue(row,["idEconomico","economico.id","economicoId"]);
+      return id!==undefined&&id!==null&&context.economicIds.has(String(id));
+    });
   }
 
   return out;
@@ -4398,6 +4417,36 @@ async function buildDetailPage(env,tenant,resource,url) {
         .map(row=>String(firstValue(row,["idEconomico","economico.id"])||""))
         .filter(Boolean)
     );
+  }
+  if(resource==="economicos-atividades"){
+    const busca=dashboardFilterValue(url,"busca");
+    const situacao=dashboardFilterValue(url,"situacao");
+    const bairro=dashboardFilterValue(url,"bairro");
+    if(busca||situacao||bairro){
+      const economicos=await safeBethaRows(env,tenant,"bi","economicos");
+      if(economicos.error){
+        const error=new Error(economicos.error);
+        error.status=economicos.errorStatus||502;
+        throw error;
+      }
+      const normalizedSearch=busca.toLocaleLowerCase("pt-BR");
+      const economicRows=economicos.rows.filter(row=>{
+        if(situacao&&!matchesDashboardFilter(row,situacao,["situacao","situacao.descricao","status"])) return false;
+        if(bairro&&!matchesDashboardFilter(row,bairro,["nomeBairro","bairro.nome","bairro"])) return false;
+        if(normalizedSearch){
+          const searchable=[
+            stringValue(row,["nome"],""),
+            stringValue(row,["nomeFantasia"],""),
+            stringValue(row,["pessoa.nome"],"")
+          ].join(" ").toLocaleLowerCase("pt-BR");
+          if(!searchable.includes(normalizedSearch)) return false;
+        }
+        return true;
+      });
+      detailContext.economicIds=new Set(
+        economicRows.map(row=>String(firstValue(row,["id","idEconomico"])||"")).filter(Boolean)
+      );
+    }
   }
 
   const filtered=detailFilterRows(resource,src.rows,url,detailContext);
