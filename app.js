@@ -296,6 +296,8 @@
     destroyCharts();
     currentPayload = null;
     const def = dashboards[view];
+    const dashboardView = document.getElementById("dashboardView");
+    dashboardView.dataset.dashboard = view;
     renderDashboardFilters(def);
 
     document.getElementById("pageTitle").textContent = def.title;

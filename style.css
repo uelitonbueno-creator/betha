@@ -1544,3 +1544,79 @@ html,body{
   .kpi-card{min-height:108px}
   .chart-body{height:270px}
 }
+
+/* Visão Geral executiva · Figma 1:80
+   Hierarquia visual contextual; mantém todos os dados e interações. */
+#dashboardView[data-dashboard="visao-geral"] .page-heading{
+  margin-bottom:14px;
+}
+#dashboardView[data-dashboard="visao-geral"] .filter-row:not(.advanced-filter-row){
+  min-height:48px;
+  padding:6px 8px;
+  align-items:center;
+  border-color:transparent;
+  background:transparent;
+}
+#dashboardView[data-dashboard="visao-geral"] .filter-row:not(.advanced-filter-row) .field{
+  min-width:150px;
+}
+#dashboardView[data-dashboard="visao-geral"] .filter-row:not(.advanced-filter-row) .field label{
+  display:none;
+}
+#dashboardView[data-dashboard="visao-geral"] .filter-row:not(.advanced-filter-row) .field select{
+  height:34px;
+  border-radius:18px;
+  padding:0 30px 0 12px;
+  background:#fff;
+  font-size:10px;
+  font-weight:600;
+  color:#596579;
+}
+#dashboardView[data-dashboard="visao-geral"] .filter-row:not(.advanced-filter-row) #refreshButton{
+  min-height:34px;
+  height:34px;
+  border-radius:18px;
+}
+#dashboardView[data-dashboard="visao-geral"] .kpi-grid{
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  align-items:stretch;
+}
+#dashboardView[data-dashboard="visao-geral"] .kpi-card span{
+  display:none;
+}
+#dashboardView[data-dashboard="visao-geral"] .kpi-card:nth-child(-n+4){
+  min-height:128px;
+}
+#dashboardView[data-dashboard="visao-geral"] .kpi-card:nth-child(n+5){
+  min-height:82px;
+  padding:14px 16px;
+  grid-column:span 2;
+  background:var(--ui-bg-soft);
+}
+#dashboardView[data-dashboard="visao-geral"] .kpi-card:nth-child(n+5) strong{
+  margin-bottom:0;
+  font-size:20px;
+}
+#dashboardView[data-dashboard="visao-geral"] .integration-coverage{
+  margin-top:2px;
+}
+@media(max-width:1180px){
+  #dashboardView[data-dashboard="visao-geral"] .kpi-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  #dashboardView[data-dashboard="visao-geral"] .kpi-card:nth-child(n+5){
+    grid-column:span 1;
+  }
+}
+@media(max-width:640px){
+  #dashboardView[data-dashboard="visao-geral"] .filter-row:not(.advanced-filter-row){
+    align-items:stretch;
+    padding:0;
+  }
+  #dashboardView[data-dashboard="visao-geral"] .filter-row:not(.advanced-filter-row) .field{
+    min-width:0;
+  }
+  #dashboardView[data-dashboard="visao-geral"] .kpi-grid{
+    grid-template-columns:1fr;
+  }
+}

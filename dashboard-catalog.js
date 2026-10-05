@@ -1,15 +1,15 @@
 window.BI_DASHBOARDS = {
   "visao-geral": {
     title: "Visão geral",
-    description: "Leitura executiva do município: arrecadação, carteira a receber, dívida ativa, cadastros e tendência.",
+    description: "Acompanhe o desempenho tributário e encontre rapidamente o que precisa de atenção.",
     level: "macro",
     kpis: [
       { id:"arrecadado", label:"Arrecadado no período", format:"currency", source:"bi:pagamentos", field:"valorPago" },
-      { id:"lancado", label:"Valor lançado", format:"currency", source:"bi:debitos", field:"vlLancado" },
       { id:"divida", label:"Saldo da dívida ativa", format:"currency", source:"base:encerramento-dividas", field:"valorSaldo" },
-      { id:"parcelado", label:"Parcelamentos ativos", format:"number", source:"bi:parcelamentos", field:"id" },
       { id:"contribuintes", label:"Contribuintes", format:"number", source:"bi:contribuintes", field:"id" },
-      { id:"imoveis", label:"Imóveis", format:"number", source:"bi:imoveis", field:"id" }
+      { id:"imoveis", label:"Imóveis", format:"number", source:"bi:imoveis", field:"id" },
+      { id:"lancado", label:"Valor lançado", format:"currency", source:"bi:debitos", field:"vlLancado" },
+      { id:"parcelado", label:"Parcelamentos ativos", format:"number", source:"bi:parcelamentos", field:"id" }
     ],
     charts: [
       { id:"receita-mensal", title:"Arrecadação mensal", subtitle:"Evolução do valor efetivamente pago.", type:"line", source:"bi:pagamentos", dimension:"dataPagamento:mês", measures:["valorPago"], drill:"pagamentos" },
