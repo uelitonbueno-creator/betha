@@ -454,25 +454,27 @@
         return {
           ...base,
           borderColor:dataset.borderColor||color,
-          backgroundColor:dataset.backgroundColor||color+"18",
+          backgroundColor:dataset.backgroundColor||color+"12",
           pointBackgroundColor:dataset.pointBackgroundColor||color,
           pointBorderColor:"#ffffff",
           pointBorderWidth:2,
-          pointRadius:2.5,
-          pointHoverRadius:5,
-          borderWidth:2.25,
-          tension:.32,
+          pointRadius:0,
+          pointHoverRadius:4,
+          pointHitRadius:12,
+          borderWidth:2,
+          tension:.34,
           fill:false
         };
       }
 
       return {
         ...base,
-        backgroundColor:dataset.backgroundColor||color+"CC",
-        borderColor:dataset.borderColor||color,
-        borderWidth:1,
-        borderRadius:5,
-        maxBarThickness:34
+        backgroundColor:dataset.backgroundColor||color+"B8",
+        borderColor:"transparent",
+        borderWidth:0,
+        borderRadius:6,
+        borderSkipped:false,
+        maxBarThickness:30
       };
     });
 
