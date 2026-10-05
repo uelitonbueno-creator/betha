@@ -3237,7 +3237,8 @@
     }
   }
 
-  let auditPayloadCache={events:[],security:{}};
+  let auditPayloadCache={events:[],security:{},history:{}};
+  let auditLoadLimit=100;
   const auditFilterState={period:"all",category:"all",status:"all",text:""};
 
   function auditPeriodCutoff(period,now=Date.now()) {
@@ -3342,6 +3343,10 @@
       ["Categoria",filterLabels.category],
       ["Status",filterLabels.status],
       ["Busca",filterLabels.text],
+      ["Eventos carregados",Number(auditPayloadCache?.history?.loaded||allEvents.length)],
+      ["Cobertura indexada",auditPayloadCache?.history?.indexTruncated===true
+        ? String(auditPayloadCache?.history?.totalIndexed||0)+"+"
+        : String(auditPayloadCache?.history?.totalIndexed||allEvents.length)],
       ["Eventos exportados",events.length]
     ].map(row=>row.map(value=>csvEscape(value,separator)).join(separator)).join("\r\n");
 
@@ -3384,6 +3389,35 @@
       system:"Sistema"
     };
     return map[category] || category || "Sistema";
+  }
+
+  function renderAuditHistory(history) {
+    const coverage=document.getElementById("auditHistoryCoverage");
+    const button=document.getElementById("loadMoreAudit");
+    const loaded=Number(history?.loaded||0);
+    const total=Number(history?.totalIndexed||0);
+    const maxLimit=Number(history?.maxLimit||1000);
+    const hasMore=history?.hasMore===true && loaded<maxLimit;
+    const retention=Number(history?.retentionDays||30);
+    const truncated=history?.indexTruncated===true;
+
+    if(coverage){
+      if(truncated){
+        coverage.textContent=loaded+" evento(s) carregado(s) · índice com mais de "+total+" eventos · retenção "+retention+" dias";
+      }else{
+        coverage.textContent=loaded+" de "+total+" evento(s) retido(s) · retenção "+retention+" dias";
+      }
+    }
+
+    if(button){
+      button.hidden=!hasMore;
+      button.disabled=false;
+      button.innerHTML='<i class="mdi mdi-chevron-down"></i> CARREGAR MAIS';
+      const remaining=truncated ? Math.max(0,maxLimit-loaded) : Math.max(0,total-loaded);
+      button.title=remaining
+        ? "Carregar mais eventos mantendo os filtros atuais."
+        : "Todo o histórico disponível neste recorte já foi carregado.";
+    }
   }
 
   function renderMcpTokens(payload) {
@@ -3445,9 +3479,11 @@
     if(!tbody) return;
     auditPayloadCache={
       events:Array.isArray(payload?.events)?payload.events:[],
-      security:payload?.security&&typeof payload.security==="object" ? payload.security : {}
+      security:payload?.security&&typeof payload.security==="object" ? payload.security : {},
+      history:payload?.history&&typeof payload.history==="object" ? payload.history : {}
     };
     const allEvents=auditPayloadCache.events;
+    renderAuditHistory(auditPayloadCache.history);
     const events=filteredAuditEvents(allEvents);
     const security=auditPayloadCache.security;
     const summary=security.summary&&typeof security.summary==="object" ? security.summary : {};
@@ -3538,17 +3574,33 @@
     }).join("");
   }
 
-  async function loadAuditEvents() {
+  async function loadAuditEvents({preserveTable=false}={}) {
     const tbody=document.getElementById("auditTableBody");
-    if(tbody) tbody.innerHTML='<tr><td colspan="6" class="table-empty">Carregando auditoria…</td></tr>';
+    const loadMore=document.getElementById("loadMoreAudit");
+    if(!preserveTable && tbody){
+      tbody.innerHTML='<tr><td colspan="6" class="table-empty">Carregando auditoria…</td></tr>';
+    }
+    if(loadMore){
+      loadMore.disabled=true;
+      loadMore.innerHTML='<i class="mdi mdi-loading mdi-spin"></i> CARREGANDO';
+    }
     try{
-      const payload=await api("/api/admin/audit?limit=100");
+      const payload=await api("/api/admin/audit?limit="+encodeURIComponent(String(auditLoadLimit)));
       renderAuditEvents(payload);
     }catch(error){
-      auditPayloadCache={events:[],security:{}};
+      auditPayloadCache={events:[],security:{},history:{}};
+      renderAuditHistory({});
       updateAuditFilterCount(0,0);
       if(tbody) tbody.innerHTML='<tr><td colspan="6" class="table-empty">Auditoria disponível apenas para usuários com permissão de Configurações do BI.</td></tr>';
     }
+  }
+
+  async function loadMoreAuditEvents() {
+    const history=auditPayloadCache?.history||{};
+    const maxLimit=Number(history.maxLimit||1000);
+    if(history.hasMore!==true || auditLoadLimit>=maxLimit) return;
+    auditLoadLimit=Math.min(maxLimit,auditLoadLimit+100);
+    await loadAuditEvents({preserveTable:true});
   }
 
   function renderExpectedPermissions(expected) {
@@ -4054,6 +4106,7 @@
   });
   document.getElementById("clearAuditFilters")?.addEventListener("click",clearAuditFilters);
   document.getElementById("exportAuditCsv")?.addEventListener("click",exportAuditCsv);
+  document.getElementById("loadMoreAudit")?.addEventListener("click",loadMoreAuditEvents);
   document.getElementById("mcpActiveTokens").addEventListener("click",(event)=>{
     const button=event.target.closest("[data-revoke-mcp]");
     if(button) revokeMcpToken(button.dataset.revokeMcp);

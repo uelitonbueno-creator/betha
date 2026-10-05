@@ -4968,13 +4968,44 @@ async function writeSecurityDenial(env,tenant,auth,{surface="",subject="",code="
 
 async function listAuditEvents(env,tenantId,limit=100) {
   if(!env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
-  const safeLimit=Math.max(10,Math.min(Number(limit)||100,250));
-  const listed=await env.BI_SESSIONS.list({prefix:"audit:"+String(tenantId)+":",limit:Math.min(1000,safeLimit*3)});
-  const keys=(listed.keys||[]).map(item=>item.name).sort().reverse().slice(0,safeLimit);
-  const values=await Promise.all(keys.map(key=>env.BI_SESSIONS.get(key)));
-  return values.map(raw=>{
+
+  const safeLimit=Math.max(10,Math.min(Number(limit)||100,1000));
+  const prefix="audit:"+String(tenantId)+":";
+  const keyNames=[];
+  let cursor="";
+  let listComplete=false;
+  let pages=0;
+
+  while(!listComplete && pages<10){
+    const options={prefix,limit:1000};
+    if(cursor) options.cursor=cursor;
+    const listed=await env.BI_SESSIONS.list(options);
+    for(const item of (listed.keys||[])){
+      if(item&&item.name) keyNames.push(item.name);
+    }
+    listComplete=Boolean(listed.list_complete);
+    cursor=listed.cursor||"";
+    pages++;
+    if(listComplete || !cursor) break;
+  }
+
+  keyNames.sort().reverse();
+  const selectedKeys=keyNames.slice(0,safeLimit);
+  const values=await Promise.all(selectedKeys.map(key=>env.BI_SESSIONS.get(key)));
+  const events=values.map(raw=>{
     try{return JSON.parse(raw||"null");}catch{return null;}
   }).filter(Boolean);
+
+  return {
+    events,
+    loaded:events.length,
+    totalIndexed:keyNames.length,
+    indexTruncated:!listComplete,
+    hasMore:keyNames.length>safeLimit || !listComplete,
+    limit:safeLimit,
+    maxLimit:1000,
+    retentionDays:30
+  };
 }
 
 function analyzeAuditSecurity(events,{now=Date.now(),windowMinutes=10,warningThreshold=5,criticalThreshold=10}={}) {
@@ -5872,7 +5903,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-05-audit-productivity-v61",
+        buildVersion:"2026-10-05-audit-history-v62",
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
         detailAuthorization:"betha-session+tenant+resource-permission",
@@ -5881,6 +5912,7 @@ export default {
         securityAnomalyDetection:"10m:attention>=5,high>=10,no-auto-block",
         securityExecutiveSummary:"current-vs-previous-window+top-surface+top-target",
         auditProductivity:"client-filtering+sanitized-csv-export",
+        auditHistory:"paginated-kv-index+load-more-up-to-1000",
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
         tenantsConfigured:Boolean(env.BETHA_TENANTS_JSON),
@@ -6504,12 +6536,21 @@ export default {
         const tenant=resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
         requireConstraintPermission(auth,"BIConfiguracoesPage");
-        const events=await listAuditEvents(env,tenant.id,url.searchParams.get("limit")||100);
-        const analysis=analyzeAuditSecurity(events);
+        const audit=await listAuditEvents(env,tenant.id,url.searchParams.get("limit")||100);
+        const analysis=analyzeAuditSecurity(audit.events);
         return json(request,env,200,{
           events:analysis.events,
           count:analysis.events.length,
-          security:analysis.security
+          security:analysis.security,
+          history:{
+            loaded:audit.loaded,
+            totalIndexed:audit.totalIndexed,
+            indexTruncated:audit.indexTruncated,
+            hasMore:audit.hasMore,
+            limit:audit.limit,
+            maxLimit:audit.maxLimit,
+            retentionDays:audit.retentionDays
+          }
         });
       } catch(error) {
         return errorResponse(request,env,error);
