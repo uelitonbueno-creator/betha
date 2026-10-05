@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261005-executive1">
+  <link rel="stylesheet" href="style.css?v=20261005-detail1">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -392,17 +392,18 @@
 
   <aside id="detailDrawer" class="detail-drawer" aria-hidden="true">
     <div class="drawer-header">
-      <div>
-        <small>DETALHAMENTO</small>
+      <div class="drawer-title-block">
+        <small>VISÃO MICRO</small>
         <h2 id="drawerTitle">Detalhamento</h2>
+        <span id="drawerContext">Registros autorizados do recorte atual</span>
       </div>
       <div class="drawer-header-actions">
-        <div id="drawerExportActions" class="drawer-export-actions" hidden>
-          <button id="exportDetailPdf" class="drawer-export-btn" type="button" title="Exportar PDF"><i class="mdi mdi-file-pdf-box"></i></button>
-          <button id="exportDetailCsv" class="drawer-export-btn" type="button" title="Exportar CSV"><i class="mdi mdi-file-delimited-outline"></i></button>
-          <button id="exportDetailTxt" class="drawer-export-btn" type="button" title="Exportar TXT"><i class="mdi mdi-file-document-outline"></i></button>
+        <div id="drawerExportActions" class="drawer-export-actions" hidden aria-label="Exportar detalhamento">
+          <button id="exportDetailPdf" class="drawer-export-btn" type="button" title="Exportar PDF" aria-label="Exportar detalhamento em PDF"><i class="mdi mdi-file-pdf-box"></i><span>PDF</span></button>
+          <button id="exportDetailCsv" class="drawer-export-btn" type="button" title="Exportar CSV" aria-label="Exportar detalhamento em CSV"><i class="mdi mdi-file-delimited-outline"></i><span>CSV</span></button>
+          <button id="exportDetailTxt" class="drawer-export-btn" type="button" title="Exportar TXT" aria-label="Exportar detalhamento em TXT"><i class="mdi mdi-file-document-outline"></i><span>TXT</span></button>
         </div>
-              <button id="closeDrawer" class="drawer-close" type="button" aria-label="Fechar"><i class="mdi mdi-close"></i></button>
+        <button id="closeDrawer" class="drawer-close" type="button" aria-label="Fechar detalhamento"><i class="mdi mdi-close"></i></button>
       </div>
     </div>
     <div id="drawerBody" class="drawer-body"></div>
@@ -494,6 +495,6 @@
   <script src="config.js?v=20261002-kvsession1"></script>
   <script src="auth/auth.js?v=20261002-kvsession1"></script>
   <script src="dashboard-catalog.js?v=20261005-overview1"></script>
-  <script src="app.js?v=20261005-charts1"></script>
+  <script src="app.js?v=20261005-detail1"></script>
 </body>
 </html>
