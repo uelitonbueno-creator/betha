@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261005-hierarquia1">
+  <link rel="stylesheet" href="style.css?v=20261005-productivity1">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -99,13 +99,40 @@
               <i class="mdi mdi-clock-outline"></i>
               <span>Aguardando dados</span>
             </div>
-            <button id="exportDashboardPdf" class="btn-secondary-betha" type="button">
-              <i class="mdi mdi-file-pdf-box"></i> EXPORTAR PDF
-            </button>
-                      <div id="apiStatus" class="api-status api-status-waiting">
-            <span class="status-dot"></span>
-            <span>Carregando dados autorizados…</span>
-          </div>
+
+            <div class="productivity-toolbar" role="toolbar" aria-label="Ações do painel">
+              <button id="saveViewButton" class="toolbar-action" type="button" title="Salvar período, fonte e filtros estruturados desta visão">
+                <i class="mdi mdi-content-save-outline"></i><span>Salvar visão</span>
+              </button>
+              <button id="clearViewFiltersButton" class="toolbar-action" type="button" title="Limpar filtros adicionais mantendo período e fonte">
+                <i class="mdi mdi-filter-remove-outline"></i><span>Limpar filtros</span>
+              </button>
+              <button id="restoreDefaultViewButton" class="toolbar-action" type="button" title="Restaurar período, exercício, fonte e filtros padrão">
+                <i class="mdi mdi-backup-restore"></i><span>Restaurar padrão</span>
+              </button>
+
+              <div class="export-menu-wrap">
+                <button id="exportMenuButton" class="toolbar-action toolbar-action-primary" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="dashboardExportMenu">
+                  <i class="mdi mdi-tray-arrow-down"></i><span>Exportar</span><i class="mdi mdi-chevron-down"></i>
+                </button>
+                <div id="dashboardExportMenu" class="export-menu" role="menu" hidden>
+                  <button type="button" role="menuitem" data-dashboard-export="pdf" title="Exportar painel completo em PDF">
+                    <i class="mdi mdi-file-pdf-box"></i><span><strong>PDF</strong><small>Painel visual completo</small></span>
+                  </button>
+                  <button type="button" role="menuitem" data-dashboard-export="csv" title="Exportar indicadores e séries em CSV">
+                    <i class="mdi mdi-file-delimited-outline"></i><span><strong>CSV</strong><small>Indicadores e séries</small></span>
+                  </button>
+                  <button type="button" role="menuitem" data-dashboard-export="txt" title="Exportar indicadores e séries em TXT">
+                    <i class="mdi mdi-file-document-outline"></i><span><strong>TXT</strong><small>Leitura e integração simples</small></span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div id="apiStatus" class="api-status api-status-waiting">
+              <span class="status-dot"></span>
+              <span>Carregando dados autorizados…</span>
+            </div>
           </div>
         </header>
 
@@ -143,6 +170,8 @@
           </div>
         </section>
 
+        <div id="activeFilterSummary" class="active-filter-summary" aria-live="polite" hidden></div>
+
         <section id="advancedFilterRow" class="filter-row advanced-filter-row" aria-label="Filtros adicionais do painel" hidden>
           <div class="advanced-filter-head">
             <div>
@@ -151,7 +180,7 @@
             </div>
             <button id="resetDashboardFilters" class="filter-clear-button" type="button">
               <i class="mdi mdi-filter-remove-outline"></i>
-              <span>Limpar filtros</span>
+              <span>Limpar adicionais</span>
             </button>
           </div>
           <div id="advancedFilters" class="advanced-filters"></div>
@@ -513,6 +542,7 @@
   <script src="config.js?v=20261002-kvsession1"></script>
   <script src="auth/auth.js?v=20261002-kvsession1"></script>
   <script src="dashboard-catalog.js?v=20261005-nav2"></script>
-  <script src="app.js?v=20261005-autoload1"></script>
+  <div id="uiToast" class="ui-toast" role="status" aria-live="polite" aria-atomic="true"></div>
+  <script src="app.js?v=20261005-productivity1"></script>
 </body>
 </html>
