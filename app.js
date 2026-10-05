@@ -261,6 +261,250 @@
     toastTimer=setTimeout(()=>toast.classList.remove("is-visible"),2800);
   }
 
+  function personalizationContext() {
+    const tenant=String(tenantId||"sem-tenant");
+    const tokenScope=preferenceTokenScope();
+    const scope=tokenScope ? "user-"+tokenScope : "session";
+    let storage=null;
+    try {
+      storage=tokenScope ? window.localStorage : window.sessionStorage;
+    } catch {}
+    return {
+      storage,
+      scope,
+      key:"betha_bi_personal_home_v1:"+scope+":"+tenant
+    };
+  }
+
+  function emptyPersonalizationState() {
+    return {
+      version:1,
+      favoriteDashboards:[],
+      favoriteKpis:[],
+      recentViews:[],
+      kpiSnapshots:{}
+    };
+  }
+
+  function readPersonalization() {
+    const context=personalizationContext();
+    if(!context.storage) return emptyPersonalizationState();
+    try{
+      const raw=context.storage.getItem(context.key);
+      if(!raw) return emptyPersonalizationState();
+      const parsed=JSON.parse(raw);
+      return {
+        ...emptyPersonalizationState(),
+        ...(parsed&&parsed.version===1?parsed:{})
+      };
+    }catch{
+      return emptyPersonalizationState();
+    }
+  }
+
+  function writePersonalization(state) {
+    const context=personalizationContext();
+    if(!context.storage) return false;
+    try{
+      context.storage.setItem(context.key,JSON.stringify({
+        ...emptyPersonalizationState(),
+        ...state,
+        version:1
+      }));
+      return true;
+    }catch{
+      return false;
+    }
+  }
+
+  function dashboardLabel(view) {
+    return dashboards[view]?.title || String(view||"Painel");
+  }
+
+  function favoriteKpiKey(view,kpiId) {
+    return String(view||"")+"::"+String(kpiId||"");
+  }
+
+  function isDashboardFavorite(view=currentView) {
+    return readPersonalization().favoriteDashboards.includes(view);
+  }
+
+  function isKpiFavorite(view,kpiId) {
+    return readPersonalization().favoriteKpis.some(item=>item.view===view&&item.kpiId===kpiId);
+  }
+
+  function updateDashboardFavoriteButton() {
+    const button=document.getElementById("favoriteDashboardButton");
+    if(!button || !dashboards[currentView]) return;
+    const active=isDashboardFavorite(currentView);
+    button.classList.toggle("is-active",active);
+    button.setAttribute("aria-pressed",String(active));
+    button.setAttribute("title",active ? "Remover este painel da Minha Home" : "Adicionar este painel à Minha Home");
+    button.innerHTML=active
+      ? '<i class="mdi mdi-star"></i><span>Favorito</span>'
+      : '<i class="mdi mdi-star-outline"></i><span>Favoritar</span>';
+  }
+
+  function updateKpiFavoriteButtons() {
+    const state=readPersonalization();
+    const favorites=new Set((state.favoriteKpis||[]).filter(item=>item.view===currentView).map(item=>item.kpiId));
+    document.querySelectorAll("[data-kpi-favorite]").forEach(button=>{
+      const active=favorites.has(button.dataset.kpiFavorite);
+      button.classList.toggle("is-active",active);
+      button.setAttribute("aria-pressed",String(active));
+      button.setAttribute("title",active ? "Remover KPI da Minha Home" : "Destacar KPI na Minha Home");
+      const icon=button.querySelector("i");
+      if(icon) icon.className="mdi "+(active?"mdi-star":"mdi-star-outline");
+    });
+  }
+
+  function recordRecentView(view) {
+    if(!dashboards[view]) return;
+    const state=readPersonalization();
+    const now=new Date().toISOString();
+    state.recentViews=[
+      {view,at:now},
+      ...(state.recentViews||[]).filter(item=>item&&item.view!==view&&dashboards[item.view])
+    ].slice(0,8);
+    writePersonalization(state);
+  }
+
+  function toggleDashboardFavorite(view=currentView) {
+    if(!dashboards[view]) return;
+    const state=readPersonalization();
+    const set=new Set((state.favoriteDashboards||[]).filter(id=>dashboards[id]));
+    const adding=!set.has(view);
+    if(adding) set.add(view); else set.delete(view);
+    state.favoriteDashboards=[...set].slice(0,8);
+    writePersonalization(state);
+    updateDashboardFavoriteButton();
+    renderPersonalHome();
+    showToast(adding ? "Painel adicionado à Minha Home." : "Painel removido da Minha Home.");
+  }
+
+  function toggleKpiFavorite(view,kpi) {
+    if(!dashboards[view]||!kpi?.id) return;
+    const state=readPersonalization();
+    const exists=(state.favoriteKpis||[]).some(item=>item.view===view&&item.kpiId===kpi.id);
+    state.favoriteKpis=exists
+      ? (state.favoriteKpis||[]).filter(item=>!(item.view===view&&item.kpiId===kpi.id))
+      : [{view,kpiId:kpi.id},...(state.favoriteKpis||[])].slice(0,10);
+
+    const snapshotKey=favoriteKpiKey(view,kpi.id);
+    if(exists){
+      delete state.kpiSnapshots[snapshotKey];
+    }else{
+      const raw=currentPayload?.kpis?.[kpi.id];
+      if(raw!==undefined){
+        state.kpiSnapshots[snapshotKey]={
+          formatted:formatValue(raw,kpi.format),
+          updatedAt:new Date().toISOString()
+        };
+      }
+    }
+
+    writePersonalization(state);
+    updateKpiFavoriteButtons();
+    renderPersonalHome();
+    showToast(exists ? "KPI removido da Minha Home." : "KPI destacado na Minha Home.");
+  }
+
+  function syncFavoriteKpiSnapshots(payload) {
+    const state=readPersonalization();
+    let changed=false;
+    const favorites=(state.favoriteKpis||[]).filter(item=>item.view===currentView);
+    for(const item of favorites){
+      const def=(dashboards[currentView]?.kpis||[]).find(kpi=>kpi.id===item.kpiId);
+      const raw=payload?.kpis?.[item.kpiId];
+      if(!def||raw===undefined) continue;
+      state.kpiSnapshots[favoriteKpiKey(currentView,item.kpiId)]={
+        formatted:formatValue(raw,def.format),
+        updatedAt:new Date().toISOString()
+      };
+      changed=true;
+    }
+    if(changed) writePersonalization(state);
+  }
+
+  function shortRelativeTime(value) {
+    const date=new Date(value||0);
+    if(Number.isNaN(date.getTime())) return "";
+    const diff=Math.max(0,Date.now()-date.getTime());
+    const minutes=Math.floor(diff/60000);
+    if(minutes<1) return "agora";
+    if(minutes<60) return "há "+minutes+" min";
+    const hours=Math.floor(minutes/60);
+    if(hours<24) return "há "+hours+" h";
+    const days=Math.floor(hours/24);
+    return "há "+Math.min(days,99)+" d";
+  }
+
+  function renderPersonalHome() {
+    const home=document.getElementById("personalHome");
+    if(!home) return;
+    if(currentView!=="visao-geral"){
+      home.hidden=true;
+      home.innerHTML="";
+      return;
+    }
+
+    const state=readPersonalization();
+    const favorites=(state.favoriteDashboards||[]).filter(view=>dashboards[view]).slice(0,6);
+    const recent=(state.recentViews||[])
+      .filter(item=>item&&dashboards[item.view]&&item.view!=="visao-geral")
+      .slice(0,4);
+    const favoriteKpis=(state.favoriteKpis||[])
+      .map(item=>{
+        const def=(dashboards[item.view]?.kpis||[]).find(kpi=>kpi.id===item.kpiId);
+        return def ? {...item,def,snapshot:state.kpiSnapshots[favoriteKpiKey(item.view,item.kpiId)]||null} : null;
+      })
+      .filter(Boolean)
+      .slice(0,4);
+
+    const favoriteHtml=favorites.length
+      ? favorites.map(view=>
+          '<button class="home-shortcut-card" type="button" data-home-open-view="'+escapeHtml(view)+'">'+
+            '<span class="home-shortcut-icon"><i class="mdi mdi-view-dashboard-outline"></i></span>'+
+            '<span><strong>'+escapeHtml(dashboardLabel(view))+'</strong><small>Abrir painel favorito</small></span>'+
+            '<i class="mdi mdi-chevron-right"></i>'+
+          '</button>'
+        ).join("")
+      : '<div class="home-empty"><i class="mdi mdi-star-outline"></i><span>Favorite os painéis mais usados pela estrela do cabeçalho.</span></div>';
+
+    const recentHtml=recent.length
+      ? recent.map(item=>
+          '<button class="home-recent-item" type="button" data-home-open-view="'+escapeHtml(item.view)+'">'+
+            '<span><strong>'+escapeHtml(dashboardLabel(item.view))+'</strong><small>'+escapeHtml(shortRelativeTime(item.at))+'</small></span>'+
+            '<i class="mdi mdi-arrow-right"></i>'+
+          '</button>'
+        ).join("")
+      : '<div class="home-empty compact"><span>Seus acessos recentes aparecerão aqui.</span></div>';
+
+    const kpiHtml=favoriteKpis.length
+      ? favoriteKpis.map(item=>
+          '<button class="home-kpi-card" type="button" data-home-open-view="'+escapeHtml(item.view)+'">'+
+            '<small>'+escapeHtml(dashboardLabel(item.view))+'</small>'+
+            '<strong>'+escapeHtml(item.def.label)+'</strong>'+
+            '<span class="home-kpi-value">'+escapeHtml(item.snapshot?.formatted||"—")+'</span>'+
+            '<span class="home-kpi-meta">'+escapeHtml(item.snapshot?.updatedAt ? "Última leitura "+shortRelativeTime(item.snapshot.updatedAt) : "Abra o painel para carregar o valor")+'</span>'+
+          '</button>'
+        ).join("")
+      : '<div class="home-empty"><i class="mdi mdi-chart-box-outline"></i><span>Use a estrela nos indicadores para destacar KPIs aqui.</span></div>';
+
+    home.innerHTML=
+      '<div class="personal-home-head">'+
+        '<div><small>MINHA HOME</small><h2>Seu BI, do seu jeito</h2><p>Favoritos, indicadores destacados e o que você acessou recentemente.</p></div>'+
+        '<span class="personal-home-badge"><i class="mdi mdi-account-cog-outline"></i> Personalizado</span>'+
+      '</div>'+
+      '<div class="personal-home-grid">'+
+        '<section class="home-block home-block-favorites"><div class="home-block-title"><strong>Painéis favoritos</strong><span>Atalhos rápidos</span></div><div class="home-shortcuts">'+favoriteHtml+'</div></section>'+
+        '<section class="home-block home-block-kpis"><div class="home-block-title"><strong>KPIs destacados</strong><span>Última leitura disponível</span></div><div class="home-kpis">'+kpiHtml+'</div></section>'+
+        '<section class="home-block home-block-recent"><div class="home-block-title"><strong>Recentes</strong><span>Continue de onde parou</span></div><div class="home-recents">'+recentHtml+'</div></section>'+
+      '</div>';
+
+    home.hidden=false;
+  }
+
   function activeFilterItems(view=currentView) {
     const items=[];
     const period=document.getElementById("periodo");
@@ -509,6 +753,9 @@
     document.getElementById("pageDescription").textContent = def.description;
     document.getElementById("pageContext").textContent = def.title.toUpperCase();
     document.getElementById("levelLabel").textContent = String(def.level || "macro-micro").toUpperCase().replace("-", " → ");
+    recordRecentView(view);
+    updateDashboardFavoriteButton();
+    renderPersonalHome();
 
     const kpiGrid = document.getElementById("kpiGrid");
     kpiGrid.innerHTML = "";
@@ -517,14 +764,20 @@
       el.className = "kpi-card";
       el.dataset.kpi = kpi.id;
       el.innerHTML = `
+        <button type="button" class="kpi-favorite-button" data-kpi-favorite="${escapeHtml(kpi.id)}" aria-pressed="false" title="Destacar KPI na Minha Home" aria-label="Destacar ${escapeHtml(kpi.label)} na Minha Home"><i class="mdi mdi-star-outline"></i></button>
         <i class="mdi mdi-chevron-right kpi-more"></i>
         <small>${escapeHtml(kpi.label)}</small>
         <strong data-value>—</strong>
         <span>${escapeHtml(kpi.source)} · ${escapeHtml(kpi.field)}</span>
       `;
+      el.querySelector(".kpi-favorite-button").addEventListener("click",(event)=>{
+        event.stopPropagation();
+        toggleKpiFavorite(view,kpi);
+      });
       el.addEventListener("click", () => openKpiDetail(kpi));
       kpiGrid.appendChild(el);
     }
+    updateKpiFavoriteButtons();
 
     let coverage = document.getElementById("integrationCoverage");
     if (!coverage) {
@@ -889,6 +1142,9 @@
       const raw = kpis[kpi.id];
       if (el && raw !== undefined) el.textContent = formatValue(raw, kpi.format);
     }
+    syncFavoriteKpiSnapshots(payload);
+    renderPersonalHome();
+
     const charts = payload.charts || {};
     for (const chartDef of def.charts || []) {
       if (charts[chartDef.id]) renderChartData(chartDef, charts[chartDef.id]);
@@ -3791,7 +4047,13 @@
 
   document.getElementById("refreshButton").addEventListener("click", () => loadDashboardData(currentView, {force:true}));
 
+  document.getElementById("favoriteDashboardButton")?.addEventListener("click",()=>toggleDashboardFavorite(currentView));
   document.getElementById("saveViewButton")?.addEventListener("click",()=>saveViewPreferences());
+
+  document.getElementById("personalHome")?.addEventListener("click",(event)=>{
+    const opener=event.target.closest("[data-home-open-view]");
+    if(opener?.dataset.homeOpenView) navigate(opener.dataset.homeOpenView);
+  });
   document.getElementById("clearViewFiltersButton")?.addEventListener("click",()=>clearDashboardFilters());
   document.getElementById("restoreDefaultViewButton")?.addEventListener("click",restoreDefaultView);
 
