@@ -19,6 +19,7 @@
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
+  <link rel="stylesheet" href="global-search.css?v=20261005-1">
 </head>
 <body>
   <script>
@@ -58,7 +59,7 @@
     </bth-marca-produto>
 
     <div slot="menu_ferramentas" class="menu-tools" aria-label="Ferramentas">
-      <button class="tool-button" type="button" title="Pesquisar"><i class="mdi mdi-magnify"></i></button>
+      <button class="tool-button" id="globalSearchButton" type="button" title="Busca global (Ctrl+K)" aria-label="Abrir busca global"><i class="mdi mdi-magnify"></i></button>
       <button class="tool-button" type="button" title="Aplicações"><i class="mdi mdi-view-grid"></i></button>
       <button class="tool-button" id="integrationButton" type="button" title="Integração"><i class="mdi mdi-connection"></i></button>
       <button class="tool-button" id="logoutButton" type="button" title="Sair"><i class="mdi mdi-logout"></i></button>
@@ -447,6 +448,32 @@
     </main>
   </bth-app>
 
+  <div id="globalSearchOverlay" class="global-search-overlay" hidden>
+    <section class="global-search-dialog" role="dialog" aria-modal="true" aria-labelledby="globalSearchTitle">
+      <header class="global-search-header">
+        <div class="global-search-field">
+          <i class="mdi mdi-magnify"></i>
+          <input id="globalSearchInput" type="search" autocomplete="off" spellcheck="false" placeholder="Buscar contribuinte, empresa, imóvel, débito, dívida ou painel..." aria-describedby="globalSearchHint">
+          <kbd>Ctrl K</kbd>
+        </div>
+        <button id="closeGlobalSearch" class="global-search-close" type="button" aria-label="Fechar busca"><i class="mdi mdi-close"></i></button>
+      </header>
+      <div class="global-search-intro">
+        <div>
+          <small id="globalSearchTitle">BUSCA GLOBAL</small>
+          <span id="globalSearchHint">Pesquisa somente painéis e dados autorizados nesta prefeitura. Documentos aparecem mascarados.</span>
+        </div>
+        <span id="globalSearchStatus" class="global-search-status" aria-live="polite">Digite para pesquisar</span>
+      </div>
+      <div id="globalSearchResults" class="global-search-results" role="listbox" aria-label="Resultados da busca"></div>
+      <footer class="global-search-footer">
+        <span><kbd>↑</kbd><kbd>↓</kbd> navegar</span>
+        <span><kbd>Enter</kbd> abrir</span>
+        <span><kbd>Esc</kbd> fechar</span>
+      </footer>
+    </section>
+  </div>
+
   <aside id="detailDrawer" class="detail-drawer" aria-hidden="true">
     <div class="drawer-header">
       <div class="drawer-title-block">
@@ -554,5 +581,6 @@
   <script src="dashboard-catalog.js?v=20261005-nav2"></script>
   <div id="uiToast" class="ui-toast" role="status" aria-live="polite" aria-atomic="true"></div>
   <script src="app.js?v=20261005-kpisemantic1"></script>
+  <script src="global-search.js?v=20261005-1"></script>
 </body>
 </html>
