@@ -4804,6 +4804,13 @@ async function buildGlobalSearch(env,tenant,auth,url) {
   if(query.length<2) return {query,results:[],partial:false,scanned:0,message:"Digite pelo menos 2 caracteres."};
   const requestedLimit=Math.max(5,Math.min(30,Number(url.searchParams.get("limit")||20)));
   const allowedViews=permissionViewsForAccess(auth&&auth.access);
+  const normalizedQuery=normalizeGlobalSearch(query);
+  const dashboardResults=allowedViews.map(view=>{
+    const title=MCP_VIEW_LABELS[view]||view;
+    const normalizedTitle=normalizeGlobalSearch(title);
+    const score=normalizedTitle===normalizedQuery ? 110 : normalizedTitle.startsWith(normalizedQuery) ? 94 : normalizedTitle.includes(normalizedQuery) ? 72 : 0;
+    return {kind:"dashboard",category:"Painel",icon:"view-dashboard-outline",view,id:view,title,subtitle:"Abrir painel autorizado",score};
+  }).filter(item=>item.score>0);
   const defs=GLOBAL_SEARCH_RESOURCES.filter(def=>{
     const required=DETAIL_PERMISSION_VIEWS[def.resource]||[];
     return required.some(view=>allowedViews.includes(view));
@@ -4835,6 +4842,7 @@ async function buildGlobalSearch(env,tenant,auth,url) {
       results.push({kind:"record",resource:def.resource,category:def.label,icon:def.icon,view,id,title:globalSearchTitle(def,row,id),subtitle:[maskedDocument,meta].filter(Boolean).join(" · "),score:item.score});
     }
   }
+  results.push(...dashboardResults);
   results.sort((a,b)=>b.score-a.score||a.category.localeCompare(b.category,"pt-BR"));
   return {query,results:results.slice(0,requestedLimit).map(({score,...item})=>item),partial,scanned,resources:defs.map(def=>def.resource)};
 }
