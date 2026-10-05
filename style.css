@@ -1736,3 +1736,80 @@ html,body{
     grid-row:1/3;
   }
 }
+
+/* Bloco executivo · Visão Geral
+   Arrecadação mensal + Pontos de atenção antes das análises complementares. */
+.overview-executive{
+  display:grid;
+  grid-template-columns:minmax(0,1.8fr) minmax(300px,.9fr);
+  gap:14px;
+  align-items:stretch;
+  margin:0 0 16px;
+}
+.overview-executive > .chart-card{
+  grid-column:auto;
+  min-width:0;
+  margin:0;
+}
+.overview-executive .chart-card-header{
+  min-height:64px;
+}
+.overview-executive .chart-body{
+  height:300px;
+}
+.overview-executive > .overview-attention{
+  min-width:0;
+  margin:0;
+  padding:17px;
+}
+.overview-executive .overview-attention-list{
+  grid-template-columns:1fr;
+}
+.overview-executive .overview-attention-item{
+  min-height:76px;
+  padding:11px 6px;
+  border-right:0;
+  border-bottom:1px solid var(--ui-border);
+}
+.overview-executive .overview-attention-item:last-child{
+  border-bottom:0;
+}
+.overview-executive .overview-attention-item b{
+  font-size:12px;
+}
+#dashboardView[data-dashboard="visao-geral"] #chartGrid{
+  margin-top:0;
+}
+#dashboardView[data-dashboard="visao-geral"] #chartGrid .chart-card{
+  min-width:0;
+}
+@media(max-width:1100px){
+  .overview-executive{
+    grid-template-columns:1fr;
+  }
+  .overview-executive .chart-body{
+    height:290px;
+  }
+  .overview-executive .overview-attention-list{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+  .overview-executive .overview-attention-item{
+    border-right:1px solid var(--ui-border);
+    border-bottom:0;
+  }
+  .overview-executive .overview-attention-item:last-child{
+    border-right:0;
+  }
+}
+@media(max-width:760px){
+  .overview-executive .overview-attention-list{
+    grid-template-columns:1fr;
+  }
+  .overview-executive .overview-attention-item{
+    border-right:0;
+    border-bottom:1px solid var(--ui-border);
+  }
+  .overview-executive .overview-attention-item:last-child{
+    border-bottom:0;
+  }
+}
