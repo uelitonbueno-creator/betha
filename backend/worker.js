@@ -423,6 +423,35 @@ const DETAIL_RESOURCES = Object.freeze({
       ["multa","Multa",["valorPagoMulta"],"currency"]
     ]
   },
+  "debitos-receitas":{
+    source:"bi",resource:"debitos-receitas",
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["debito","ID débito",["idDebito","debito.id","idDebitos"],"text"],
+      ["receita","Receita",["receita.descricao","receita.abreviatura","idReceita"],"text"],
+      ["valor","Valor lançado",["vlLancado","valorLancado","valor","vlReceita"],"currency"]
+    ]
+  },
+  "pagamentos-parcelamentos":{
+    source:"bi",resource:"pagamentos-parcelamentos",
+    datePaths:["dtPagamento","dataPagamento","pagamento.dataPagamento","dtPgto"],
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["parcelamento","ID parcelamento",["idParcelamento","idParcelamentos","parcelamento.id"],"text"],
+      ["data","Pagamento",["dtPagamento","dataPagamento","pagamento.dataPagamento","dtPgto"],"date"],
+      ["valor","Valor pago",["valorPago","vlPago","valor"],"currency"]
+    ]
+  },
+  "solicitacoes-transferencias-imoveis-movimentacoes":{
+    source:"bi",resource:"solicitacoes-transferencias-imoveis-movimentacoes",
+    datePaths:["dataHoraMovimentacao","dhMovimentacao","dataMovimentacao","dataHora","dhOperacao"],
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["solicitacao","ID solicitação",["idSolicitacao","solicitacaoTransferencia.id","solicitacao.id"],"text"],
+      ["data","Movimentação",["dataHoraMovimentacao","dhMovimentacao","dataMovimentacao","dataHora","dhOperacao"],"date"],
+      ["situacao","Situação / etapa",["situacao.descricao","situacao","status","tipoMovimentacao.descricao","tipoMovimentacao"],"text"]
+    ]
+  },
   "pagamentos-detalhados":{
     source:"bi",resource:"pagamentos-detalhados",
     datePaths:["pagamento.dataPagamento","dataPagamento","dtPagamento"],
