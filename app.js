@@ -405,6 +405,8 @@
       `<span class="source-chip"><strong>${sourceLabel(src)}</strong> · ${escapeHtml(src)}</span>`
     ).join("");
 
+    setDashboardLoading(true);
+    setLastUpdated(null);
     setStatus("waiting", cfg.BACKEND_URL ? "Carregando dados" : "Dados indisponíveis");
   }
 
@@ -700,6 +702,7 @@
 
   function renderPayload(payload) {
     currentPayload = payload || {};
+    setDashboardLoading(false);
     const def = dashboards[currentView];
     populateDashboardFilterOptions(payload);
     renderOverviewAttention(payload);
@@ -1108,6 +1111,7 @@
 
       const stamp=formatCacheTime(row.updated_at);
       const suffix=row.status==="partial"?" · carga parcial":"";
+      setLastUpdated(row.updated_at,"Supabase");
       setStatus("online","Supabase · "+stamp+suffix);
       return true;
     } catch(error) {
@@ -1172,12 +1176,15 @@
   function loadDashboardFromCache(view) {
     const cached = readDashboardCache(view);
     if (!cached) {
+      setDashboardLoading(false);
+      setLastUpdated(null);
       setStatus("waiting", "Sem dados locais · clique em ATUALIZAR");
       return false;
     }
 
     renderPayload(cached.payload);
     const stamp = formatCacheTime(cached.savedAt);
+    setLastUpdated(cached.savedAt,"Snapshot local");
     const suffix = cached.state === "partial" ? " · carga parcial" : "";
     const fallback = cached._composed
       ? " · snapshot consolidado"
@@ -1643,6 +1650,7 @@
     }
 
     if (!cfg.BACKEND_URL) return;
+    setDashboardLoading(true);
     setStatus("waiting", "Atualizando dados da Betha...");
 
     try {
@@ -1677,6 +1685,7 @@
 
       const saved = readDashboardCache(view);
       const stamp = saved ? formatCacheTime(saved.savedAt) : "";
+      setLastUpdated(saved?.savedAt || new Date().toISOString(),"Betha");
 
       if (warnings.length) {
         setStatus("waiting", "Atualizado " + stamp + " · " + warnings.length + " fonte(s) com aviso");
@@ -1685,6 +1694,7 @@
       }
     } catch (error) {
       console.warn("Falha ao atualizar dashboard:", error);
+      setDashboardLoading(false);
 
       // Mantém o último snapshot na tela mesmo se a atualização falhar.
       const restored = loadDashboardFromCache(view);
@@ -1697,6 +1707,23 @@
         setStatus("error", "Atualização indisponível");
       }
     }
+  }
+
+  function setDashboardLoading(loading) {
+    const view=document.getElementById("dashboardView");
+    if(!view) return;
+    view.classList.toggle("is-loading",Boolean(loading));
+    view.setAttribute("aria-busy",loading?"true":"false");
+  }
+
+  function setLastUpdated(value, source) {
+    const el=document.getElementById("lastUpdated");
+    if(!el) return;
+    const stamp=value ? formatCacheTime(value) : "";
+    el.classList.toggle("is-current",Boolean(stamp));
+    el.lastElementChild.textContent=stamp
+      ? (source ? source+" · "+stamp : "Atualizado · "+stamp)
+      : "Aguardando dados";
   }
 
   function setStatus(type, text) {
