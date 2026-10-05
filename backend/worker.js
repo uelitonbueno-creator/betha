@@ -4730,6 +4730,115 @@ const DATA_PERMISSION_VIEWS = Object.freeze({
   "base:imoveis-transferencias":["imobiliario","itbi"]
 });
 
+const GLOBAL_SEARCH_RESOURCES = Object.freeze([
+  {resource:"contribuintes",label:"Contribuinte",icon:"account-outline",preferredViews:["contribuintes","visao-geral"],idPaths:["id","idPessoas","idPessoa"],titlePaths:["nome","nomeFantasia","pessoa.nome"],searchPaths:["id","idPessoas","nome","nomeFantasia","cpf","cnpj","cpfCnpj","documento","nomeCidade","nomeBairro","pessoa.nome"],documentPaths:["cpf","cnpj","cpfCnpj","documento"],metaPaths:["tipoPessoa.descricao","tipoPessoa","nomeCidade","nomeBairro"]},
+  {resource:"economicos",label:"Econômico",icon:"store-outline",preferredViews:["economicos","visao-geral"],idPaths:["id","idEconomico"],titlePaths:["nome","nomeFantasia","pessoa.nome"],searchPaths:["id","idEconomico","nome","nomeFantasia","pessoa.nome","pessoa.cpf","pessoa.cnpj","pessoa.cpfCnpj","nomeBairro","nomeLogradouro"],documentPaths:["pessoa.cpf","pessoa.cnpj","pessoa.cpfCnpj"],metaPaths:["situacao.descricao","situacao","nomeBairro"]},
+  {resource:"imoveis",label:"Imóvel",icon:"home-city-outline",preferredViews:["imobiliario","territorio","visao-geral"],idPaths:["id","idImovel"],titlePaths:["codOrig","codigo","id","idImovel"],searchPaths:["id","idImovel","codOrig","codigo","nomeLogradouro","numero","nomeBairro","setor","cep"],documentPaths:[],metaPaths:["nomeLogradouro","numero","nomeBairro","setor"]},
+  {resource:"debitos",label:"Débito",icon:"file-document-edit-outline",preferredViews:["debitos","visao-geral"],idPaths:["id"],titlePaths:["id"],searchPaths:["id","ano","pessoa.nome","pessoa.nomeFantasia","pessoa.cpf","pessoa.cnpj","situacao"],documentPaths:["pessoa.cpf","pessoa.cnpj"],metaPaths:["pessoa.nome","pessoa.nomeFantasia","situacao","ano"]},
+  {resource:"dividas",label:"Dívida ativa",icon:"bank-outline",preferredViews:["divida","visao-geral"],idPaths:["id","idDivida"],titlePaths:["id","idDivida"],searchPaths:["id","idDivida","ano","anoDivida","pessoa.nome","pessoa.nomeFantasia","pessoa.cpf","pessoa.cnpj","statusDivida","situacao"],documentPaths:["pessoa.cpf","pessoa.cnpj"],metaPaths:["pessoa.nome","pessoa.nomeFantasia","statusDivida","situacao","ano","anoDivida"]}
+]);
+
+function normalizeGlobalSearch(value) {
+  return String(value??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR").trim();
+}
+
+function globalSearchScalar(row,path) {
+  const raw=firstValue(row,[path]);
+  if(raw===undefined||raw===null) return "";
+  if(typeof raw==="object") return String(raw.nome??raw.descricao??raw.nomeFantasia??raw.codigo??raw.id??"");
+  return String(raw);
+}
+
+function globalSearchScore(row,query,paths) {
+  const normalized=normalizeGlobalSearch(query);
+  const digits=String(query||"").replace(/\D/g,"");
+  let best=0;
+  for(const path of paths||[]){
+    const raw=globalSearchScalar(row,path);
+    if(!raw) continue;
+    const text=normalizeGlobalSearch(raw);
+    if(text===normalized) best=Math.max(best,100);
+    else if(text.startsWith(normalized)) best=Math.max(best,82);
+    else if(text.includes(normalized)) best=Math.max(best,64);
+    if(digits.length>=3){
+      const rowDigits=raw.replace(/\D/g,"");
+      if(rowDigits===digits) best=Math.max(best,98);
+      else if(rowDigits.startsWith(digits)) best=Math.max(best,86);
+      else if(rowDigits.includes(digits)) best=Math.max(best,70);
+    }
+  }
+  return best;
+}
+
+function maskGlobalSearchDocument(value) {
+  const digits=String(value||"").replace(/\D/g,"");
+  if(!digits) return "";
+  if(digits.length<=4) return "••••";
+  return "••••••"+digits.slice(-4);
+}
+
+function globalSearchMeta(row,paths) {
+  const values=[];
+  for(const path of paths||[]){
+    const value=globalSearchScalar(row,path).trim();
+    if(value&&!values.includes(value)) values.push(value);
+    if(values.length>=3) break;
+  }
+  return values.join(" · ");
+}
+
+function globalSearchTitle(def,row,id) {
+  const value=(def.titlePaths||[]).map(path=>globalSearchScalar(row,path).trim()).find(Boolean);
+  if(def.resource==="imoveis") return value ? "Imóvel "+value : "Imóvel";
+  if(def.resource==="debitos") return value ? "Débito "+value : "Débito";
+  if(def.resource==="dividas") return value ? "Dívida "+value : "Dívida ativa";
+  return value || (def.label+(id ? " "+id : ""));
+}
+
+function globalSearchAllowedView(def,allowedViews) {
+  return (def.preferredViews||[]).find(view=>allowedViews.includes(view)) || (DETAIL_PERMISSION_VIEWS[def.resource]||[]).find(view=>allowedViews.includes(view)) || "";
+}
+
+async function buildGlobalSearch(env,tenant,auth,url) {
+  const query=String(url.searchParams.get("q")||"").trim().slice(0,120);
+  if(query.length<2) return {query,results:[],partial:false,scanned:0,message:"Digite pelo menos 2 caracteres."};
+  const requestedLimit=Math.max(5,Math.min(30,Number(url.searchParams.get("limit")||20)));
+  const allowedViews=permissionViewsForAccess(auth&&auth.access);
+  const defs=GLOBAL_SEARCH_RESOURCES.filter(def=>{
+    const required=DETAIL_PERMISSION_VIEWS[def.resource]||[];
+    return required.some(view=>allowedViews.includes(view));
+  });
+  const batches=await Promise.all(defs.map(async def=>{
+    const detail=DETAIL_RESOURCES[def.resource];
+    if(!detail) return {def,src:null,matches:[]};
+    const src=await safeBethaRows(env,tenant,detail.source,detail.resource,{limit:250,maxPages:4,startOffset:0});
+    if(src.error) return {def,src,matches:[]};
+    const matches=src.rows.map(row=>({row,score:globalSearchScore(row,query,def.searchPaths)})).filter(item=>item.score>0).sort((a,b)=>b.score-a.score).slice(0,8);
+    return {def,src,matches};
+  }));
+  const results=[];
+  let partial=false;
+  let scanned=0;
+  for(const batch of batches){
+    const {def,src,matches}=batch;
+    if(src){
+      scanned+=Number(src.loaded||0);
+      partial=partial||src.hasMore===true||src.truncated===true||src.complete===false;
+    }
+    const view=globalSearchAllowedView(def,allowedViews);
+    for(const item of matches){
+      const row=item.row;
+      const id=String(firstValue(row,def.idPaths)||"");
+      const documentRaw=firstValue(row,def.documentPaths||[]);
+      const maskedDocument=maskGlobalSearchDocument(documentRaw);
+      const meta=globalSearchMeta(row,def.metaPaths);
+      results.push({kind:"record",resource:def.resource,category:def.label,icon:def.icon,view,id,title:globalSearchTitle(def,row,id),subtitle:[maskedDocument,meta].filter(Boolean).join(" · "),score:item.score});
+    }
+  }
+  results.sort((a,b)=>b.score-a.score||a.category.localeCompare(b.category,"pt-BR"));
+  return {query,results:results.slice(0,requestedLimit).map(({score,...item})=>item),partial,scanned,resources:defs.map(def=>def.resource)};
+}
+
 function accessHasConstraintPermission(access,permissionId) {
   if (!access || !permissionId) return false;
   if (access.admin===true || access.technical===true) return true;
@@ -6016,6 +6125,19 @@ export default {
 
         const body=await builder(env,tenant,url);
         return json(request,env,200,body);
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
+    if (url.pathname==="/api/search" && request.method==="GET") {
+      try {
+        const query=String(url.searchParams.get("q")||"").trim();
+        if(query.length<2) return json(request,env,400,{error:"SEARCH_QUERY_REQUIRED"});
+        const tenant=resolveTenant(env,getTenantId(request,url));
+        const auth=await authorizeTenant(request,env,tenant);
+        const result=await buildGlobalSearch(env,tenant,auth,url);
+        return json(request,env,200,result);
       } catch(error) {
         return errorResponse(request,env,error);
       }
