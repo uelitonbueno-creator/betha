@@ -1198,6 +1198,10 @@ html,body{
 .audit-status.ok{background:#eaf7ef;color:#176b43}
 .audit-status.blocked{background:#fff4dc;color:#8b6110}
 .audit-status.error{background:#fdeaea;color:#a22f2f}
+.audit-row-attention{background:#fffdf7}
+.audit-row-attention td:first-child{box-shadow:inset 3px 0 0 #d6a637}
+.audit-row-high{background:#fff8f8}
+.audit-row-high td:first-child{box-shadow:inset 3px 0 0 #c44747}
 @media(max-width:900px){
   .mcp-active-tokens{grid-template-columns:1fr}
 }

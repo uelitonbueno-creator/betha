@@ -3328,6 +3328,20 @@
       securityBadge.className="config-status-badge "+(blockedCount?"warn":"ok");
     }
 
+    const security=payload?.security&&typeof payload.security==="object" ? payload.security : {};
+    const anomalyBadge=document.getElementById("auditAnomalyBadge");
+    if(anomalyBadge){
+      const flagged=Number(security.flaggedActors||0);
+      const level=String(security.level||"normal");
+      anomalyBadge.textContent=level==="high"
+        ? "ALERTA ALTO · "+flagged
+        : (level==="attention" ? "ATENÇÃO · "+flagged : "PADRÃO NORMAL");
+      anomalyBadge.className="config-status-badge "+(level==="high"?"error":(level==="attention"?"warn":"ok"));
+      anomalyBadge.title=level==="normal"
+        ? "Nenhum padrão anômalo detectado nos últimos "+String(security.windowMinutes||10)+" minutos."
+        : flagged+" usuário(s) com repetição de bloqueios na janela de "+String(security.windowMinutes||10)+" minutos. Nenhum bloqueio automático foi aplicado.";
+    }
+
     tbody.innerHTML=events.map(event=>{
       const dt=event.ts ? new Date(event.ts) : null;
       const meta=event.meta&&typeof event.meta==="object" ? event.meta : {};
@@ -3338,14 +3352,19 @@
       if(meta.resource) metaParts.push("recurso: "+meta.resource);
       if(meta.part) metaParts.push("bloco: "+meta.part);
       if(meta.code) metaParts.push("motivo: "+meta.code);
+      if(event.securitySignal){
+        metaParts.push("padrão: "+event.securitySignal.count+" bloqueios/"+event.securitySignal.windowMinutes+"min");
+      }
       if(meta.label) metaParts.push("rótulo: "+meta.label);
       if(meta.permissionCount!==undefined) metaParts.push(meta.permissionCount+" permissão(ões)");
       if(meta.viewCount!==undefined) metaParts.push(meta.viewCount+" painel(is)");
       const status=String(event.status||"ok");
       const statusClass=status==="ok"?"ok":(status==="blocked"?"blocked":"error");
       const statusLabel=status==="ok"?"OK":(status==="blocked"?"BLOQUEADO":"ERRO");
+      const signalLevel=String(event.securitySignal?.level||"");
+      const rowClass=signalLevel==="high" ? "audit-row-high" : (signalLevel==="attention" ? "audit-row-attention" : "");
       return `
-        <tr>
+        <tr class="${rowClass}">
           <td>${escapeHtml(dt&&!Number.isNaN(dt.getTime())?dt.toLocaleString("pt-BR"):(event.ts||"—"))}</td>
           <td>${escapeHtml(formatAuditCategory(event.category))}</td>
           <td><span class="audit-action">${escapeHtml(formatAuditAction(event.action))}</span>${metaParts.length?'<small class="audit-meta">'+escapeHtml(metaParts.join(" · "))+'</small>':""}</td>

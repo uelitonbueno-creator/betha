@@ -4860,6 +4860,62 @@ async function listAuditEvents(env,tenantId,limit=100) {
   }).filter(Boolean);
 }
 
+function analyzeAuditSecurity(events,{now=Date.now(),windowMinutes=10,warningThreshold=5,criticalThreshold=10}={}) {
+  const windowMs=Math.max(1,Number(windowMinutes)||10)*60*1000;
+  const cutoff=Number(now)-windowMs;
+  const counters=new Map();
+
+  for(const event of (Array.isArray(events)?events:[])){
+    if(event?.category!=="security" || event?.status!=="blocked") continue;
+    const ts=Date.parse(event.ts||"");
+    if(!Number.isFinite(ts) || ts<cutoff || ts>Number(now)+60*1000) continue;
+    const actor=String(event.actor||"").trim();
+    if(!actor || actor==="authenticated-user") continue;
+    counters.set(actor,(counters.get(actor)||0)+1);
+  }
+
+  const flags=new Map();
+  let maxCount=0;
+  for(const [actor,count] of counters.entries()){
+    if(count<warningThreshold) continue;
+    const level=count>=criticalThreshold ? "high" : "attention";
+    flags.set(actor,{level,count});
+    if(count>maxCount) maxCount=count;
+  }
+
+  const enriched=(Array.isArray(events)?events:[]).map(event=>{
+    if(event?.category!=="security" || event?.status!=="blocked") return event;
+    const actor=String(event.actor||"").trim();
+    const flag=flags.get(actor);
+    if(!flag) return event;
+    const ts=Date.parse(event.ts||"");
+    if(!Number.isFinite(ts) || ts<cutoff) return event;
+    return {
+      ...event,
+      securitySignal:{
+        level:flag.level,
+        count:flag.count,
+        windowMinutes:Number(windowMinutes)||10
+      }
+    };
+  });
+
+  const level=maxCount>=criticalThreshold ? "high" : (flags.size ? "attention" : "normal");
+  return {
+    events:enriched,
+    security:{
+      level,
+      recentBlocked:[...counters.values()].reduce((sum,count)=>sum+count,0),
+      flaggedActors:flags.size,
+      maxBlockedByActor:maxCount,
+      windowMinutes:Number(windowMinutes)||10,
+      warningThreshold,
+      criticalThreshold,
+      automaticBlocking:false
+    }
+  };
+}
+
 async function mcpOwnerHash(auth) {
   return sha256Hex(auth&&auth.userToken ? auth.userToken : "");
 }
@@ -5649,12 +5705,13 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-05-security-audit-v58",
+        buildVersion:"2026-10-05-audit-anomaly-v59",
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
         detailAuthorization:"betha-session+tenant+resource-permission",
         dataAuthorization:"betha-session+tenant+source-resource-permission",
         securityAudit:"blocked-permission-events-30d",
+        securityAnomalyDetection:"10m:attention>=5,high>=10,no-auto-block",
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
         tenantsConfigured:Boolean(env.BETHA_TENANTS_JSON),
@@ -6266,7 +6323,12 @@ export default {
         const auth=await authorizeTenant(request,env,tenant);
         requireConstraintPermission(auth,"BIConfiguracoesPage");
         const events=await listAuditEvents(env,tenant.id,url.searchParams.get("limit")||100);
-        return json(request,env,200,{events,count:events.length});
+        const analysis=analyzeAuditSecurity(events);
+        return json(request,env,200,{
+          events:analysis.events,
+          count:analysis.events.length,
+          security:analysis.security
+        });
       } catch(error) {
         return errorResponse(request,env,error);
       }
