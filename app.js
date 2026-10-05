@@ -1686,7 +1686,7 @@
     "debitos","dividas","parcelamentos","parcelamentos-parcelas",
     "guias-unificadas","contribuintes","imoveis","imoveis-responsaveis","imoveis-corresponsaveis","economicos","economicos-atividades",
     "receitas","creditos-tributarios","indexadores-valores",
-    "logradouros","imoveis-campos-adicionais","obras","transferencias-imoveis"
+    "logradouros","imoveis-campos-adicionais","planta-valores","obras","transferencias-imoveis"
   ]);
 
   const DETAIL_RESOURCE_LABELS = Object.freeze({
@@ -1706,6 +1706,7 @@
     "indexadores-valores":"Valores de indexadores",
     logradouros:"Logradouros",
     "imoveis-campos-adicionais":"Campos adicionais dos imóveis",
+    "planta-valores":"Planta de valores",
     obras:"Obras",
     "transferencias-imoveis":"Transferências",
     "pagamentos-detalhados":"Pagamentos",

@@ -635,6 +635,19 @@ const DETAIL_RESOURCES = Object.freeze({
       ["dataHora","Data / hora",["dhCampo"],"date"]
     ]
   },
+  "planta-valores":{
+    source:"base",resource:"planta-valores",
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["ano","Ano",["ano"],"number"],
+      ["bairro","Bairro",["bairro.nome"],"text"],
+      ["logradouro","Logradouro",["logradouro.nome"],"text"],
+      ["secao","Seção",["secao.nroSecao"],"number"],
+      ["face","Face",["face.descricao","face.abreviatura"],"text"],
+      ["indexador","Indexador",["indexador.nome","indexador.sigla"],"text"],
+      ["valorMetro","Valor do m²",["vlMetroQuadrado"],"currency"]
+    ]
+  },
   obras:{
     source:"base",resource:"obras",
     columns:[
