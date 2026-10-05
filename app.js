@@ -298,7 +298,8 @@
     const def = dashboards[view];
     const dashboardView = document.getElementById("dashboardView");
     dashboardView.dataset.dashboard = view;
-    if(view!=="visao-geral") document.getElementById("overviewAttention")?.remove();
+    document.getElementById("overviewExecutive")?.remove();
+    document.getElementById("overviewAttention")?.remove();
     renderDashboardFilters(def);
 
     document.getElementById("pageTitle").textContent = def.title;
@@ -516,11 +517,25 @@
       panel=document.createElement("section");
       panel.id="overviewAttention";
       panel.className="overview-attention";
+    }
+
+    let executive=document.getElementById("overviewExecutive");
+    if(!executive){
+      executive=document.createElement("section");
+      executive.id="overviewExecutive";
+      executive.className="overview-executive";
       const coverage=document.getElementById("integrationCoverage");
       const chartGrid=document.getElementById("chartGrid");
-      if(coverage) coverage.insertAdjacentElement("afterend",panel);
-      else if(chartGrid) chartGrid.insertAdjacentElement("beforebegin",panel);
+      if(coverage) coverage.insertAdjacentElement("beforebegin",executive);
+      else if(chartGrid) chartGrid.insertAdjacentElement("beforebegin",executive);
     }
+
+    const revenueCard=document.querySelector('#chartGrid [data-chart="receita-mensal"]');
+    if(revenueCard && revenueCard.parentElement!==executive){
+      revenueCard.classList.add("overview-executive-chart");
+      executive.appendChild(revenueCard);
+    }
+    if(panel.parentElement!==executive) executive.appendChild(panel);
 
     const kpis=payload?.kpis||{};
     const warnings=Array.isArray(payload?.meta?.warnings)?payload.meta.warnings:[];
