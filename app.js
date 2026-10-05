@@ -1887,9 +1887,13 @@
     let iterations=0;
 
     // Trava extrema contra endpoint defeituoso. Não é limite de dados.
-    const safetyMaxIterations=10000;
+    const safetyMaxIterations=2000;
+    // Uma carga completa pode atravessar milhares de páginas. Em vez de manter
+    // o navegador preso até o fim, processamos um lote por sessão e persistimos
+    // o nextOffset. A próxima abertura continua do checkpoint.
+    const sessionMaxIterations=Math.max(1,Number(options.sessionMaxIterations)||25);
 
-    while(iterations<safetyMaxIterations){
+    while(iterations<safetyMaxIterations && iterations<sessionMaxIterations){
       iterations++;
 
       if (typeof onProgress==="function") onProgress(aggregate,iterations,"requesting",offset);
@@ -1920,6 +1924,14 @@
         source:part,
         error:"SAFETY_PAGE_LIMIT_REACHED"
       });
+    } else if(iterations>=sessionMaxIterations) {
+      const audits=Object.values(aggregate?.meta?.sourceAudit||{});
+      const audit=audits[0]||null;
+      if(audit && audit.complete!==true && audit.hasMore===true){
+        aggregate.meta.batchPaused=true;
+        aggregate.meta.batchPart=part;
+        aggregate.meta.batchNextOffset=audit.nextOffset ?? null;
+      }
     }
 
     return aggregate;
@@ -2092,6 +2104,19 @@
           {startOffset:resumeOffset}
         );
         mergeDashboardPart(merged,result);
+
+        // Se a fonte ainda possui muitas páginas, encerra esta rodada de forma
+        // controlada. O checkpoint parcial já contém o nextOffset para retomar.
+        if(result?.meta?.batchPaused===true){
+          saveDashboardCache("visao-geral",merged,"partial");
+          renderPayload(merged);
+          setStatus(
+            "waiting",
+            "Carga parcial salva · " + partName +
+            " · continue na próxima atualização"
+          );
+          return merged;
+        }
       } catch(error) {
         merged.meta.warnings.push({
           source:sourceKey,
