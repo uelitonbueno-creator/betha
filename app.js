@@ -2608,7 +2608,16 @@
     }).join("")+'</div></section>';
   }
 
-  function record360Html(row) {
+  function collectionHistoryHtml(row,rowIndex) {
+    const state=readCollectionWorkbench()[collectionRecordKey(row,rowIndex)]||null;
+    if(!state) return "";
+    const history=Array.isArray(state.history)?[...state.history].reverse():[];
+    const lastAt=state.updatedAt||history[0]?.at||"";
+    const lastLabel=lastAt?formatDetailCell(lastAt,"date"):"Sem data";
+    return '<section class="collection-history"><div class="collection-history-head"><span><i class="mdi mdi-history"></i><span><small>ACOMPANHAMENTO DE COBRANÇA</small><strong>Histórico de atendimento</strong></span></span><em>'+escapeHtml(lastLabel)+'</em></div><div class="collection-history-current">'+(state.status?'<span><small>Status</small><strong>'+escapeHtml(state.status)+'</strong></span>':'')+(state.owner?'<span><small>Responsável</small><strong>'+escapeHtml(state.owner)+'</strong></span>':'')+(state.note?'<span class="collection-history-note"><small>Última observação</small><strong>'+escapeHtml(state.note)+'</strong></span>':'')+'</div>'+(history.length?'<details><summary>Ver '+history.length+' interação(ões)</summary><div class="collection-history-list">'+history.map(item=>'<div><i class="mdi mdi-circle-small"></i><span><small>'+escapeHtml(item.at?formatDetailCell(item.at,"date"):"Sem data")+'</small><strong>'+escapeHtml([item.status,item.owner].filter(Boolean).join(" · ")||"Atualização")+'</strong>'+(item.note?'<p>'+escapeHtml(item.note)+'</p>':'')+'</span></div>').join("")+'</div></details>':'')+'</section>';
+  }
+
+  function record360Html(row,rowIndex) {
     const identity=recordIdentity(row);
     const targets=relatedRecordTargets(row);
     const sections=[
@@ -2626,7 +2635,7 @@
       const disabled=!target||item.view===currentView;
       return '<button type="button" data-360-view="'+escapeHtml(item.view)+'" '+(disabled?'disabled':'data-360-target="'+escapeHtml(target.value)+'"')+'><i class="mdi '+item.icon+'"></i><span>'+escapeHtml(item.label)+'</span>'+(item.view===currentView?'<small>Atual</small>':target?'<i class="mdi mdi-chevron-right"></i>':'<small>Sem vínculo</small>')+'</button>';
     }).join("");
-    return '<section class="record-360"><div class="record-360-head"><div class="record-360-avatar"><i class="mdi mdi-account-circle-outline"></i></div><div><small>VISÃO 360°</small><strong>'+escapeHtml(identity.name)+'</strong>'+(identityMeta?'<span>'+escapeHtml(identityMeta)+'</span>':'')+'</div></div><div class="record-360-nav">'+nav+'</div>'+executiveRecordSummaryHtml(row)+collectionRiskHtml(row)+fiscalTimelineHtml(row)+'</section>';
+    return '<section class="record-360"><div class="record-360-head"><div class="record-360-avatar"><i class="mdi mdi-account-circle-outline"></i></div><div><small>VISÃO 360°</small><strong>'+escapeHtml(identity.name)+'</strong>'+(identityMeta?'<span>'+escapeHtml(identityMeta)+'</span>':'')+'</div></div><div class="record-360-nav">'+nav+'</div>'+executiveRecordSummaryHtml(row)+collectionRiskHtml(row)+collectionHistoryHtml(row,rowIndex)+fiscalTimelineHtml(row)+'</section>';
   }
 
   function openRelatedRecord(target) {
@@ -2763,7 +2772,7 @@
       if(!row) return;
       const related=relatedRecordTargets(row);
       preview.hidden=false;
-      preview.innerHTML='<div class="detail-record-preview-head"><div><small>REGISTRO SELECIONADO</small><strong>Detalhes do registro</strong></div><button type="button" data-close-record-preview aria-label="Fechar detalhes"><i class="mdi mdi-close"></i></button></div>'+record360Html(row)+'<dl>'+columns.map(col=>'<div><dt>'+escapeHtml(col.label||col.key)+'</dt><dd>'+escapeHtml(formatDetailCell(row[col.key],col.format))+'</dd></div>').join("")+'</dl>'+(related.length?'<div class="detail-related"><small>ATALHOS RELACIONADOS</small><div>'+related.map((item,i)=>'<button type="button" data-related-index="'+i+'"><i class="mdi '+item.icon+'"></i><span>'+escapeHtml(item.label)+'</span><i class="mdi mdi-arrow-right"></i></button>').join("")+'</div></div>':'');
+      preview.innerHTML='<div class="detail-record-preview-head"><div><small>REGISTRO SELECIONADO</small><strong>Detalhes do registro</strong></div><button type="button" data-close-record-preview aria-label="Fechar detalhes"><i class="mdi mdi-close"></i></button></div>'+record360Html(row,index)+'<dl>'+columns.map(col=>'<div><dt>'+escapeHtml(col.label||col.key)+'</dt><dd>'+escapeHtml(formatDetailCell(row[col.key],col.format))+'</dd></div>').join("")+'</dl>'+(related.length?'<div class="detail-related"><small>ATALHOS RELACIONADOS</small><div>'+related.map((item,i)=>'<button type="button" data-related-index="'+i+'"><i class="mdi '+item.icon+'"></i><span>'+escapeHtml(item.label)+'</span><i class="mdi mdi-arrow-right"></i></button>').join("")+'</div></div>':'');
       preview.querySelectorAll("[data-related-index]").forEach(button=>button.addEventListener("click",()=>openRelatedRecord(related[Number(button.dataset.relatedIndex)])));
       preview.querySelectorAll("[data-360-target]").forEach(button=>{
         button.addEventListener("click",()=>{
