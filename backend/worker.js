@@ -544,6 +544,18 @@ const DETAIL_RESOURCES = Object.freeze({
       ["fim","Fim titularidade",["fimTitularidade"],"date"]
     ]
   },
+  "imoveis-corresponsaveis":{
+    source:"bi",resource:"imoveis-corresponsaveis",
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["imovel","ID imóvel",["iImoveis"],"text"],
+      ["corresponsavel","Corresponsável",["corresponsavel.nome","corresponsavel.nomeFantasia"],"text"],
+      ["documento","Documento",["corresponsavel.cpf","corresponsavel.cnpj"],"document"],
+      ["tipo","Tipo",["tipoCorresponsavel.descricao","tipoCorresponsavel.id"],"text"],
+      ["inicio","Início titularidade",["inicioTitularidade"],"date"],
+      ["fim","Fim titularidade",["fimTitularidade"],"date"]
+    ]
+  },
   economicos:{
     source:"bi",resource:"economicos",
     columns:[
@@ -3272,9 +3284,10 @@ async function buildRealEstateDashboard(env,tenant,url) {
     zona:dashboardFilterValue(url,"zona"),
     cadastro:dashboardFilterValue(url,"cadastro")
   };
-  const [imo,resp,trans,baseImo,planta,pagdet]=await Promise.all([
+  const [imo,resp,corresp,trans,baseImo,planta,pagdet]=await Promise.all([
     safeBethaRows(env,tenant,"bi","imoveis"),
     safeBethaRows(env,tenant,"bi","imoveis-responsaveis"),
+    safeBethaRows(env,tenant,"bi","imoveis-corresponsaveis"),
     safeBethaRows(env,tenant,"bi","transferencias-imoveis"),
     safeBethaRows(env,tenant,"base","imoveis"),
     safeBethaRows(env,tenant,"base","planta-valores"),
@@ -3300,6 +3313,7 @@ async function buildRealEstateDashboard(env,tenant,url) {
     return id!==undefined&&id!==null&&propertyIds.has(String(id));
   };
   const respRows=resp.rows.filter(row=>linkedToProperty(row,["iImoveis","idImovel","imovel.id","imovelId"]));
+  const correspRows=corresp.rows.filter(row=>linkedToProperty(row,["iImoveis","idImovel","imovel.id","imovelId"]));
   const transRows=trans.rows.filter(row=>linkedToProperty(row,["idImovel","imovel.id","imovelId"]));
   const iptuRows=pagdet.rows.filter(row=>linkedToProperty(row,["idImovel","imovel.id","referente.idImovel"]));
 
@@ -3321,6 +3335,7 @@ async function buildRealEstateDashboard(env,tenant,url) {
     const b=numberBucket(p,[[25,"Até 25%"],[50,"26–50%"],[75,"51–75%"],[99.99,"76–99%"],[100,"100%"]]);
     perc.set(b,(perc.get(b)||0)+1);
   }
+  const tiposCorresponsaveis=groupCount(correspRows,["tipoCorresponsavel.descricao","tipoCorresponsavel.id"],12);
   return {
     view:"imobiliario",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
     filters:activeFilterObject(filters),
@@ -3345,10 +3360,11 @@ async function buildRealEstateDashboard(env,tenant,url) {
       "tipo-imovel":chartGroups(tipo,"Imóveis","number"),
       "planta-valores":chartGroups(plantaGroups,"Valor m²","currency"),
       "iptu-pagamentos":{format:"currency",labels:iptu.labels,datasets:[{label:"Arrecadação",data:iptu.values}]},
-      responsabilidade:chartGroups([...perc.entries()],"Responsáveis","number")
+      responsabilidade:chartGroups([...perc.entries()],"Responsáveis","number"),
+      "corresponsaveis-tipo":chartGroups(tiposCorresponsaveis,"Corresponsáveis","number")
     },
-    meta:dashboardMeta([["imoveis",imo],["responsaveis",resp],["transferencias",trans],["baseImoveis",baseImo],["plantaValores",planta],["pagamentosDetalhados",pagdet]],{
-      filteredRows:{imoveis:imoRows.length,responsaveis:respRows.length,transferencias:transRows.length,pagamentosDetalhados:iptuRows.length}
+    meta:dashboardMeta([["imoveis",imo],["responsaveis",resp],["corresponsaveis",corresp],["transferencias",trans],["baseImoveis",baseImo],["plantaValores",planta],["pagamentosDetalhados",pagdet]],{
+      filteredRows:{imoveis:imoRows.length,responsaveis:respRows.length,corresponsaveis:correspRows.length,transferencias:transRows.length,pagamentosDetalhados:iptuRows.length}
     })
   };
 }
@@ -4391,7 +4407,7 @@ function detailFilterRows(resource,rows,url,context={}) {
       const id=firstValue(row,["idEconomico","economico.id","economicoId"]);
       return id!==undefined&&id!==null&&context.economicIds.has(String(id));
     });
-  } else if(resource==="imoveis-responsaveis"&&context.propertyIds instanceof Set){
+  } else if(["imoveis-responsaveis","imoveis-corresponsaveis"].includes(resource)&&context.propertyIds instanceof Set){
     out=out.filter(row=>{
       const id=firstValue(row,["iImoveis","idImovel","imovel.id","imovelId"]);
       return id!==undefined&&id!==null&&context.propertyIds.has(String(id));
@@ -4465,7 +4481,7 @@ async function buildDetailPage(env,tenant,resource,url) {
       );
     }
   }
-  if(resource==="imoveis-responsaveis"){
+  if(["imoveis-responsaveis","imoveis-corresponsaveis"].includes(resource)){
     const bairro=dashboardFilterValue(url,"bairro");
     const setor=dashboardFilterValue(url,"setor");
     const zona=dashboardFilterValue(url,"zona");
