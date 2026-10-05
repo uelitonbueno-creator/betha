@@ -760,11 +760,14 @@
     kpiGrid.innerHTML = "";
     for (const kpi of def.kpis || []) {
       const el = document.createElement("article");
-      el.className = "kpi-card";
+      const kpiFormat = kpi.format === "currency" ? "currency" : "number";
+      el.className = "kpi-card kpi-card-" + kpiFormat;
       el.dataset.kpi = kpi.id;
+      el.dataset.format = kpiFormat;
       el.innerHTML = `
         <button type="button" class="kpi-favorite-button" data-kpi-favorite="${escapeHtml(kpi.id)}" aria-pressed="false" title="Destacar KPI na Minha Home" aria-label="Destacar ${escapeHtml(kpi.label)} na Minha Home"><i class="mdi mdi-star-outline"></i></button>
         <i class="mdi mdi-chevron-right kpi-more"></i>
+        <i class="mdi ${kpiFormat === "currency" ? "mdi-cash-multiple" : "mdi-pound-box-outline"} kpi-kind-icon" aria-hidden="true"></i>
         <small>${escapeHtml(kpi.label)}</small>
         <strong data-value>—</strong>
         <span>${escapeHtml(kpi.source)} · ${escapeHtml(kpi.field)}</span>
