@@ -3237,6 +3237,131 @@
     }
   }
 
+  let auditPayloadCache={events:[],security:{}};
+  const auditFilterState={period:"all",category:"all",status:"all",text:""};
+
+  function auditPeriodCutoff(period,now=Date.now()) {
+    const durations={
+      "15m":15*60*1000,
+      "1h":60*60*1000,
+      "24h":24*60*60*1000,
+      "7d":7*24*60*60*1000,
+      "30d":30*24*60*60*1000
+    };
+    return durations[period] ? now-durations[period] : 0;
+  }
+
+  function auditEventMetaParts(event) {
+    const meta=event?.meta&&typeof event.meta==="object" ? event.meta : {};
+    const parts=[];
+    if(meta.surface) parts.push("origem: "+meta.surface);
+    if(meta.view) parts.push("painel: "+meta.view);
+    if(meta.source) parts.push("fonte: "+meta.source);
+    if(meta.resource) parts.push("recurso: "+meta.resource);
+    if(meta.part) parts.push("bloco: "+meta.part);
+    if(meta.code) parts.push("motivo: "+meta.code);
+    if(event?.securitySignal){
+      parts.push("padrão: "+event.securitySignal.count+" bloqueios/"+event.securitySignal.windowMinutes+"min");
+    }
+    if(meta.label) parts.push("rótulo: "+meta.label);
+    if(meta.permissionCount!==undefined) parts.push(meta.permissionCount+" permissão(ões)");
+    if(meta.viewCount!==undefined) parts.push(meta.viewCount+" painel(is)");
+    return parts;
+  }
+
+  function filteredAuditEvents(events) {
+    const cutoff=auditPeriodCutoff(auditFilterState.period);
+    const category=String(auditFilterState.category||"all");
+    const status=String(auditFilterState.status||"all");
+    const needle=String(auditFilterState.text||"").trim().toLowerCase();
+
+    return (Array.isArray(events)?events:[]).filter(event=>{
+      if(cutoff){
+        const ts=Date.parse(event?.ts||"");
+        if(!Number.isFinite(ts)||ts<cutoff) return false;
+      }
+      if(category!=="all" && String(event?.category||"")!==category) return false;
+      if(status!=="all" && String(event?.status||"")!==status) return false;
+      if(needle){
+        const haystack=[
+          formatAuditCategory(event?.category),
+          formatAuditAction(event?.action),
+          event?.actor,
+          event?.subject,
+          ...auditEventMetaParts(event)
+        ].filter(Boolean).join(" ").toLowerCase();
+        if(!haystack.includes(needle)) return false;
+      }
+      return true;
+    });
+  }
+
+  function updateAuditFilterCount(filteredCount,totalCount) {
+    const el=document.getElementById("auditFilterCount");
+    if(!el) return;
+    el.textContent=filteredCount===totalCount
+      ? totalCount+" evento(s)"
+      : filteredCount+" de "+totalCount+" evento(s)";
+  }
+
+  function clearAuditFilters() {
+    auditFilterState.period="all";
+    auditFilterState.category="all";
+    auditFilterState.status="all";
+    auditFilterState.text="";
+    const period=document.getElementById("auditPeriodFilter");
+    const category=document.getElementById("auditCategoryFilter");
+    const status=document.getElementById("auditStatusFilter");
+    const textInput=document.getElementById("auditTextFilter");
+    if(period) period.value="all";
+    if(category) category.value="all";
+    if(status) status.value="all";
+    if(textInput) textInput.value="";
+    renderAuditEvents(auditPayloadCache);
+  }
+
+  function exportAuditCsv() {
+    const allEvents=Array.isArray(auditPayloadCache?.events)?auditPayloadCache.events:[];
+    const events=filteredAuditEvents(allEvents);
+    if(!events.length){
+      showToast("Não há eventos no recorte atual para exportar.","error");
+      return;
+    }
+
+    const separator=";";
+    const filterLabels={
+      period:document.getElementById("auditPeriodFilter")?.selectedOptions?.[0]?.textContent||"Todos",
+      category:document.getElementById("auditCategoryFilter")?.selectedOptions?.[0]?.textContent||"Todas",
+      status:document.getElementById("auditStatusFilter")?.selectedOptions?.[0]?.textContent||"Todos",
+      text:String(auditFilterState.text||"").trim()||"Sem busca textual"
+    };
+    const meta=[
+      ["BI Tributos - Auditoria"],
+      ["Entidade",entityLabel||tenantId||"Entidade"],
+      ["Período",filterLabels.period],
+      ["Categoria",filterLabels.category],
+      ["Status",filterLabels.status],
+      ["Busca",filterLabels.text],
+      ["Eventos exportados",events.length]
+    ].map(row=>row.map(value=>csvEscape(value,separator)).join(separator)).join("\r\n");
+
+    const header=["Data/hora","Categoria","Ação","Responsável","Referência","Status","Detalhes"]
+      .map(value=>csvEscape(value,separator)).join(separator);
+    const rows=events.map(event=>[
+      event?.ts||"",
+      formatAuditCategory(event?.category),
+      formatAuditAction(event?.action),
+      event?.actor||"",
+      event?.subject||"",
+      event?.status==="blocked"?"BLOQUEADO":(event?.status==="ok"?"OK":"ERRO"),
+      auditEventMetaParts(event).join(" · ")
+    ].map(value=>csvEscape(value,separator)).join(separator)).join("\r\n");
+
+    const filename=safeFilePart("bi-auditoria-"+(entityLabel||tenantId||"entidade"))+".csv";
+    downloadBlob("\uFEFF"+meta+"\r\n\r\n"+header+"\r\n"+rows,"text/csv;charset=utf-8",filename);
+    showToast("CSV da auditoria gerado com "+events.length+" evento(s).");
+  }
+
   function formatAuditAction(action) {
     const map={
       "credential.create":"Credencial MCP criada",
@@ -3318,11 +3443,18 @@
   function renderAuditEvents(payload) {
     const tbody=document.getElementById("auditTableBody");
     if(!tbody) return;
-    const events=Array.isArray(payload?.events)?payload.events:[];
-    const security=payload?.security&&typeof payload.security==="object" ? payload.security : {};
+    auditPayloadCache={
+      events:Array.isArray(payload?.events)?payload.events:[],
+      security:payload?.security&&typeof payload.security==="object" ? payload.security : {}
+    };
+    const allEvents=auditPayloadCache.events;
+    const events=filteredAuditEvents(allEvents);
+    const security=auditPayloadCache.security;
     const summary=security.summary&&typeof security.summary==="object" ? security.summary : {};
 
-    const blockedCount=events.filter(event=>event?.category==="security"&&event?.status==="blocked").length;
+    updateAuditFilterCount(events.length,allEvents.length);
+
+    const blockedCount=allEvents.filter(event=>event?.category==="security"&&event?.status==="blocked").length;
     const securityBadge=document.getElementById("auditSecurityBadge");
     if(securityBadge){
       securityBadge.textContent=blockedCount===1 ? "1 BLOQUEIO" : blockedCount+" BLOQUEIOS";
@@ -3377,26 +3509,17 @@
     }
 
     if(!events.length){
-      tbody.innerHTML='<tr><td colspan="6" class="table-empty">Nenhum evento de auditoria registrado nesta prefeitura.</td></tr>';
+      tbody.innerHTML='<tr><td colspan="6" class="table-empty">'+
+        (allEvents.length
+          ? "Nenhum evento corresponde aos filtros atuais."
+          : "Nenhum evento de auditoria registrado nesta prefeitura.")+
+        '</td></tr>';
       return;
     }
 
     tbody.innerHTML=events.map(event=>{
       const dt=event.ts ? new Date(event.ts) : null;
-      const meta=event.meta&&typeof event.meta==="object" ? event.meta : {};
-      const metaParts=[];
-      if(meta.surface) metaParts.push("origem: "+meta.surface);
-      if(meta.view) metaParts.push("painel: "+meta.view);
-      if(meta.source) metaParts.push("fonte: "+meta.source);
-      if(meta.resource) metaParts.push("recurso: "+meta.resource);
-      if(meta.part) metaParts.push("bloco: "+meta.part);
-      if(meta.code) metaParts.push("motivo: "+meta.code);
-      if(event.securitySignal){
-        metaParts.push("padrão: "+event.securitySignal.count+" bloqueios/"+event.securitySignal.windowMinutes+"min");
-      }
-      if(meta.label) metaParts.push("rótulo: "+meta.label);
-      if(meta.permissionCount!==undefined) metaParts.push(meta.permissionCount+" permissão(ões)");
-      if(meta.viewCount!==undefined) metaParts.push(meta.viewCount+" painel(is)");
+      const metaParts=auditEventMetaParts(event);
       const status=String(event.status||"ok");
       const statusClass=status==="ok"?"ok":(status==="blocked"?"blocked":"error");
       const statusLabel=status==="ok"?"OK":(status==="blocked"?"BLOQUEADO":"ERRO");
@@ -3422,6 +3545,8 @@
       const payload=await api("/api/admin/audit?limit=100");
       renderAuditEvents(payload);
     }catch(error){
+      auditPayloadCache={events:[],security:{}};
+      updateAuditFilterCount(0,0);
       if(tbody) tbody.innerHTML='<tr><td colspan="6" class="table-empty">Auditoria disponível apenas para usuários com permissão de Configurações do BI.</td></tr>';
     }
   }
@@ -3915,6 +4040,20 @@
   document.getElementById("generateMcpToken").addEventListener("click",generateMcpCredentialUi);
   document.getElementById("refreshMcpTokens").addEventListener("click",loadMcpTokens);
   document.getElementById("refreshAuditButton").addEventListener("click",loadAuditEvents);
+  ["auditPeriodFilter","auditCategoryFilter","auditStatusFilter"].forEach(id=>{
+    document.getElementById(id)?.addEventListener("change",(event)=>{
+      if(id==="auditPeriodFilter") auditFilterState.period=event.currentTarget.value;
+      if(id==="auditCategoryFilter") auditFilterState.category=event.currentTarget.value;
+      if(id==="auditStatusFilter") auditFilterState.status=event.currentTarget.value;
+      renderAuditEvents(auditPayloadCache);
+    });
+  });
+  document.getElementById("auditTextFilter")?.addEventListener("input",(event)=>{
+    auditFilterState.text=event.currentTarget.value;
+    renderAuditEvents(auditPayloadCache);
+  });
+  document.getElementById("clearAuditFilters")?.addEventListener("click",clearAuditFilters);
+  document.getElementById("exportAuditCsv")?.addEventListener("click",exportAuditCsv);
   document.getElementById("mcpActiveTokens").addEventListener("click",(event)=>{
     const button=event.target.closest("[data-revoke-mcp]");
     if(button) revokeMcpToken(button.dataset.revokeMcp);
