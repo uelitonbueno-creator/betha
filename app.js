@@ -3332,6 +3332,7 @@
     }
 
     const security=payload?.security&&typeof payload.security==="object" ? payload.security : {};
+    const summary=security.summary&&typeof security.summary==="object" ? security.summary : {};
     const anomalyBadge=document.getElementById("auditAnomalyBadge");
     if(anomalyBadge){
       const flagged=Number(security.flaggedActors||0);
@@ -3343,6 +3344,40 @@
       anomalyBadge.title=level==="normal"
         ? "Nenhum padrão anômalo detectado nos últimos "+String(security.windowMinutes||10)+" minutos."
         : flagged+" usuário(s) com repetição de bloqueios na janela de "+String(security.windowMinutes||10)+" minutos. Nenhum bloqueio automático foi aplicado.";
+    }
+
+    const summaryWindow=document.getElementById("auditSummaryWindow");
+    const summaryTrend=document.getElementById("auditSummaryTrend");
+    const summaryTarget=document.getElementById("auditSummaryTarget");
+    const summaryActors=document.getElementById("auditSummaryActors");
+    const currentBlocked=Number(summary.currentBlocked||0);
+    const previousBlocked=Number(summary.previousBlocked||0);
+    const trend=String(summary.trend||"stable");
+    const delta=Number(summary.trendDelta||0);
+    const trendSymbol=trend==="up"?"↑":(trend==="down"?"↓":"→");
+
+    if(summaryWindow){
+      summaryWindow.querySelector("strong").textContent=String(currentBlocked);
+      summaryWindow.querySelector("span").textContent="últimos "+String(security.windowMinutes||10)+" min";
+    }
+    if(summaryTrend){
+      summaryTrend.querySelector("strong").textContent=trendSymbol+" "+Math.abs(delta);
+      summaryTrend.querySelector("span").textContent="janela anterior: "+previousBlocked;
+      summaryTrend.classList.toggle("is-alert",trend==="up"&&currentBlocked>0);
+      summaryTrend.classList.toggle("is-good",trend==="down");
+    }
+    if(summaryTarget){
+      summaryTarget.querySelector("strong").textContent=summary.topTarget||"Sem alvo recorrente";
+      summaryTarget.querySelector("span").textContent=summary.topTargetCount
+        ? summary.topTargetCount+" bloqueio(s) · "+(summary.topSurface||"origem")
+        : "nenhum bloqueio recente";
+    }
+    if(summaryActors){
+      const flagged=Number(security.flaggedActors||0);
+      summaryActors.querySelector("strong").textContent=String(flagged);
+      summaryActors.querySelector("span").textContent=flagged
+        ? "usuário(s) sinalizado(s)"
+        : "nenhum usuário sinalizado";
     }
 
     tbody.innerHTML=events.map(event=>{
