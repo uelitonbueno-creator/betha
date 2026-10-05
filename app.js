@@ -2454,21 +2454,79 @@
   function detailPageTable(payload) {
     const columns=Array.isArray(payload?.columns)?payload.columns:[];
     const rows=Array.isArray(payload?.rows)?payload.rows:[];
-    if(!columns.length) return '<div class="detail-empty-state compact"><span>Fonte sem colunas de detalhamento configuradas.</span></div>';
-    if(!rows.length) return '<div class="detail-empty-state compact"><span>Nenhum registro encontrado neste recorte.</span></div>';
+    if(!columns.length) return '<div class="detail-empty-state compact detail-state"><i class="mdi mdi-table-off"></i><strong>Sem estrutura para exibir</strong><span>A fonte não possui colunas de detalhamento configuradas.</span></div>';
+    if(!rows.length) return '<div class="detail-empty-state compact detail-state"><i class="mdi mdi-database-search-outline"></i><strong>Nenhum registro neste recorte</strong><span>Ajuste os filtros do painel ou volte para o resumo para ampliar a consulta.</span></div>';
 
     return `
-      <div class="detail-table-wrap">
-        <table class="detail-table">
-          <thead><tr>${columns.map(col=>'<th>'+escapeHtml(col.label||col.key)+'</th>').join("")}</tr></thead>
-          <tbody>
-            ${rows.map(row=>'<tr>'+columns.map(col=>
-              '<td>'+escapeHtml(formatDetailCell(row[col.key],col.format))+'</td>'
-            ).join("")+'</tr>').join("")}
+      <div class="detail-analytic-toolbar">
+        <label class="detail-search"><i class="mdi mdi-magnify"></i><input type="search" data-detail-search placeholder="Buscar nos ${rows.length} registros desta página" aria-label="Buscar nos registros exibidos"></label>
+        <span class="detail-visible-count" data-detail-visible-count>${rows.length.toLocaleString("pt-BR")} exibidos</span>
+      </div>
+      <div class="detail-table-wrap" tabindex="0" aria-label="Tabela analítica; cabeçalho permanece visível durante a rolagem">
+        <table class="detail-table detail-table-analytic">
+          <thead><tr>${columns.map((col,index)=>'<th><button type="button" class="detail-sort" data-detail-sort="'+index+'" aria-label="Ordenar por '+escapeHtml(col.label||col.key)+'"><span>'+escapeHtml(col.label||col.key)+'</span><i class="mdi mdi-unfold-more-horizontal"></i></button></th>').join("")}<th class="detail-action-column"><span class="sr-only">Ações</span></th></tr></thead>
+          <tbody data-detail-tbody>
+            ${rows.map((row,rowIndex)=>'<tr data-detail-row="'+rowIndex+'">'+columns.map(col=>
+              '<td data-sort-value="'+escapeHtml(String(row[col.key]??""))+'">'+escapeHtml(formatDetailCell(row[col.key],col.format))+'</td>'
+            ).join("")+'<td class="detail-row-action"><button type="button" data-detail-record="'+rowIndex+'" title="Abrir registro" aria-label="Abrir detalhes deste registro"><i class="mdi mdi-chevron-right"></i></button></td></tr>').join("")}
           </tbody>
         </table>
       </div>
+      <section class="detail-record-preview" data-detail-record-preview hidden aria-live="polite"></section>
     `;
+  }
+
+  function bindDetailTableInteractions(container,payload) {
+    const columns=Array.isArray(payload?.columns)?payload.columns:[];
+    const rows=Array.isArray(payload?.rows)?payload.rows:[];
+    const tbody=container.querySelector("[data-detail-tbody]");
+    const search=container.querySelector("[data-detail-search]");
+    const count=container.querySelector("[data-detail-visible-count]");
+    const preview=container.querySelector("[data-detail-record-preview]");
+    if(!tbody) return;
+
+    const visibleRows=()=>[...tbody.querySelectorAll("tr")].filter(row=>!row.hidden);
+    const updateCount=()=>{ if(count) count.textContent=visibleRows().length.toLocaleString("pt-BR")+" exibidos"; };
+
+    search?.addEventListener("input",()=>{
+      const term=String(search.value||"").normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").toLocaleLowerCase("pt-BR").trim();
+      [...tbody.querySelectorAll("tr")].forEach(row=>{
+        const text=row.textContent.normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").toLocaleLowerCase("pt-BR");
+        row.hidden=Boolean(term&&!text.includes(term));
+      });
+      updateCount();
+    });
+
+    container.querySelectorAll("[data-detail-sort]").forEach(button=>{
+      button.addEventListener("click",()=>{
+        const index=Number(button.dataset.detailSort||0);
+        const direction=button.dataset.direction==="asc"?"desc":"asc";
+        container.querySelectorAll("[data-detail-sort]").forEach(other=>{other.dataset.direction=""; const icon=other.querySelector("i"); if(icon) icon.className="mdi mdi-unfold-more-horizontal";});
+        button.dataset.direction=direction;
+        const icon=button.querySelector("i");
+        if(icon) icon.className="mdi "+(direction==="asc"?"mdi-arrow-up":"mdi-arrow-down");
+        const ordered=[...tbody.querySelectorAll("tr")].sort((a,b)=>{
+          const av=a.children[index]?.dataset.sortValue||"";
+          const bv=b.children[index]?.dataset.sortValue||"";
+          const an=Number(String(av).replace(",", ".")), bn=Number(String(bv).replace(",", "."));
+          const result=Number.isFinite(an)&&Number.isFinite(bn) ? an-bn : av.localeCompare(bv,"pt-BR",{numeric:true,sensitivity:"base"});
+          return direction==="asc"?result:-result;
+        });
+        ordered.forEach(row=>tbody.appendChild(row));
+      });
+    });
+
+    tbody.addEventListener("click",event=>{
+      const button=event.target.closest("[data-detail-record]");
+      if(!button||!preview) return;
+      const index=Number(button.dataset.detailRecord);
+      const row=rows[index];
+      if(!row) return;
+      preview.hidden=false;
+      preview.innerHTML='<div class="detail-record-preview-head"><div><small>REGISTRO SELECIONADO</small><strong>Detalhes sem sair do painel</strong></div><button type="button" data-close-record-preview aria-label="Fechar detalhes"><i class="mdi mdi-close"></i></button></div><dl>'+columns.map(col=>'<div><dt>'+escapeHtml(col.label||col.key)+'</dt><dd>'+escapeHtml(formatDetailCell(row[col.key],col.format))+'</dd></div>').join("")+'</dl>';
+      preview.scrollIntoView({behavior:"smooth",block:"nearest"});
+    });
+    preview?.addEventListener("click",event=>{ if(event.target.closest("[data-close-record-preview]")) preview.hidden=true; });
   }
 
   function safeFilePart(value) {
@@ -2865,8 +2923,10 @@
           </div>
         </div>
       `;
+      bindDetailTableInteractions(container,payload);
     } catch(error) {
-      container.innerHTML='<div class="detail-empty-state compact"><strong>Detalhamento indisponível</strong><span>'+escapeHtml(error.message||"Falha na consulta")+'</span></div>';
+      const denied=String(error?.message||"").includes("403")||String(error?.message||"").toLocaleLowerCase("pt-BR").includes("permission");
+      container.innerHTML='<div class="detail-empty-state compact detail-state '+(denied?'permission':'error')+'"><i class="mdi '+(denied?'mdi-shield-lock-outline':'mdi-alert-circle-outline')+'"></i><strong>'+(denied?'Acesso não permitido':'Não foi possível carregar o detalhamento')+'</strong><span>'+(denied?'Seu perfil não possui permissão para consultar estes registros. O resumo anterior foi preservado.':'A tela anterior continua disponível. Tente novamente ou ajuste os filtros.')+'</span><button class="btn-secondary-betha" type="button" data-load-detail="'+escapeHtml(resource)+'" data-detail-quality-issue="'+escapeHtml(qualityIssue||"")+'"><i class="mdi mdi-refresh"></i> TENTAR NOVAMENTE</button></div>';
     }
   }
 
@@ -2983,7 +3043,7 @@
     const drawerContext=document.getElementById("drawerContext");
     if(drawerContext){
       const context=exportContextLabel();
-      drawerContext.textContent=[entityLabel||tenantId||"Entidade",context.period,context.exercise].filter(Boolean).join(" · ");
+      drawerContext.innerHTML='<span class="drawer-breadcrumb"><button type="button" data-drawer-back-summary title="Voltar ao resumo">'+escapeHtml(dashboards[currentView]?.title||"Resumo")+'</button><i class="mdi mdi-chevron-right"></i><strong>'+escapeHtml(title||"Detalhamento")+'</strong></span><span class="drawer-context-meta">'+escapeHtml([context.period,context.exercise].filter(Boolean).join(" · "))+'</span>';
     }
     document.getElementById("drawerBody").innerHTML = html;
     document.getElementById("detailDrawer").classList.add("open");
@@ -3001,6 +3061,8 @@
       document.body.classList.remove("drawer-open");
     }
   }
+
+  document.getElementById("drawerContext")?.addEventListener("click",(event)=>{ if(event.target.closest("[data-drawer-back-summary]")) closeDrawer("detailDrawer"); });
 
   document.getElementById("drawerBody").addEventListener("click",(event)=>{
     const loadButton=event.target.closest("[data-load-detail]");
