@@ -2285,3 +2285,63 @@ html,body{
     justify-content:flex-end;
   }
 }
+
+
+/* Hierarquia analítica · painéis detalhados · 2026-10-04 */
+#dashboardView:not([data-dashboard="visao-geral"]) .kpi-grid{
+  grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+  gap:10px;
+  margin-bottom:18px;
+}
+#dashboardView:not([data-dashboard="visao-geral"]) .kpi-card{
+  min-height:108px;
+  padding:15px 16px;
+}
+#dashboardView:not([data-dashboard="visao-geral"]) .kpi-card small{
+  margin-bottom:6px;
+  font-size:10px;
+}
+#dashboardView:not([data-dashboard="visao-geral"]) .kpi-card strong{
+  margin-bottom:7px;
+  font-size:22px;
+}
+#dashboardView:not([data-dashboard="visao-geral"]) #chartGrid .chart-card:first-child{
+  grid-column:1/-1;
+  border-color:#dce3ee;
+  box-shadow:0 1px 2px rgba(23,32,51,.025),0 10px 30px rgba(23,32,51,.04);
+}
+#dashboardView:not([data-dashboard="visao-geral"]) #chartGrid .chart-card:first-child .chart-card-header{
+  min-height:72px;
+  padding:18px 20px 14px;
+}
+#dashboardView:not([data-dashboard="visao-geral"]) #chartGrid .chart-card:first-child .chart-title-block h2{
+  font-size:15px;
+}
+#dashboardView:not([data-dashboard="visao-geral"]) #chartGrid .chart-card:first-child .chart-title-block p{
+  font-size:10px;
+}
+#dashboardView:not([data-dashboard="visao-geral"]) #chartGrid .chart-card:first-child .chart-body{
+  height:360px;
+  padding:8px 20px 20px;
+}
+@media(max-width:980px){
+  #dashboardView:not([data-dashboard="visao-geral"]) .kpi-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  #dashboardView:not([data-dashboard="visao-geral"]) #chartGrid .chart-card:first-child .chart-body{
+    height:320px;
+  }
+}
+@media(max-width:560px){
+  #dashboardView:not([data-dashboard="visao-geral"]) .kpi-grid{
+    grid-template-columns:1fr;
+  }
+  #dashboardView:not([data-dashboard="visao-geral"]) #chartGrid .chart-card:first-child .chart-card-header{
+    min-height:64px;
+    padding:15px 14px 11px;
+  }
+  #dashboardView:not([data-dashboard="visao-geral"]) #chartGrid .chart-card:first-child .chart-body{
+    height:280px;
+    padding:6px 12px 14px;
+  }
+}
