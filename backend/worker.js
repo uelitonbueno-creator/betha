@@ -4614,7 +4614,30 @@ async function buildDetailPage(env,tenant,resource,url) {
     }
   }
 
-  const filtered=detailFilterRows(resource,src.rows,url,detailContext);
+  let filtered=detailFilterRows(resource,src.rows,url,detailContext);
+
+  // O dashboard pode contar registros de todo o exercício enquanto a primeira
+  // página física da API não contém itens do recorte. Para o micro, avance
+  // páginas até encontrar registros compatíveis (ou esgotar a fonte), em vez
+  // de devolver "nenhum registro" prematuramente.
+  let scanOffset=src.nextOffset;
+  let scanHasMore=src.hasMore===true;
+  let scanPages=1;
+  const scanMaxPages=20;
+  while(filtered.length===0 && scanHasMore && scanOffset!==null && scanOffset!==undefined && scanPages<scanMaxPages){
+    const page=await safeBethaRows(env,tenant,def.source,def.resource,{
+      limit,
+      maxPages:1,
+      startOffset:Number(scanOffset),
+      chunkMode:true
+    });
+    if(page.error) break;
+    filtered=detailFilterRows(resource,page.rows,url,detailContext);
+    scanOffset=page.nextOffset;
+    scanHasMore=page.hasMore===true;
+    scanPages++;
+  }
+
   const columns=def.columns.map(([key,label,paths,format])=>({key,label,format}));
   const rows=filtered.map(row=>{
     const item={};
@@ -4632,8 +4655,9 @@ async function buildDetailPage(env,tenant,resource,url) {
       offset:startOffset,
       loaded:rows.length,
       sourceLoaded:src.loaded,
-      hasMore:src.hasMore===true,
-      nextOffset:src.nextOffset
+      scannedPages:scanPages,
+      hasMore:scanHasMore,
+      nextOffset:scanOffset
     }
   };
 }
