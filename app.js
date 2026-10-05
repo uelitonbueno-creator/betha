@@ -165,6 +165,7 @@
     }
 
     renderDashboard(view);
+    renderDrillReturnBar();
     loadDashboardData(view);
   }
 
@@ -2476,6 +2477,58 @@
     `;
   }
 
+  function relatedRecordTargets(row) {
+    const rules=[
+      {view:"contribuintes",keys:["idContribuinte","contribuinte","nomeContribuinte","cpfCnpj"],label:"Contribuinte",icon:"mdi-account-outline"},
+      {view:"imoveis",keys:["idImovel","imovel","inscricaoImobiliaria","inscricao"],label:"Imóvel",icon:"mdi-home-city-outline"},
+      {view:"economicos",keys:["idEconomico","economico","empresa","nomeFantasia","razaoSocial"],label:"Econômico / ISS",icon:"mdi-store-outline"},
+      {view:"debitos",keys:["idDebito","debito"],label:"Débitos",icon:"mdi-file-document-outline"},
+      {view:"divida",keys:["idDivida","divida"],label:"Dívida ativa",icon:"mdi-bank-outline"},
+      {view:"parcelamentos",keys:["idParcelamento","parcelamento"],label:"Parcelamentos",icon:"mdi-calendar-check-outline"}
+    ];
+    return rules.map(rule=>{
+      if(!dashboards[rule.view]||!isViewAllowed(rule.view)||rule.view===currentView) return null;
+      const key=rule.keys.find(candidate=>row?.[candidate]!==undefined&&row?.[candidate]!==null&&String(row[candidate]).trim()!=="");
+      return key ? {...rule,key,value:String(row[key])} : null;
+    }).filter(Boolean).slice(0,4);
+  }
+
+  function openRelatedRecord(target) {
+    if(!target||!isViewAllowed(target.view)) return;
+    const origin={view:currentView,title:currentDetailTitle||dashboardLabel(currentView),filters:{...currentDashboardFilters(currentView)},scrollY:window.scrollY};
+    try { sessionStorage.setItem("betha_bi_drill_origin_v1",JSON.stringify(origin)); } catch {}
+    const defs=filterDefinitions(target.view);
+    const searchFilter=defs.find(item=>item.type==="search"||item.id==="busca");
+    if(searchFilter){
+      const next={...currentFilterState(target.view),[searchFilter.id]:target.value};
+      filterStateByView.set(target.view,next);
+    }
+    closeDetailDrawer();
+    navigate(target.view);
+    showToast("Explorando "+target.label+" relacionado. Use “Voltar ao contexto” para retornar.");
+    requestAnimationFrame(()=>renderDrillReturnBar(origin));
+  }
+
+  function renderDrillReturnBar(originOverride) {
+    const host=document.getElementById("dashboardView");
+    if(!host) return;
+    let origin=originOverride||null;
+    if(!origin){ try { origin=JSON.parse(sessionStorage.getItem("betha_bi_drill_origin_v1")||"null"); } catch {} }
+    host.querySelector("[data-drill-return]")?.remove();
+    if(!origin||origin.view===currentView||!isViewAllowed(origin.view)) return;
+    const bar=document.createElement("div");
+    bar.className="drill-return-bar";
+    bar.dataset.drillReturn="";
+    bar.innerHTML='<span><i class="mdi mdi-source-branch"></i><span><small>EXPLORAÇÃO RELACIONADA</small><strong>'+escapeHtml(dashboardLabel(origin.view))+' → '+escapeHtml(dashboardLabel(currentView))+'</strong></span></span><button type="button" class="btn-secondary-betha" data-drill-back><i class="mdi mdi-arrow-left"></i> Voltar ao contexto</button>';
+    host.prepend(bar);
+    bar.querySelector("[data-drill-back]")?.addEventListener("click",()=>{
+      try { sessionStorage.removeItem("betha_bi_drill_origin_v1"); } catch {}
+      if(origin.filters) filterStateByView.set(origin.view,{...origin.filters});
+      navigate(origin.view);
+      requestAnimationFrame(()=>window.scrollTo({top:Number(origin.scrollY||0),behavior:"auto"}));
+    });
+  }
+
   function bindDetailTableInteractions(container,payload) {
     const columns=Array.isArray(payload?.columns)?payload.columns:[];
     const rows=Array.isArray(payload?.rows)?payload.rows:[];
@@ -2522,8 +2575,10 @@
       const index=Number(button.dataset.detailRecord);
       const row=rows[index];
       if(!row) return;
+      const related=relatedRecordTargets(row);
       preview.hidden=false;
-      preview.innerHTML='<div class="detail-record-preview-head"><div><small>REGISTRO SELECIONADO</small><strong>Detalhes sem sair do painel</strong></div><button type="button" data-close-record-preview aria-label="Fechar detalhes"><i class="mdi mdi-close"></i></button></div><dl>'+columns.map(col=>'<div><dt>'+escapeHtml(col.label||col.key)+'</dt><dd>'+escapeHtml(formatDetailCell(row[col.key],col.format))+'</dd></div>').join("")+'</dl>';
+      preview.innerHTML='<div class="detail-record-preview-head"><div><small>REGISTRO SELECIONADO</small><strong>Visão 360° do registro</strong></div><button type="button" data-close-record-preview aria-label="Fechar detalhes"><i class="mdi mdi-close"></i></button></div><dl>'+columns.map(col=>'<div><dt>'+escapeHtml(col.label||col.key)+'</dt><dd>'+escapeHtml(formatDetailCell(row[col.key],col.format))+'</dd></div>').join("")+'</dl>'+(related.length?'<div class="detail-related"><small>EXPLORAR DADOS RELACIONADOS</small><div>'+related.map((item,i)=>'<button type="button" data-related-index="'+i+'"><i class="mdi '+item.icon+'"></i><span>'+escapeHtml(item.label)+'</span><i class="mdi mdi-arrow-right"></i></button>').join("")+'</div></div>':'');
+      preview.querySelectorAll("[data-related-index]").forEach(button=>button.addEventListener("click",()=>openRelatedRecord(related[Number(button.dataset.relatedIndex)])));
       preview.scrollIntoView({behavior:"smooth",block:"nearest"});
     });
     preview?.addEventListener("click",event=>{ if(event.target.closest("[data-close-record-preview]")) preview.hidden=true; });
