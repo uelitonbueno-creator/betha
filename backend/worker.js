@@ -5872,7 +5872,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-05-security-summary-v60",
+        buildVersion:"2026-10-05-audit-productivity-v61",
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
         detailAuthorization:"betha-session+tenant+resource-permission",
@@ -5880,6 +5880,7 @@ export default {
         securityAudit:"blocked-permission-events-30d",
         securityAnomalyDetection:"10m:attention>=5,high>=10,no-auto-block",
         securityExecutiveSummary:"current-vs-previous-window+top-surface+top-target",
+        auditProductivity:"client-filtering+sanitized-csv-export",
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
         tenantsConfigured:Boolean(env.BETHA_TENANTS_JSON),
