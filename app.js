@@ -504,10 +504,113 @@
     chartInstances.set(chartDef.id, instance);
   }
 
+  function renderOverviewAttention(payload) {
+    let panel=document.getElementById("overviewAttention");
+    if(currentView!=="visao-geral"){
+      if(panel) panel.remove();
+      return;
+    }
+
+    if(!panel){
+      panel=document.createElement("section");
+      panel.id="overviewAttention";
+      panel.className="overview-attention";
+      const coverage=document.getElementById("integrationCoverage");
+      const chartGrid=document.getElementById("chartGrid");
+      if(coverage) coverage.insertAdjacentElement("afterend",panel);
+      else if(chartGrid) chartGrid.insertAdjacentElement("beforebegin",panel);
+    }
+
+    const kpis=payload?.kpis||{};
+    const warnings=Array.isArray(payload?.meta?.warnings)?payload.meta.warnings:[];
+    const items=[];
+    const debt=Number(kpis.divida);
+    const installments=Number(kpis.parcelado);
+    const launched=Number(kpis.lancado);
+    const collected=Number(kpis.arrecadado);
+
+    if(Number.isFinite(debt)){
+      items.push({
+        icon:"bank-outline",
+        title:"Saldo da dívida ativa",
+        detail:"Estoque informado pela fonte de dívida ativa.",
+        value:formatValue(debt,"currency"),
+        route:"divida"
+      });
+    }
+
+    if(Number.isFinite(installments)){
+      items.push({
+        icon:"calendar-check-outline",
+        title:"Parcelamentos no período",
+        detail:"Quantidade real retornada para o período selecionado.",
+        value:formatValue(installments,"number"),
+        route:"parcelamentos"
+      });
+    }
+
+    if(Number.isFinite(launched)&&Number.isFinite(collected)){
+      const difference=launched-collected;
+      items.push({
+        icon:"compare-horizontal",
+        title:"Diferença lançado × arrecadado",
+        detail:"Comparação simples do período; não representa inadimplência.",
+        value:formatValue(difference,"currency"),
+        route:"debitos"
+      });
+    }
+
+    if(warnings.length){
+      items.unshift({
+        icon:"alert-circle-outline",
+        title:"Fontes que exigem atenção",
+        detail:"Carga parcial ou erro informado pelo backend nesta atualização.",
+        value:formatValue(warnings.length,"number"),
+        coverage:true
+      });
+    }
+
+    const visible=items.slice(0,3);
+    panel.innerHTML=`
+      <div class="overview-attention-header">
+        <div>
+          <h2>Pontos de atenção</h2>
+          <p>Indicadores calculados somente com os dados reais desta carga.</p>
+        </div>
+      </div>
+      <div class="overview-attention-list">
+        ${visible.length?visible.map((item,index)=>`
+          <button class="overview-attention-item" type="button" data-attention-index="${index}">
+            <span class="overview-attention-icon"><i class="mdi mdi-${escapeHtml(item.icon)}"></i></span>
+            <span class="overview-attention-copy">
+              <strong>${escapeHtml(item.title)}</strong>
+              <small>${escapeHtml(item.detail)}</small>
+            </span>
+            <b>${escapeHtml(item.value)}</b>
+            <i class="mdi mdi-chevron-right overview-attention-arrow"></i>
+          </button>
+        `).join(""):'<div class="overview-attention-empty">Sem indicadores suficientes para compor os pontos de atenção nesta carga.</div>'}
+      </div>
+    `;
+
+    panel.querySelectorAll("[data-attention-index]").forEach(button=>{
+      button.addEventListener("click",()=>{
+        const item=visible[Number(button.dataset.attentionIndex)];
+        if(!item) return;
+        if(item.coverage){
+          document.getElementById("integrationCoverage")?.scrollIntoView({behavior:"smooth",block:"center"});
+          return;
+        }
+        if(item.route) navigate(item.route);
+      });
+    });
+  }
+
   function renderPayload(payload) {
     currentPayload = payload || {};
     const def = dashboards[currentView];
     populateDashboardFilterOptions(payload);
+    renderOverviewAttention(payload);
     const kpis = payload.kpis || {};
     for (const kpi of def.kpis || []) {
       const el = document.querySelector(`[data-kpi="${cssEscape(kpi.id)}"] [data-value]`);
