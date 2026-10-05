@@ -4836,6 +4836,19 @@ async function writeAuditEvent(env,{tenantId="",actor="",category="system",actio
   }catch{}
 }
 
+async function writeSecurityDenial(env,tenant,auth,{surface="",subject="",code="",view="",source="",resource="",part=""}={}) {
+  if(!tenant || !auth) return;
+  await writeAuditEvent(env,{
+    tenantId:tenant.id,
+    actor:auditActorLabel(auth.access),
+    category:"security",
+    action:"access.denied",
+    status:"blocked",
+    subject:String(subject||surface||"acesso").slice(0,160),
+    meta:{surface,code,view,source,resource,part}
+  });
+}
+
 async function listAuditEvents(env,tenantId,limit=100) {
   if(!env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
   const safeLimit=Math.max(10,Math.min(Number(limit)||100,250));
@@ -5636,11 +5649,12 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-05-data-resource-permissions-v57",
+        buildVersion:"2026-10-05-security-audit-v58",
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
         detailAuthorization:"betha-session+tenant+resource-permission",
         dataAuthorization:"betha-session+tenant+source-resource-permission",
+        securityAudit:"blocked-permission-events-30d",
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
         tenantsConfigured:Boolean(env.BETHA_TENANTS_JSON),
@@ -5989,23 +6003,36 @@ export default {
 
     const overviewPartMatch=url.pathname.match(/^\/api\/dashboard\/visao-geral\/part\/([a-z0-9-]+)$/);
     if (overviewPartMatch && request.method==="GET") {
+      let tenant=null;
+      let auth=null;
       try {
-        const tenant=resolveTenant(env,getTenantId(request,url));
-        const auth=await authorizeTenant(request,env,tenant);
+        tenant=resolveTenant(env,getTenantId(request,url));
+        auth=await authorizeTenant(request,env,tenant);
         requireViewPermission(auth,"visao-geral");
         const body=await buildOverviewPart(env,tenant,url,overviewPartMatch[1]);
         return json(request,env,200,body);
       } catch(error) {
+        if (error&&error.message==="PAGE_PERMISSION_DENIED") {
+          await writeSecurityDenial(env,tenant,auth,{
+            surface:"dashboard-part",
+            subject:"visao-geral",
+            code:error.message,
+            view:"visao-geral",
+            part:overviewPartMatch[1]
+          });
+        }
         return errorResponse(request,env,error);
       }
     }
 
     const dashboardMatch=url.pathname.match(/^\/api\/dashboard\/([a-z0-9-]+)$/);
     if (dashboardMatch && request.method==="GET") {
+      let tenant=null;
+      let auth=null;
+      const view=dashboardMatch[1];
       try {
-        const tenant=resolveTenant(env,getTenantId(request,url));
-        const auth=await authorizeTenant(request,env,tenant);
-        const view=dashboardMatch[1];
+        tenant=resolveTenant(env,getTenantId(request,url));
+        auth=await authorizeTenant(request,env,tenant);
         requireViewPermission(auth,view);
 
         // Dashboard autorizado por sessão Betha + contexto entity/database
@@ -6017,20 +6044,38 @@ export default {
         const body=await builder(env,tenant,url);
         return json(request,env,200,body);
       } catch(error) {
+        if (error&&error.message==="PAGE_PERMISSION_DENIED") {
+          await writeSecurityDenial(env,tenant,auth,{
+            surface:"dashboard",
+            subject:view,
+            code:error.message,
+            view
+          });
+        }
         return errorResponse(request,env,error);
       }
     }
 
     const detailMatch=url.pathname.match(/^\/api\/detail\/([^/]+)$/);
     if (detailMatch && request.method==="GET") {
+      let tenant=null;
+      let auth=null;
+      const resource=decodeURIComponent(detailMatch[1]);
       try {
-        const tenant=resolveTenant(env,getTenantId(request,url));
-        const auth=await authorizeTenant(request,env,tenant);
-        const resource=decodeURIComponent(detailMatch[1]);
+        tenant=resolveTenant(env,getTenantId(request,url));
+        auth=await authorizeTenant(request,env,tenant);
         requireDetailPermission(auth,resource);
         const result=await buildDetailPage(env,tenant,resource,url);
         return json(request,env,200,result);
       } catch(error) {
+        if (error&&error.message==="PAGE_PERMISSION_DENIED") {
+          await writeSecurityDenial(env,tenant,auth,{
+            surface:"detail",
+            subject:resource,
+            code:error.message,
+            resource
+          });
+        }
         return errorResponse(request,env,error);
       }
     }
@@ -6219,7 +6264,7 @@ export default {
       try {
         const tenant=resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
-        if (!auth.access || (!auth.access.admin && !auth.access.technical)) throw new Error("ADMIN_REQUIRED");
+        requireConstraintPermission(auth,"BIConfiguracoesPage");
         const events=await listAuditEvents(env,tenant.id,url.searchParams.get("limit")||100);
         return json(request,env,200,{events,count:events.length});
       } catch(error) {
@@ -6348,11 +6393,13 @@ export default {
 
     const dataMatch=url.pathname.match(/^\/api\/data\/([a-z0-9-]+)$/);
     if (dataMatch && request.method==="GET") {
+      let tenant=null;
+      let auth=null;
+      const resource=dataMatch[1];
+      const source=(url.searchParams.get("source") || "bi").toLowerCase();
       try {
-        const tenant=resolveTenant(env,getTenantId(request,url));
-        const auth=await authorizeTenant(request,env,tenant);
-        const resource=dataMatch[1];
-        const source=(url.searchParams.get("source") || "bi").toLowerCase();
+        tenant=resolveTenant(env,getTenantId(request,url));
+        auth=await authorizeTenant(request,env,tenant);
         // Valida primeiro a allowlist técnica e depois a permissão funcional.
         // Recursos customizados sem mapeamento permanecem fail-closed para usuários comuns.
         resolveResource(env,source,resource);
@@ -6366,6 +6413,15 @@ export default {
           data:body
         });
       } catch(error) {
+        if (error&&error.message==="DATA_RESOURCE_PERMISSION_DENIED") {
+          await writeSecurityDenial(env,tenant,auth,{
+            surface:"data",
+            subject:source+":"+resource,
+            code:error.message,
+            source,
+            resource
+          });
+        }
         return errorResponse(request,env,error);
       }
     }

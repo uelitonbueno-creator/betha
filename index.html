@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261005-personalhome2">
+  <link rel="stylesheet" href="style.css?v=20261005-securityaudit1">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -400,9 +400,12 @@
                 <h2>Auditoria</h2>
                 <p>Histórico seguro de alterações administrativas e uso do MCP nesta prefeitura.</p>
               </div>
-              <button id="refreshAuditButton" class="btn-secondary-betha" type="button">
-                <i class="mdi mdi-refresh"></i> ATUALIZAR
-              </button>
+              <div class="config-actions">
+                <span id="auditSecurityBadge" class="config-status-badge ok">0 BLOQUEIOS</span>
+                <button id="refreshAuditButton" class="btn-secondary-betha" type="button">
+                  <i class="mdi mdi-refresh"></i> ATUALIZAR
+                </button>
+              </div>
             </div>
             <div class="table-responsive">
               <table class="users-table audit-table">
@@ -548,6 +551,6 @@
   <script src="auth/auth.js?v=20261002-kvsession1"></script>
   <script src="dashboard-catalog.js?v=20261005-nav2"></script>
   <div id="uiToast" class="ui-toast" role="status" aria-live="polite" aria-atomic="true"></div>
-  <script src="app.js?v=20261005-personalhome2"></script>
+  <script src="app.js?v=20261005-securityaudit1"></script>
 </body>
 </html>
