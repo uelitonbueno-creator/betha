@@ -2188,6 +2188,27 @@
         params.set(key,value);
       }
 
+      // A Visão Geral não deve iniciar uma varredura pesada automaticamente em
+      // cada navegador/dispositivo. Se já existe snapshot compartilhado/local,
+      // ele é a leitura operacional e a atualização completa fica explícita no
+      // botão ATUALIZAR. Os demais painéis continuam consultando suas rotas.
+      const overviewHasSnapshot = view==="visao-geral" &&
+        Boolean(readDashboardCache("visao-geral"));
+
+      if(view==="visao-geral" && !force && overviewHasSnapshot){
+        setDashboardLoading(false);
+        const cached=readDashboardCache("visao-geral");
+        if(cached?.payload) renderPayload(cached.payload);
+        setLastUpdated(cached?.savedAt||null,"Snapshot");
+        setStatus(
+          cached?.state==="complete" ? "online" : "waiting",
+          cached?.state==="complete"
+            ? "Visão geral carregada do snapshot consolidado"
+            : "Visão geral em snapshot parcial · use ATUALIZAR para continuar a sincronização"
+        );
+        return;
+      }
+
       const payload = view === "visao-geral"
         ? await loadOverviewSharded(params)
         : await api("/api/dashboard/" + encodeURIComponent(view) + "?" + params.toString());
