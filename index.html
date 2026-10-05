@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261005-kpisemantic1">
+  <link rel="stylesheet" href="style.css?v=20261005-securitysummary1">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -409,6 +409,28 @@
                 </button>
               </div>
             </div>
+            <div class="audit-security-summary" aria-label="Resumo executivo de segurança">
+              <div id="auditSummaryWindow" class="audit-summary-card">
+                <small>Bloqueios na janela</small>
+                <strong>0</strong>
+                <span>últimos 10 min</span>
+              </div>
+              <div id="auditSummaryTrend" class="audit-summary-card">
+                <small>Tendência</small>
+                <strong>→ 0</strong>
+                <span>janela anterior: 0</span>
+              </div>
+              <div id="auditSummaryTarget" class="audit-summary-card audit-summary-target">
+                <small>Alvo mais recorrente</small>
+                <strong>Sem alvo recorrente</strong>
+                <span>nenhum bloqueio recente</span>
+              </div>
+              <div id="auditSummaryActors" class="audit-summary-card">
+                <small>Usuários sinalizados</small>
+                <strong>0</strong>
+                <span>nenhum usuário sinalizado</span>
+              </div>
+            </div>
             <div class="table-responsive">
               <table class="users-table audit-table">
                 <thead>
@@ -553,6 +575,6 @@
   <script src="auth/auth.js?v=20261002-kvsession1"></script>
   <script src="dashboard-catalog.js?v=20261005-nav2"></script>
   <div id="uiToast" class="ui-toast" role="status" aria-live="polite" aria-atomic="true"></div>
-  <script src="app.js?v=20261005-kpisemantic1"></script>
+  <script src="app.js?v=20261005-securitysummary1"></script>
 </body>
 </html>
