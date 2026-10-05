@@ -53,6 +53,8 @@
   const query = Object.fromEntries(new URLSearchParams(location.search).entries());
   const chartInstances = new Map();
   const filterStateByView = new Map();
+  const restoredPreferenceScopes = new Set();
+  let toastTimer = null;
   let currentView = ADMIN_VIEWS.has(query.view) ? query.view :
     (query.view && dashboards[query.view] ? query.view : "visao-geral");
   let currentPayload = null;
@@ -152,6 +154,176 @@
     return Object.keys(currentDashboardFilters(view)).length>0;
   }
 
+  function preferenceTokenScope() {
+    const token=String(window.BIAuth?.getToken?.()||"");
+    if(!token) return "";
+    let hash=2166136261;
+    for(let i=0;i<token.length;i++){
+      hash^=token.charCodeAt(i);
+      hash=Math.imul(hash,16777619);
+    }
+    return (hash>>>0).toString(36);
+  }
+
+  function preferenceContext(view=currentView) {
+    const tenant=String(tenantId||"sem-tenant");
+    const tokenScope=preferenceTokenScope();
+    const scope=tokenScope ? "user-"+tokenScope : "session";
+    let storage=null;
+    try {
+      storage=tokenScope ? window.localStorage : window.sessionStorage;
+    } catch {}
+    return {
+      storage,
+      scope,
+      key:"betha_bi_view_preferences_v1:"+scope+":"+tenant+":"+String(view||"visao-geral")
+    };
+  }
+
+  function persistableDashboardFilters(view=currentView) {
+    const definitions=new Map(filterDefinitions(view).map(item=>[item.id,item]));
+    return Object.fromEntries(
+      Object.entries(currentDashboardFilters(view))
+        .filter(([key])=>definitions.get(key)?.type!=="search")
+    );
+  }
+
+  function saveViewPreferences(options={}) {
+    const context=preferenceContext(currentView);
+    if(!context.storage) return false;
+    const payload={
+      version:1,
+      periodo:document.getElementById("periodo")?.value||"ano",
+      exercicio:document.getElementById("exercicio")?.value||String(currentYear),
+      fonte:document.getElementById("fontePreferencial")?.value||"auto",
+      filters:persistableDashboardFilters(currentView),
+      savedAt:new Date().toISOString()
+    };
+    try{
+      context.storage.setItem(context.key,JSON.stringify(payload));
+      if(!options.silent){
+        showToast(context.scope.startsWith("user-")
+          ? "Visão salva para este acesso e prefeitura."
+          : "Visão salva nesta sessão do navegador.");
+      }
+      return true;
+    }catch(error){
+      if(!options.silent) showToast("Não foi possível salvar esta visão.","error");
+      return false;
+    }
+  }
+
+  function readViewPreferences(view=currentView) {
+    const context=preferenceContext(view);
+    if(!context.storage) return null;
+    try{
+      const raw=context.storage.getItem(context.key);
+      if(!raw) return null;
+      const payload=JSON.parse(raw);
+      return payload&&payload.version===1 ? payload : null;
+    }catch{
+      return null;
+    }
+  }
+
+  function setSelectValueIfAvailable(id,value,fallback) {
+    const select=document.getElementById(id);
+    if(!select) return;
+    const desired=String(value??"");
+    const exists=[...select.options].some(option=>option.value===desired);
+    select.value=exists ? desired : String(fallback??select.value);
+  }
+
+  function restoreViewPreferencesOnce(view=currentView) {
+    const context=preferenceContext(view);
+    if(restoredPreferenceScopes.has(context.key)) return;
+    restoredPreferenceScopes.add(context.key);
+    const saved=readViewPreferences(view);
+    if(!saved) return;
+    setSelectValueIfAvailable("periodo",saved.periodo,"ano");
+    setSelectValueIfAvailable("exercicio",saved.exercicio,String(currentYear));
+    setSelectValueIfAvailable("fontePreferencial",saved.fonte,"auto");
+    filterStateByView.set(view,{...(saved.filters||{})});
+  }
+
+  function clearStoredViewPreference(view=currentView) {
+    const context=preferenceContext(view);
+    try { context.storage?.removeItem(context.key); } catch {}
+  }
+
+  function showToast(message,type="success") {
+    const toast=document.getElementById("uiToast");
+    if(!toast) return;
+    clearTimeout(toastTimer);
+    toast.textContent=String(message||"");
+    toast.dataset.type=type;
+    toast.classList.add("is-visible");
+    toastTimer=setTimeout(()=>toast.classList.remove("is-visible"),2800);
+  }
+
+  function activeFilterItems(view=currentView) {
+    const items=[];
+    const period=document.getElementById("periodo");
+    const exercise=document.getElementById("exercicio");
+    const source=document.getElementById("fontePreferencial");
+    if(period&&period.value!=="ano") items.push({kind:"primary",key:"periodo",label:"Período",value:period.selectedOptions?.[0]?.textContent||period.value});
+    if(exercise&&exercise.value!==String(currentYear)) items.push({kind:"primary",key:"exercicio",label:"Exercício",value:exercise.value});
+    if(source&&source.value!=="auto") items.push({kind:"primary",key:"fontePreferencial",label:"Fonte",value:source.selectedOptions?.[0]?.textContent||source.value});
+    const definitions=new Map(filterDefinitions(view).map(item=>[item.id,item]));
+    for(const [key,value] of Object.entries(currentDashboardFilters(view))){
+      const def=definitions.get(key);
+      items.push({kind:"advanced",key,label:def?.label||key,value});
+    }
+    return items;
+  }
+
+  function updateActiveFilterSummary() {
+    const container=document.getElementById("activeFilterSummary");
+    if(!container) return;
+    const items=activeFilterItems();
+    container.hidden=!items.length;
+    container.innerHTML=items.length
+      ? '<span class="active-filter-summary-label"><i class="mdi mdi-filter-variant"></i> Filtros ativos</span>'+
+        items.map(item=>
+          '<span class="active-filter-chip">'+
+            '<small>'+escapeHtml(item.label)+'</small>'+
+            '<strong>'+escapeHtml(item.value)+'</strong>'+
+            '<button type="button" data-filter-kind="'+escapeHtml(item.kind)+'" data-filter-key="'+escapeHtml(item.key)+'" aria-label="Remover filtro '+escapeHtml(item.label)+'" title="Remover filtro"><i class="mdi mdi-close"></i></button>'+
+          '</span>'
+        ).join("")
+      : "";
+  }
+
+  function clearDashboardFilters(options={}) {
+    filterStateByView.set(currentView,{});
+    const toggle=document.getElementById("moreFiltersButton");
+    if(toggle){
+      toggle.setAttribute("aria-expanded","true");
+      toggle.dataset.view=currentView;
+    }
+    const def=dashboards[currentView];
+    if(def) renderDashboardFilters(def);
+    updateFilterActiveCount();
+    saveViewPreferences({silent:true});
+    if(options.reload!==false) loadDashboardData(currentView);
+    if(!options.silent) showToast("Filtros adicionais removidos.");
+  }
+
+  function restoreDefaultView() {
+    if(!window.confirm("Restaurar o padrão desta visão? Período, exercício, fonte e filtros adicionais voltarão ao estado inicial.")) return;
+    setSelectValueIfAvailable("periodo","ano","ano");
+    setSelectValueIfAvailable("exercicio",String(currentYear),String(currentYear));
+    setSelectValueIfAvailable("fontePreferencial","auto","auto");
+    filterStateByView.set(currentView,{});
+    clearStoredViewPreference(currentView);
+    const def=dashboards[currentView];
+    if(def) renderDashboardFilters(def);
+    updateFilterActiveCount();
+    showToast("Visão restaurada ao padrão.");
+    renderDashboard(currentView);
+    loadDashboardData(currentView);
+  }
+
   function dashboardFilterSignature(view=currentView) {
     const values=currentDashboardFilters(view);
     const ordered=Object.keys(values).sort().reduce((acc,key)=>{
@@ -187,6 +359,7 @@
       badge.textContent=String(count);
       badge.hidden=count===0;
     }
+    updateActiveFilterSummary();
   }
 
   function renderDashboardFilters(def) {
@@ -255,6 +428,9 @@
       if(!value) delete state[control.dataset.dashboardFilter];
       filterStateByView.set(currentView,state);
       updateFilterActiveCount();
+
+      const definition=filterDefinitions(currentView).find(item=>item.id===control.dataset.dashboardFilter);
+      if(definition?.type!=="search") saveViewPreferences({silent:true});
 
       const loaded=loadDashboardFromCache(currentView);
       if(!loaded) setStatus("waiting","Filtros alterados · clique em ATUALIZAR");
@@ -326,6 +502,7 @@
     dashboardView.dataset.dashboard = view;
     document.getElementById("overviewExecutive")?.remove();
     document.getElementById("overviewAttention")?.remove();
+    restoreViewPreferencesOnce(view);
     renderDashboardFilters(def);
 
     document.getElementById("pageTitle").textContent = def.title;
@@ -1657,6 +1834,7 @@
     }
 
     if (!cfg.BACKEND_URL) return;
+    setRefreshBusy(true);
     setDashboardLoading(true);
     setStatus("waiting", "Atualizando dados da Betha...");
 
@@ -1713,7 +1891,19 @@
       } else if (!restored) {
         setStatus("error", "Atualização indisponível");
       }
+    } finally {
+      setRefreshBusy(false);
     }
+  }
+
+  function setRefreshBusy(busy) {
+    const button=document.getElementById("refreshButton");
+    if(!button) return;
+    button.disabled=Boolean(busy);
+    button.setAttribute("aria-busy",busy?"true":"false");
+    button.innerHTML=busy
+      ? '<i class="mdi mdi-loading mdi-spin"></i> ATUALIZANDO'
+      : '<i class="mdi mdi-refresh"></i> ATUALIZAR';
   }
 
   function setDashboardLoading(loading) {
@@ -2083,6 +2273,66 @@
     return header+"\r\n"+body;
   }
 
+  function dashboardExportRows() {
+    const def=dashboards[currentView]||{};
+    const rows=[];
+    for(const kpi of def.kpis||[]){
+      const raw=currentPayload?.kpis?.[kpi.id];
+      rows.push({
+        tipo:"Indicador",
+        item:kpi.label||kpi.id,
+        serie:"",
+        categoria:"",
+        valor:formatValue(raw,kpi.format),
+        fonte:kpi.source||""
+      });
+    }
+    for(const chartDef of def.charts||[]){
+      const chart=currentPayload?.charts?.[chartDef.id];
+      if(!chart||!Array.isArray(chart.labels)||!Array.isArray(chart.datasets)) continue;
+      chart.datasets.forEach(dataset=>{
+        (dataset.data||[]).forEach((value,index)=>{
+          rows.push({
+            tipo:"Série",
+            item:chartDef.title||chartDef.id,
+            serie:dataset.label||"",
+            categoria:chart.labels[index]??"",
+            valor:chartDef.format ? formatValue(value,chartDef.format) : String(value??""),
+            fonte:chartDef.source||""
+          });
+        });
+      });
+    }
+    return rows;
+  }
+
+  function exportDashboardDelimited(separator,extension) {
+    if(!currentPayload){
+      showToast("Atualize o painel antes de exportar.","error");
+      return;
+    }
+    const rows=dashboardExportRows();
+    if(!rows.length){
+      showToast("Não há indicadores ou séries para exportar.","error");
+      return;
+    }
+    const context=exportContextLabel();
+    const header=["Tipo","Item","Série","Categoria","Valor","Fonte"].map(x=>csvEscape(x,separator)).join(separator);
+    const body=rows.map(row=>[
+      row.tipo,row.item,row.serie,row.categoria,row.valor,row.fonte
+    ].map(value=>csvEscape(value,separator)).join(separator)).join("\r\n");
+    const meta=[
+      ["Entidade",entityLabel||tenantId||"Entidade"],
+      ["Painel",dashboards[currentView]?.title||currentView],
+      ["Contexto",context.summary||"Padrão"]
+    ].map(row=>row.map(value=>csvEscape(value,separator)).join(separator)).join("\r\n");
+    const text=(extension==="csv"?"\uFEFF":"")+meta+"\r\n\r\n"+header+"\r\n"+body;
+    const mime=extension==="csv"?"text/csv;charset=utf-8":"text/plain;charset=utf-8";
+    const name=safeFilePart("bi-"+(entityLabel||tenantId)+"-"+(dashboards[currentView]?.title||currentView));
+    downloadBlob(text,mime,name+"."+extension);
+    showToast(extension.toUpperCase()+" gerado com sucesso.");
+  }
+
   async function fetchDetailExport(resource,maxRecords) {
     const columns=[];
     const rows=[];
@@ -2133,7 +2383,8 @@
   }
 
   function setExportBusy(busy) {
-    document.getElementById("exportDashboardPdf")?.classList.toggle("export-busy",busy);
+    document.getElementById("exportMenuButton")?.classList.toggle("export-busy",busy);
+    document.querySelectorAll("[data-dashboard-export]").forEach(button=>button.disabled=Boolean(busy));
     document.getElementById("drawerExportActions")?.classList.toggle("export-busy",busy);
   }
 
@@ -2221,6 +2472,7 @@
           safeFilePart("bi-"+(entityLabel||tenantId)+"-"+(dashboards[currentView]?.title||currentView))+".pdf"
         );
       }
+      showToast("PDF gerado com sucesso.");
     }catch(error){
       console.error("dashboard export",error);
       window.alert("Não foi possível gerar o PDF deste painel.");
@@ -2504,7 +2756,16 @@
     }
   });
 
-  document.getElementById("exportDashboardPdf").addEventListener("click",exportDashboardToPdf);
+  document.querySelectorAll("[data-dashboard-export]").forEach(button=>{
+    button.addEventListener("click",async()=>{
+      const format=button.dataset.dashboardExport;
+      document.getElementById("dashboardExportMenu").hidden=true;
+      document.getElementById("exportMenuButton").setAttribute("aria-expanded","false");
+      if(format==="pdf") await exportDashboardToPdf();
+      if(format==="csv") exportDashboardDelimited(";","csv");
+      if(format==="txt") exportDashboardDelimited("\t","txt");
+    });
+  });
   document.getElementById("exportDetailPdf").addEventListener("click",exportDetailPdf);
   document.getElementById("exportDetailCsv").addEventListener("click",exportDetailCsv);
   document.getElementById("exportDetailTxt").addEventListener("click",exportDetailTxt);
@@ -3530,6 +3791,36 @@
 
   document.getElementById("refreshButton").addEventListener("click", () => loadDashboardData(currentView, {force:true}));
 
+  document.getElementById("saveViewButton")?.addEventListener("click",()=>saveViewPreferences());
+  document.getElementById("clearViewFiltersButton")?.addEventListener("click",()=>clearDashboardFilters());
+  document.getElementById("restoreDefaultViewButton")?.addEventListener("click",restoreDefaultView);
+
+  document.getElementById("exportMenuButton")?.addEventListener("click",(event)=>{
+    event.stopPropagation();
+    const button=event.currentTarget;
+    const menu=document.getElementById("dashboardExportMenu");
+    if(!menu) return;
+    const open=menu.hidden;
+    menu.hidden=!open;
+    button.setAttribute("aria-expanded",String(open));
+  });
+
+  document.getElementById("dashboardExportMenu")?.addEventListener("click",event=>event.stopPropagation());
+  document.addEventListener("click",()=>{
+    const menu=document.getElementById("dashboardExportMenu");
+    const button=document.getElementById("exportMenuButton");
+    if(menu) menu.hidden=true;
+    if(button) button.setAttribute("aria-expanded","false");
+  });
+
+  document.addEventListener("keydown",(event)=>{
+    if(event.key!=="Escape") return;
+    const menu=document.getElementById("dashboardExportMenu");
+    const button=document.getElementById("exportMenuButton");
+    if(menu) menu.hidden=true;
+    if(button) button.setAttribute("aria-expanded","false");
+  });
+
   document.getElementById("moreFiltersButton")?.addEventListener("click",()=>{
     const toggle=document.getElementById("moreFiltersButton");
     const row=document.getElementById("advancedFilterRow");
@@ -3544,6 +3835,7 @@
   });
 
   const reloadLocalSelection = () => {
+    saveViewPreferences({silent:true});
     renderDashboard(currentView);
     loadDashboardData(currentView);
   };
@@ -3552,16 +3844,23 @@
   document.getElementById("exercicio").addEventListener("change", reloadLocalSelection);
   document.getElementById("fontePreferencial").addEventListener("change", reloadLocalSelection);
 
-  document.getElementById("resetDashboardFilters").addEventListener("click", () => {
-    filterStateByView.set(currentView,{});
-    const toggle=document.getElementById("moreFiltersButton");
-    if(toggle){
-      toggle.setAttribute("aria-expanded","true");
-      toggle.dataset.view=currentView;
+  document.getElementById("resetDashboardFilters").addEventListener("click", () => clearDashboardFilters());
+
+  document.getElementById("activeFilterSummary")?.addEventListener("click",(event)=>{
+    const button=event.target.closest("[data-filter-key]");
+    if(!button) return;
+    const kind=button.dataset.filterKind;
+    const key=button.dataset.filterKey;
+    if(kind==="primary"){
+      const defaults={periodo:"ano",exercicio:String(currentYear),fontePreferencial:"auto"};
+      setSelectValueIfAvailable(key,defaults[key],defaults[key]);
+    }else{
+      const state=currentFilterState(currentView);
+      delete state[key];
+      filterStateByView.set(currentView,state);
     }
-    const def=dashboards[currentView];
-    if(def) renderDashboardFilters(def);
-    updateFilterActiveCount();
+    saveViewPreferences({silent:true});
+    renderDashboard(currentView);
     loadDashboardData(currentView);
   });
 
