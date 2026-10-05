@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261005-auditproductivity1">
+  <link rel="stylesheet" href="style.css?v=20261005-audithistory1">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -497,6 +497,12 @@
                 </tbody>
               </table>
             </div>
+            <div class="audit-history-footer">
+              <span id="auditHistoryCoverage">Carregando cobertura do histórico…</span>
+              <button id="loadMoreAudit" class="btn-secondary-betha" type="button" hidden>
+                <i class="mdi mdi-chevron-down"></i> CARREGAR MAIS
+              </button>
+            </div>
           </section>
 
           <section class="panel">
@@ -650,7 +656,7 @@
   <script src="auth/auth.js?v=20261002-kvsession1"></script>
   <script src="dashboard-catalog.js?v=20261005-nav2"></script>
   <div id="uiToast" class="ui-toast" role="status" aria-live="polite" aria-atomic="true"></div>
-  <script src="app.js?v=20261005-auditproductivity1"></script>
+  <script src="app.js?v=20261005-audithistory1"></script>
   <script src="global-search.js?v=20261005-1"></script>
 </body>
 </html>
