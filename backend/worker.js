@@ -532,6 +532,18 @@ const DETAIL_RESOURCES = Object.freeze({
       ["desativado","Desativado",["desativado"],"boolean"]
     ]
   },
+  "imoveis-responsaveis":{
+    source:"bi",resource:"imoveis-responsaveis",
+    columns:[
+      ["id","ID",["id"],"text"],
+      ["imovel","ID imóvel",["iImoveis"],"text"],
+      ["responsavel","Responsável",["responsavel.nome","responsavel.nomeFantasia"],"text"],
+      ["documento","Documento",["responsavel.cpf","responsavel.cnpj"],"document"],
+      ["percentual","Percentual",["percentual"],"number"],
+      ["inicio","Início titularidade",["inicioTitularidade"],"date"],
+      ["fim","Fim titularidade",["fimTitularidade"],"date"]
+    ]
+  },
   economicos:{
     source:"bi",resource:"economicos",
     columns:[
@@ -3287,7 +3299,7 @@ async function buildRealEstateDashboard(env,tenant,url) {
     const id=firstValue(row,paths);
     return id!==undefined&&id!==null&&propertyIds.has(String(id));
   };
-  const respRows=resp.rows.filter(row=>linkedToProperty(row,["idImovel","imovel.id","imovelId"]));
+  const respRows=resp.rows.filter(row=>linkedToProperty(row,["iImoveis","idImovel","imovel.id","imovelId"]));
   const transRows=trans.rows.filter(row=>linkedToProperty(row,["idImovel","imovel.id","imovelId"]));
   const iptuRows=pagdet.rows.filter(row=>linkedToProperty(row,["idImovel","imovel.id","referente.idImovel"]));
 
@@ -4379,6 +4391,11 @@ function detailFilterRows(resource,rows,url,context={}) {
       const id=firstValue(row,["idEconomico","economico.id","economicoId"]);
       return id!==undefined&&id!==null&&context.economicIds.has(String(id));
     });
+  } else if(resource==="imoveis-responsaveis"&&context.propertyIds instanceof Set){
+    out=out.filter(row=>{
+      const id=firstValue(row,["iImoveis","idImovel","imovel.id","imovelId"]);
+      return id!==undefined&&id!==null&&context.propertyIds.has(String(id));
+    });
   }
 
   return out;
@@ -4445,6 +4462,34 @@ async function buildDetailPage(env,tenant,resource,url) {
       });
       detailContext.economicIds=new Set(
         economicRows.map(row=>String(firstValue(row,["id","idEconomico"])||"")).filter(Boolean)
+      );
+    }
+  }
+  if(resource==="imoveis-responsaveis"){
+    const bairro=dashboardFilterValue(url,"bairro");
+    const setor=dashboardFilterValue(url,"setor");
+    const zona=dashboardFilterValue(url,"zona");
+    const cadastro=dashboardFilterValue(url,"cadastro");
+    if(bairro||setor||zona||cadastro){
+      const imoveis=await safeBethaRows(env,tenant,"bi","imoveis");
+      if(imoveis.error){
+        const error=new Error(imoveis.error);
+        error.status=imoveis.errorStatus||502;
+        throw error;
+      }
+      const isRural=row=>truthyValue(row,["rural"])||/rural/i.test(stringValue(row,["tipoZona","zona"],""));
+      const isInactive=row=>truthyValue(row,["desativado"])||/inativ|desativ|cancel/i.test(stringValue(row,["situacao","status"],""));
+      const propertyRows=imoveis.rows.filter(row=>{
+        if(bairro&&!matchesDashboardFilter(row,bairro,["nomeBairro","bairro.nome","bairro"])) return false;
+        if(setor&&!matchesDashboardFilter(row,setor,["setor","setor.codigo","nomeSetor"])) return false;
+        if(zona==="rural"&&!isRural(row)) return false;
+        if(zona==="urbana"&&isRural(row)) return false;
+        if(cadastro==="ativo"&&isInactive(row)) return false;
+        if(cadastro==="inativo"&&!isInactive(row)) return false;
+        return true;
+      });
+      detailContext.propertyIds=new Set(
+        propertyRows.map(row=>String(firstValue(row,["id","idImovel"])||"")).filter(Boolean)
       );
     }
   }
@@ -5089,7 +5134,7 @@ async function mcpPersonProperties(env,credential,args) {
       const nameMatches=!idMatches && relName && normalizeMcpLookup(relName)===normalizeMcpLookup(contributorName);
       if(!idMatches&&!nameMatches) continue;
 
-      const propertyId=firstValue(rel,["idImovel","imovel.id","imovelId","idContribImoveis"]);
+      const propertyId=firstValue(rel,["iImoveis","idImovel","imovel.id","imovelId","idContribImoveis"]);
       if(propertyId!==undefined&&propertyId!==null&&String(propertyId)!=="") {
         linkedPropertyIds.add(String(propertyId));
       }
