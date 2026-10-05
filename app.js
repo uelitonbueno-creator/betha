@@ -1981,6 +1981,18 @@
     return {period,exercise,filters,summary:[...parts,...filterText].join(" · ")};
   }
 
+  function detailContextHtml() {
+    const context=exportContextLabel();
+    const chips=[];
+    if(context.period) chips.push(["Período",context.period]);
+    if(context.exercise) chips.push(["Exercício",context.exercise]);
+    for(const [key,value] of Object.entries(context.filters||{})) chips.push([key,value]);
+    if(!chips.length) return "";
+    return '<div class="detail-context-bar" aria-label="Filtros aplicados">'+chips.map(([label,value])=>
+      '<span class="detail-context-chip"><small>'+escapeHtml(label)+'</small><strong>'+escapeHtml(value)+'</strong></span>'
+    ).join("")+'</div>';
+  }
+
   function downloadBlob(content,type,filename) {
     const blob=content instanceof Blob ? content : new Blob([content],{type});
     const url=URL.createObjectURL(blob);
@@ -2268,13 +2280,17 @@
       const exportActions=document.getElementById("drawerExportActions");
       if(exportActions) exportActions.hidden=false;
       const pagination=payload?.pagination||{};
-      container.innerHTML=detailPageTable(payload)+`
+      const pageNumber=Math.floor(Number(offset||0)/25)+1;
+      container.innerHTML=detailContextHtml()+detailPageTable(payload)+`
         <div class="detail-pagination">
-          <span>${Number(pagination.loaded||0).toLocaleString("pt-BR")} registro(s) nesta página</span>
-          <div>
-            ${offset>0 ? '<button class="btn-secondary-betha" type="button" data-detail-page="'+escapeHtml(resource)+'" data-detail-offset="'+Math.max(0,offset-25)+'" '+(qualityIssue ? 'data-detail-quality-issue="'+escapeHtml(qualityIssue)+'"' : '')+'>ANTERIOR</button>' : ''}
+          <div class="detail-page-summary">
+            <strong>Página ${pageNumber.toLocaleString("pt-BR")}</strong>
+            <span>${Number(pagination.loaded||0).toLocaleString("pt-BR")} registro(s) exibidos</span>
+          </div>
+          <div class="detail-page-actions">
+            ${offset>0 ? '<button class="btn-secondary-betha" type="button" data-detail-page="'+escapeHtml(resource)+'" data-detail-offset="'+Math.max(0,offset-25)+'" '+(qualityIssue ? 'data-detail-quality-issue="'+escapeHtml(qualityIssue)+'"' : '')+'><i class="mdi mdi-chevron-left"></i><span>Anterior</span></button>' : ''}
             ${pagination.hasMore && pagination.nextOffset!==null && pagination.nextOffset!==undefined
-              ? '<button class="btn-secondary-betha" type="button" data-detail-page="'+escapeHtml(resource)+'" data-detail-offset="'+escapeHtml(pagination.nextOffset)+'" '+(qualityIssue ? 'data-detail-quality-issue="'+escapeHtml(qualityIssue)+'"' : '')+'>PRÓXIMA</button>'
+              ? '<button class="btn-secondary-betha" type="button" data-detail-page="'+escapeHtml(resource)+'" data-detail-offset="'+escapeHtml(pagination.nextOffset)+'" '+(qualityIssue ? 'data-detail-quality-issue="'+escapeHtml(qualityIssue)+'"' : '')+'><span>Próxima</span><i class="mdi mdi-chevron-right"></i></button>'
               : ''}
           </div>
         </div>
@@ -2394,6 +2410,11 @@
     const exportActions=document.getElementById("drawerExportActions");
     if(exportActions) exportActions.hidden=true;
     document.getElementById("drawerTitle").textContent = title;
+    const drawerContext=document.getElementById("drawerContext");
+    if(drawerContext){
+      const context=exportContextLabel();
+      drawerContext.textContent=[entityLabel||tenantId||"Entidade",context.period,context.exercise].filter(Boolean).join(" · ");
+    }
     document.getElementById("drawerBody").innerHTML = html;
     document.getElementById("detailDrawer").classList.add("open");
     document.getElementById("detailDrawer").setAttribute("aria-hidden","false");
