@@ -1684,7 +1684,7 @@
   const DETAIL_SUPPORTED = new Set([
     "pagamentos-detalhados-valores","pagamentos-detalhados",
     "debitos","dividas","parcelamentos","parcelamentos-parcelas",
-    "guias-unificadas","contribuintes","imoveis","economicos","economicos-atividades",
+    "guias-unificadas","contribuintes","imoveis","imoveis-responsaveis","economicos","economicos-atividades",
     "receitas","creditos-tributarios","indexadores-valores",
     "logradouros","imoveis-campos-adicionais","obras","transferencias-imoveis"
   ]);
@@ -1692,6 +1692,7 @@
   const DETAIL_RESOURCE_LABELS = Object.freeze({
     contribuintes:"Contribuintes",
     imoveis:"Imóveis",
+    "imoveis-responsaveis":"Responsáveis dos imóveis",
     economicos:"Econômicos",
     "economicos-atividades":"Atividades dos econômicos",
     debitos:"Débitos",
