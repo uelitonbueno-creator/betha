@@ -298,6 +298,7 @@
     const def = dashboards[view];
     const dashboardView = document.getElementById("dashboardView");
     dashboardView.dataset.dashboard = view;
+    if(view!=="visao-geral") document.getElementById("overviewAttention")?.remove();
     renderDashboardFilters(def);
 
     document.getElementById("pageTitle").textContent = def.title;
