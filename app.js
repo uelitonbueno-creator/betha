@@ -1645,8 +1645,15 @@
 
     if (!force) {
       const loadedFromSupabase=await loadDashboardFromSupabase(view);
-      if(!loadedFromSupabase) loadDashboardFromCache(view);
-      return;
+      if(loadedFromSupabase) return;
+
+      const loadedFromCache=loadDashboardFromCache(view);
+      if(loadedFromCache) return;
+
+      // Primeira abertura sem snapshot: não deixa o painel parado no estado vazio.
+      // Continua abaixo e consulta a Betha automaticamente com o mesmo tenant,
+      // período, exercício, filtros e autorização usados pelo botão ATUALIZAR.
+      setStatus("waiting","Sem snapshot disponível · buscando dados da Betha...");
     }
 
     if (!cfg.BACKEND_URL) return;
