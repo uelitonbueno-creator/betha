@@ -2748,8 +2748,9 @@ async function buildDebtsDashboard(env,tenant,url) {
     carteira:dashboardFilterValue(url,"carteira")
   };
 
-  const [deb,creditos]=await Promise.all([
+  const [deb,debRec,creditos]=await Promise.all([
     safeBethaRows(env,tenant,"bi","debitos"),
+    safeBethaRows(env,tenant,"bi","debitos-receitas"),
     safeBethaRows(env,tenant,"base","creditos-tributarios")
   ]);
 
@@ -2827,6 +2828,17 @@ async function buildDebtsDashboard(env,tenant,url) {
   const unica=groupSum(rows,["unica"],["vlLancado"],10);
   const origem=groupSum(rows,["__origem"],["vlLancado"],12);
   const descontos=groupSum(rows,["situacao"],["vlDesconto"],12);
+  const selectedDebtIds=new Set(rows.map(r=>String(firstValue(r,["id"])||"")).filter(Boolean));
+  const debtRevenueRows=debRec.rows.filter(row=>{
+    const debtId=String(firstValue(row,["idDebito","debito.id","idDebitos"])||"");
+    return !debtId || selectedDebtIds.has(debtId);
+  });
+  const receitaDebitos=groupSum(
+    debtRevenueRows,
+    ["receita.descricao","receita.abreviatura","idReceita"],
+    ["vlLancado","valorLancado","valor","vlReceita"],
+    12
+  );
 
   return {
     view:"debitos",
@@ -2848,10 +2860,11 @@ async function buildDebtsDashboard(env,tenant,url) {
       "debitos-ano":chartGroups(years,"Lançado","currency"),
       "unica-parcelada":chartGroups(unica,"Lançado","currency"),
       "origem-cadastro":chartGroups(origem,"Lançado","currency"),
-      "descontos-situacao":chartGroups(descontos,"Descontos","currency")
+      "descontos-situacao":chartGroups(descontos,"Descontos","currency"),
+      "debitos-receita":chartGroups(receitaDebitos,"Lançado por receita","currency")
     },
     meta:dashboardMeta(
-      [["debitos",deb],["creditosTributarios",creditos]],
+      [["debitos",deb],["debitosReceitas",debRec],["creditosTributarios",creditos]],
       {
         agingOpenOnly:true,
         filterOptions,
