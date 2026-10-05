@@ -2940,6 +2940,13 @@
     if(qualityIssue) params.set("qualityIssue",qualityIssue);
 
     try {
+      // Filtros do próprio micro (busca/situação/etc.) são enviados junto
+      // aos filtros herdados do painel.
+      const microSearch=container.querySelector("[data-detail-search]")?.value?.trim()||"";
+      const microSituation=container.querySelector("[data-detail-situation]")?.value||"";
+      if(microSearch) params.set("busca",microSearch);
+      if(microSituation) params.set("situacao",microSituation);
+
       const payload=await api("/api/detail/"+encodeURIComponent(resource)+"?"+params.toString(),{timeoutMs:30000});
       currentDetailPayload=payload;
       currentDetailResource=resource;
@@ -2948,7 +2955,32 @@
       if(exportActions) exportActions.hidden=false;
       const pagination=payload?.pagination||{};
       const pageNumber=Math.floor(Number(offset||0)/25)+1;
-      container.innerHTML=detailContextHtml()+detailPageTable(payload)+`
+      const situationOptions=Array.from(new Set(
+        (payload?.rows||[]).map(row=>String(row.situacao??row.status??"").trim()).filter(Boolean)
+      )).sort((a,b)=>a.localeCompare(b,"pt-BR"));
+      const microFilters=`
+        <div class="detail-micro-filters">
+          <div class="field filter-search-field">
+            <label>Pesquisar no analítico</label>
+            <div class="filter-search-wrap"><i class="mdi mdi-magnify"></i>
+              <input type="search" data-detail-search placeholder="Nome, documento, número ou ID">
+            </div>
+          </div>
+          <div class="field">
+            <label>Situação</label>
+            <select data-detail-situation>
+              <option value="">Todas</option>
+              ${situationOptions.map(value=>'<option value="'+escapeHtml(value)+'">'+escapeHtml(value)+'</option>').join("")}
+            </select>
+          </div>
+          <button class="btn-primary-betha" type="button" data-apply-detail-filters="${escapeHtml(resource)}">
+            <i class="mdi mdi-filter-check-outline"></i><span>Aplicar filtros</span>
+          </button>
+          <button class="btn-secondary-betha" type="button" data-clear-detail-filters="${escapeHtml(resource)}">
+            <i class="mdi mdi-filter-remove-outline"></i><span>Limpar</span>
+          </button>
+        </div>`;
+      container.innerHTML=detailContextHtml()+microFilters+detailPageTable(payload)+`
         <div class="detail-pagination">
           <div class="detail-page-summary">
             <strong>Página ${pageNumber.toLocaleString("pt-BR")}</strong>
@@ -2962,6 +2994,22 @@
           </div>
         </div>
       `;
+      container.querySelector("[data-apply-detail-filters]")?.addEventListener("click",()=>{
+        loadDetailRecords(resource,0,qualityIssue);
+      });
+      container.querySelector("[data-clear-detail-filters]")?.addEventListener("click",()=>{
+        const search=container.querySelector("[data-detail-search]");
+        const situation=container.querySelector("[data-detail-situation]");
+        if(search) search.value="";
+        if(situation) situation.value="";
+        loadDetailRecords(resource,0,qualityIssue);
+      });
+      container.querySelector("[data-detail-search]")?.addEventListener("keydown",event=>{
+        if(event.key==="Enter"){
+          event.preventDefault();
+          loadDetailRecords(resource,0,qualityIssue);
+        }
+      });
     } catch(error) {
       container.innerHTML='<div class="detail-empty-state compact"><strong>Detalhamento indisponível</strong><span>'+escapeHtml(error.message||"Falha na consulta")+'</span></div>';
     }
