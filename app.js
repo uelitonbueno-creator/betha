@@ -2504,6 +2504,25 @@
     };
   }
 
+  function executiveRecordSummaryHtml(row) {
+    const pick=(keys)=>keys.map(key=>row?.[key]).find(value=>value!==undefined&&value!==null&&String(value).trim()!=="");
+    const money=(label,icon,keys)=>{const value=pick(keys);return value===undefined||value===null||value===""?null:{label,icon,value:formatDetailCell(value,"currency")};};
+    const metrics=[
+      money("Lançado","mdi-file-document-plus-outline",["vlLancado","valorLancado","valorOriginal"]),
+      money("Pago","mdi-cash-check",["valorPago","valorPagoLancado","vlPago"]),
+      money("Saldo em aberto","mdi-alert-circle-outline",["valorPendente","valorSaldo","saldo","vlSaldo"]),
+      money("Dívida ativa","mdi-bank-outline",["valorTributoInscrito","valorInscrito","valorDivida"]),
+      money("Parcelado","mdi-calendar-check-outline",["valorParcelado","vlParcelado","valorParcelamento"])
+    ].filter(Boolean);
+    const status=pick(["situacao","situacaoDebito","statusDivida","situacaoParcelamento","status"]);
+    const due=pick(["dtVcto","dataVencimento"]);
+    const alerts=[];
+    if(status&&/(abert|vencid|inadimpl|protest|execu|cobran)/i.test(String(status))) alerts.push(String(status));
+    if(due){const d=new Date(due);if(!Number.isNaN(d.getTime())&&d.getTime()<Date.now()&&!(status&&/(pago|quitad|baixad|cancelad)/i.test(String(status)))) alerts.push("Vencimento anterior à data atual");}
+    if(!metrics.length&&!status&&!alerts.length) return "";
+    return '<section class="record-executive-summary"><div class="record-executive-title"><span><i class="mdi mdi-view-dashboard-outline"></i><strong>Resumo executivo</strong></span>'+(status?'<em>'+escapeHtml(status)+'</em>':'')+'</div>'+(metrics.length?'<div class="record-executive-grid">'+metrics.map(item=>'<div><i class="mdi '+item.icon+'"></i><span><small>'+escapeHtml(item.label)+'</small><strong>'+escapeHtml(item.value)+'</strong></span></div>').join("")+'</div>':'')+(alerts.length?'<div class="record-executive-alert"><i class="mdi mdi-alert-outline"></i><span><small>ATENÇÃO</small><strong>'+escapeHtml([...new Set(alerts)].join(" · "))+'</strong></span></div>':'')+'</section>';
+  }
+
   function fiscalTimelineHtml(row) {
     const pick=(keys)=>keys.map(key=>row?.[key]).find(value=>value!==undefined&&value!==null&&String(value).trim()!=="");
     const events=[
@@ -2542,7 +2561,7 @@
       const disabled=!target||item.view===currentView;
       return '<button type="button" data-360-view="'+escapeHtml(item.view)+'" '+(disabled?'disabled':'data-360-target="'+escapeHtml(target.value)+'"')+'><i class="mdi '+item.icon+'"></i><span>'+escapeHtml(item.label)+'</span>'+(item.view===currentView?'<small>Atual</small>':target?'<i class="mdi mdi-chevron-right"></i>':'<small>Sem vínculo</small>')+'</button>';
     }).join("");
-    return '<section class="record-360"><div class="record-360-head"><div class="record-360-avatar"><i class="mdi mdi-account-circle-outline"></i></div><div><small>VISÃO 360°</small><strong>'+escapeHtml(identity.name)+'</strong>'+(identityMeta?'<span>'+escapeHtml(identityMeta)+'</span>':'')+'</div></div><div class="record-360-nav">'+nav+'</div>'+fiscalTimelineHtml(row)+'</section>';
+    return '<section class="record-360"><div class="record-360-head"><div class="record-360-avatar"><i class="mdi mdi-account-circle-outline"></i></div><div><small>VISÃO 360°</small><strong>'+escapeHtml(identity.name)+'</strong>'+(identityMeta?'<span>'+escapeHtml(identityMeta)+'</span>':'')+'</div></div><div class="record-360-nav">'+nav+'</div>'+executiveRecordSummaryHtml(row)+fiscalTimelineHtml(row)+'</section>';
   }
 
   function openRelatedRecord(target) {
