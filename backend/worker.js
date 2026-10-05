@@ -4473,11 +4473,13 @@ function detailFilterRows(resource,rows,url,context={}) {
       return true;
     });
   } else if(resource==="parcelamentos"){
+    const parcelamentoId=dashboardFilterValue(url,"parcelamentoId");
     const situacao=dashboardFilterValue(url,"situacao");
     const tipoEntrada=dashboardFilterValue(url,"tipoEntrada");
     const cobranca=dashboardFilterValue(url,"cobranca");
     const inadimplencia=dashboardFilterValue(url,"inadimplencia");
     out=out.filter(row=>{
+      if(parcelamentoId&&!matchesDashboardFilter(row,parcelamentoId,["id","idParcelamentos"])) return false;
       if(!matchesDashboardFilter(row,situacao,["situacao.descricao","situacao"])) return false;
       if(!matchesDashboardFilter(row,tipoEntrada,["tipoEntrada"])) return false;
       if(cobranca==="executada"&&!truthyValue(row,["dividaExecutada.valor","dividaExecutada"])) return false;
@@ -4487,6 +4489,11 @@ function detailFilterRows(resource,rows,url,context={}) {
       if(inadimplencia==="sem-vencidas"&&vencidas>0) return false;
       return true;
     });
+  } else if(resource==="parcelamentos-parcelas"){
+    const parcelamentoId=dashboardFilterValue(url,"parcelamentoId");
+    if(parcelamentoId){
+      out=out.filter(row=>matchesDashboardFilter(row,parcelamentoId,["idParcelamentos","idParcelamento","parcelamento.id"]));
+    }
   } else if(["contribuintes","imoveis","economicos"].includes(resource)){
     const situacao=dashboardFilterValue(url,"situacao");
     const qualityIssue=dashboardFilterValue(url,"qualityIssue");
@@ -4639,10 +4646,18 @@ async function buildDetailPage(env,tenant,resource,url) {
   }
 
   const columns=def.columns.map(([key,label,paths,format])=>({key,label,format}));
-  const rows=filtered.map(row=>{
+  const rows=filtered.map((row,index)=>{
     const item={};
     for(const [key,,paths,format] of def.columns){
       item[key]=detailScalar(row,paths,format);
+    }
+    if(resource==="parcelamentos"){
+      item._drill={
+        resource:"parcelamentos-parcelas",
+        filterKey:"parcelamentoId",
+        filterValue:String(firstValue(row,["id","idParcelamentos"])||""),
+        label:"Parcelas do parcelamento "+String(firstValue(row,["nroParcelamento","id"])||"")
+      };
     }
     return item;
   });
