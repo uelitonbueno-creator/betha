@@ -495,7 +495,7 @@ const DETAIL_RESOURCES = Object.freeze({
     ]
   },
   parcelamentos:{
-    source:"bi",resource:"parcelamentos",datePaths:["dtParcelamento","dhParcelamento"],yearPaths:["anoParcelamento"],
+    source:"bi",resource:"parcelamentos",yearPaths:["anoParcelamento"],
     columns:[
       ["id","ID",["id"],"text"],
       ["numero","Parcelamento",["nroParcelamento"],"text"],
