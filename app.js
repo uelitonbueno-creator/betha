@@ -2079,16 +2079,18 @@
     const force = options.force === true;
 
     if (!force) {
+      // Snapshot/cache servem apenas para preencher a tela imediatamente.
+      // Não encerram mais a carga: a Betha continua sendo consultada para evitar
+      // que um snapshot vazio, parcial ou antigo congele os painéis sem disparar
+      // /api/dashboard/*.
       const loadedFromSupabase=await loadDashboardFromSupabase(view);
-      if(loadedFromSupabase) return;
+      const loadedFromCache=loadedFromSupabase ? false : loadDashboardFromCache(view);
 
-      const loadedFromCache=loadDashboardFromCache(view);
-      if(loadedFromCache) return;
-
-      // Primeira abertura sem snapshot: não deixa o painel parado no estado vazio.
-      // Continua abaixo e consulta a Betha automaticamente com o mesmo tenant,
-      // período, exercício, filtros e autorização usados pelo botão ATUALIZAR.
-      setStatus("waiting","Sem snapshot disponível · buscando dados da Betha...");
+      if (loadedFromSupabase || loadedFromCache) {
+        setStatus("waiting","Dados em cache exibidos · conferindo dados atuais da Betha...");
+      } else {
+        setStatus("waiting","Sem snapshot disponível · buscando dados da Betha...");
+      }
     }
 
     if (!cfg.BACKEND_URL) return;
