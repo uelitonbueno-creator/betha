@@ -397,9 +397,16 @@
       return scaled.toLocaleString("pt-BR",{minimumFractionDigits:0,maximumFractionDigits:digits})+" "+suffix;
     };
     if(format==="currency"){
-      if(abs>=1000000000) return "R$ "+compact(1000000000,"bi");
-      if(abs>=1000000) return "R$ "+compact(1000000,"mi");
-      if(abs>=1000) return "R$ "+compact(1000,"mil");
+      const sign=n<0?"-":"";
+      const positive=Math.abs(n);
+      const moneyCompact=(divisor,suffix)=>{
+        const scaled=positive/divisor;
+        const digits=scaled>=100?0:1;
+        return sign+"R$ "+scaled.toLocaleString("pt-BR",{minimumFractionDigits:0,maximumFractionDigits:digits})+" "+suffix;
+      };
+      if(abs>=1000000000) return moneyCompact(1000000000,"bi");
+      if(abs>=1000000) return moneyCompact(1000000,"mi");
+      if(abs>=1000) return moneyCompact(1000,"mil");
       return n.toLocaleString("pt-BR",{style:"currency",currency:"BRL",maximumFractionDigits:0});
     }
     if(abs>=1000000000) return compact(1000000000,"bi");
