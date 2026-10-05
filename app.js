@@ -62,6 +62,8 @@
   let currentDetailResource = "";
   let currentDetailTitle = "";
   let authorizedTenants = [];
+  let currentAllowedViews = new Set(Object.keys(dashboards));
+  let currentAllowedAdminViews = new Set(ADMIN_VIEWS);
 
   let tenantId = query.tenant || query.entidadeId || query.entityId || "";
   let entityLabel = query.entidade || query.entity || query.entidadeNome || "ENTIDADE NÃO IDENTIFICADA";
@@ -77,19 +79,77 @@
     yearSelect.appendChild(opt);
   }
 
+  function isViewAllowed(view) {
+    if (dashboards[view]) return currentAllowedViews.has(view);
+    if (ADMIN_VIEWS.has(view)) return currentAllowedAdminViews.has(view);
+    return false;
+  }
+
+  function menuForTenant(tenant) {
+    const raw=Array.isArray(window.BI_MENU)?window.BI_MENU:[];
+    const allowedViews=Array.isArray(tenant?.allowedViews)
+      ? new Set(tenant.allowedViews.filter(view=>dashboards[view]))
+      : (tenant?.admin||tenant?.technical ? new Set(Object.keys(dashboards)) : new Set(["visao-geral"]));
+    const allowedAdminViews=Array.isArray(tenant?.allowedAdminViews)
+      ? new Set(tenant.allowedAdminViews.filter(view=>ADMIN_VIEWS.has(view)))
+      : (tenant?.admin||tenant?.technical ? new Set(ADMIN_VIEWS) : new Set());
+
+    currentAllowedViews=allowedViews;
+    currentAllowedAdminViews=allowedAdminViews;
+
+    const allowed=item=>{
+      const view=item?.rota||item?.id;
+      return dashboards[view] ? allowedViews.has(view) :
+        (ADMIN_VIEWS.has(view) ? allowedAdminViews.has(view) : false);
+    };
+
+    return raw.map(item=>{
+      if(Array.isArray(item.submenus)){
+        const submenus=item.submenus.filter(allowed).map(sub=>({...sub,possuiPermissao:true}));
+        if(!submenus.length) return null;
+        return {...item,possuiPermissao:true,submenus};
+      }
+      return allowed(item) ? {...item,possuiPermissao:true} : null;
+    }).filter(Boolean);
+  }
+
+  function firstAllowedView() {
+    if(currentAllowedViews.has("visao-geral")) return "visao-geral";
+    const dashboardView=[...currentAllowedViews].find(view=>dashboards[view]);
+    if(dashboardView) return dashboardView;
+    return [...currentAllowedAdminViews][0] || "";
+  }
+
+  function applyNavigationPermissions(tenant) {
+    const menu=menuForTenant(tenant);
+    bethaApp.opcoes=menu;
+
+    if(!isViewAllowed(currentView)){
+      const fallback=firstAllowedView();
+      if(fallback) currentView=fallback;
+    }
+
+    if(typeof bethaApp.setMenuAtivo==="function" && currentView){
+      bethaApp.setMenuAtivo(currentView);
+    }
+  }
+
   bethaApp.opcoes = window.BI_MENU || [];
   if (typeof bethaApp.setMenuAtivo === "function") bethaApp.setMenuAtivo(currentView);
 
   bethaApp.addEventListener("opcaoMenuSelecionada", (event) => {
     const detail = event.detail || {};
     const view = detail.rota || detail.id;
-    if (!dashboards[view] && !ADMIN_VIEWS.has(view)) return;
+    if (!isViewAllowed(view)) return;
     if (detail.id && typeof bethaApp.setMenuAtivo === "function") bethaApp.setMenuAtivo(detail.id);
     navigate(view);
   });
 
   function navigate(view) {
-    if (!dashboards[view] && !ADMIN_VIEWS.has(view)) return;
+    if (!isViewAllowed(view)) {
+      showToast("Este painel não está liberado para o seu acesso.");
+      return;
+    }
     currentView = view;
     const url = new URL(location.href);
     url.searchParams.set("view", view);
@@ -3646,10 +3706,13 @@
     tenantId = tenant.id;
     entityLabel = tenant.name || tenant.id;
 
+    applyNavigationPermissions(tenant);
+
     const url = new URL(location.href);
     url.searchParams.set("tenant", tenantId);
     if (tenant.name) url.searchParams.set("entidade", tenant.name);
     else url.searchParams.delete("entidade");
+    url.searchParams.set("view", currentView);
 
     // Atualiza a URL sem navegar/recarregar. Isso preserva a sessão do login
     // mesmo em navegadores embutidos que descartam storage entre navegações.
@@ -3883,6 +3946,9 @@
     if (!tenantReady) return;
   } else {
     bethaApp.style.display = "";
+    currentAllowedViews = new Set(Object.keys(dashboards));
+    currentAllowedAdminViews = new Set(ADMIN_VIEWS);
+    bethaApp.opcoes = window.BI_MENU || [];
   }
 
   if (currentView === "usuarios-admin") {
