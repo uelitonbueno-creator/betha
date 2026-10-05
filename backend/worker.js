@@ -4657,6 +4657,63 @@ function permissionViewsForAccess(access) {
   return out.length ? [...new Set(out)] : ["visao-geral"];
 }
 
+const DETAIL_PERMISSION_VIEWS = Object.freeze({
+  "pagamentos-detalhados-valores":["arrecadacao","divida"],
+  "pagamentos-detalhados":["visao-geral","arrecadacao","economicos","imobiliario","receitas-creditos"],
+  debitos:["visao-geral","debitos"],
+  dividas:["visao-geral","divida"],
+  parcelamentos:["visao-geral","parcelamentos"],
+  "parcelamentos-parcelas":["parcelamentos"],
+  "guias-unificadas":["guias"],
+  contribuintes:["visao-geral","contribuintes","qualidade"],
+  imoveis:["visao-geral","imobiliario","qualidade","territorio"],
+  "imoveis-responsaveis":["imobiliario"],
+  "imoveis-corresponsaveis":["imobiliario"],
+  economicos:["visao-geral","economicos","qualidade"],
+  "economicos-atividades":["economicos","qualidade"],
+  receitas:["receitas-creditos"],
+  "creditos-tributarios":["debitos","receitas-creditos"],
+  "indexadores-valores":["indexadores"],
+  logradouros:["territorio"],
+  "imoveis-campos-adicionais":["qualidade"],
+  "planta-valores":["imobiliario"],
+  obras:["obras"],
+  "solicitacoes-transferencias-imoveis":["itbi"],
+  "solicitacoes-transferencias-imoveis-itens":["itbi"],
+  "transferencias-imoveis":["imobiliario","itbi"]
+});
+
+function accessHasConstraintPermission(access,permissionId) {
+  if (!access || !permissionId) return false;
+  if (access.admin===true || access.technical===true) return true;
+
+  let serialized="";
+  try { serialized=JSON.stringify(access); } catch {}
+  return serialized.includes(String(permissionId));
+}
+
+function requireConstraintPermission(auth,permissionId) {
+  if (!accessHasConstraintPermission(auth&&auth.access,permissionId)) {
+    throw new Error("PAGE_PERMISSION_DENIED");
+  }
+}
+
+function requireViewPermission(auth,view) {
+  const allowedViews=permissionViewsForAccess(auth&&auth.access);
+  if (!allowedViews.includes(String(view||""))) {
+    throw new Error("PAGE_PERMISSION_DENIED");
+  }
+}
+
+function requireDetailPermission(auth,resource) {
+  const requiredViews=DETAIL_PERMISSION_VIEWS[String(resource||"")];
+  if (!requiredViews) return;
+  const allowedViews=permissionViewsForAccess(auth&&auth.access);
+  if (!requiredViews.some(view=>allowedViews.includes(view))) {
+    throw new Error("PAGE_PERMISSION_DENIED");
+  }
+}
+
 async function sha256Hex(value) {
   const digest=await crypto.subtle.digest(
     "SHA-256",
@@ -5461,6 +5518,7 @@ function errorResponse(request,env,error) {
     TENANT_USER_ACCESS_NOT_CONFIGURED:503,
     USER_TOKEN_REQUIRED:401,
     ADMIN_REQUIRED:403,
+    PAGE_PERMISSION_DENIED:403,
     PAGE_MAPPING_SCOPE_REQUIRED:503,
     PAGE_MAPPING_WRITE_SCOPE_REQUIRED:503,
     PAGE_MAPPING_TOKEN_INVALID:503,
@@ -5512,9 +5570,10 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-04-mcp-analytics-v54",
+        buildVersion:"2026-10-05-page-permissions-v55",
         dashboardAggregatePublic:false,
-        dashboardAuthorization:"betha-session+tenant",
+        dashboardAuthorization:"betha-session+tenant+page-permission",
+        detailAuthorization:"betha-session+tenant+resource-permission",
         biApiBase:env.BETHA_BI_API_BASE || BI_BASE_DEFAULT,
         accessTokenConfigured:Boolean(env.BETHA_ACCESS_TOKEN),
         tenantsConfigured:Boolean(env.BETHA_TENANTS_JSON),
@@ -5865,7 +5924,8 @@ export default {
     if (overviewPartMatch && request.method==="GET") {
       try {
         const tenant=resolveTenant(env,getTenantId(request,url));
-        await authorizeTenant(request,env,tenant);
+        const auth=await authorizeTenant(request,env,tenant);
+        requireViewPermission(auth,"visao-geral");
         const body=await buildOverviewPart(env,tenant,url,overviewPartMatch[1]);
         return json(request,env,200,body);
       } catch(error) {
@@ -5877,10 +5937,12 @@ export default {
     if (dashboardMatch && request.method==="GET") {
       try {
         const tenant=resolveTenant(env,getTenantId(request,url));
-        await authorizeTenant(request,env,tenant);
+        const auth=await authorizeTenant(request,env,tenant);
         const view=dashboardMatch[1];
+        requireViewPermission(auth,view);
 
-        // Dashboard autorizado por sessão Betha + contexto entity/database.
+        // Dashboard autorizado por sessão Betha + contexto entity/database
+        // + permissão funcional do Page Mapping.
         // O navegador recebe apenas agregados do tenant validado.
         const builder=dashboardBuilder(view);
         if (!builder) return json(request,env,501,{error:"DASHBOARD_NOT_IMPLEMENTED",view});
@@ -5896,8 +5958,9 @@ export default {
     if (detailMatch && request.method==="GET") {
       try {
         const tenant=resolveTenant(env,getTenantId(request,url));
-        await authorizeTenant(request,env,tenant);
+        const auth=await authorizeTenant(request,env,tenant);
         const resource=decodeURIComponent(detailMatch[1]);
+        requireDetailPermission(auth,resource);
         const result=await buildDetailPage(env,tenant,resource,url);
         return json(request,env,200,result);
       } catch(error) {
@@ -6137,6 +6200,7 @@ export default {
       try {
         const tenant=resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
+        requireConstraintPermission(auth,"BIUsuariosPage");
         const body=await listContextUsers(auth.userToken,tenant,url);
         return json(request,env,200,body);
       } catch(error) {
@@ -6148,6 +6212,7 @@ export default {
       try {
         const tenant=resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
+        requireConstraintPermission(auth,"BIUsuariosPage");
         const user=url.searchParams.get("user") || "";
         if (!user.trim()) return json(request,env,400,{error:"USER_REQUIRED"});
         const body=await searchCentralUser(auth.userToken,user.trim());
