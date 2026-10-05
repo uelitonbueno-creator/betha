@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261005-detail1">
+  <link rel="stylesheet" href="style.css?v=20261005-filters1">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -127,16 +127,30 @@
               <option value="base">Dados Tributos</option>
             </select>
           </div>
-          <button id="refreshButton" class="btn-primary-betha" type="button">
-            <i class="mdi mdi-refresh"></i> ATUALIZAR
-          </button>
+          <div class="filter-primary-actions">
+            <button id="moreFiltersButton" class="btn-secondary-betha filter-toggle" type="button" aria-expanded="false" aria-controls="advancedFilterRow" hidden>
+              <i class="mdi mdi-tune-variant"></i>
+              <span>Mais filtros</span>
+              <strong id="activeFilterCount" class="filter-count" hidden>0</strong>
+            </button>
+            <button id="refreshButton" class="btn-primary-betha" type="button">
+              <i class="mdi mdi-refresh"></i> ATUALIZAR
+            </button>
+          </div>
         </section>
 
-        <section id="advancedFilterRow" class="filter-row advanced-filter-row" aria-label="Filtros do painel" hidden>
+        <section id="advancedFilterRow" class="filter-row advanced-filter-row" aria-label="Filtros adicionais do painel" hidden>
+          <div class="advanced-filter-head">
+            <div>
+              <strong>Filtros adicionais</strong>
+              <span>Refine o painel sem alterar o período principal.</span>
+            </div>
+            <button id="resetDashboardFilters" class="filter-clear-button" type="button">
+              <i class="mdi mdi-filter-remove-outline"></i>
+              <span>Limpar filtros</span>
+            </button>
+          </div>
           <div id="advancedFilters" class="advanced-filters"></div>
-          <button id="resetDashboardFilters" class="btn-secondary-betha" type="button">
-            <i class="mdi mdi-filter-remove-outline"></i> LIMPAR FILTROS
-          </button>
         </section>
 
         <section id="kpiGrid" class="kpi-grid" aria-label="Indicadores"></section>
@@ -495,6 +509,6 @@
   <script src="config.js?v=20261002-kvsession1"></script>
   <script src="auth/auth.js?v=20261002-kvsession1"></script>
   <script src="dashboard-catalog.js?v=20261005-overview1"></script>
-  <script src="app.js?v=20261005-detail1"></script>
+  <script src="app.js?v=20261005-filters1"></script>
 </body>
 </html>
