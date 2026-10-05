@@ -2712,3 +2712,33 @@ html,body{
     inset:5px 10px 12px;
   }
 }
+
+
+/* Grid analítico responsivo · 3 colunas em telas largas · 2026-10-05 */
+@media(min-width:1280px){
+  #dashboardView:not([data-dashboard="visao-geral"]) #chartGrid{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+  #dashboardView:not([data-dashboard="visao-geral"]) #chartGrid .chart-card:first-child{
+    grid-column:1/-1;
+  }
+  #dashboardView:not([data-dashboard="visao-geral"]) #chartGrid .chart-card:nth-child(n+2) .chart-body{
+    height:245px;
+  }
+}
+@media(min-width:821px) and (max-width:1279px){
+  #dashboardView:not([data-dashboard="visao-geral"]) #chartGrid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  #dashboardView:not([data-dashboard="visao-geral"]) #chartGrid .chart-card:first-child{
+    grid-column:1/-1;
+  }
+}
+@media(max-width:820px){
+  #dashboardView:not([data-dashboard="visao-geral"]) #chartGrid{
+    grid-template-columns:1fr;
+  }
+  #dashboardView:not([data-dashboard="visao-geral"]) #chartGrid .chart-card:first-child{
+    grid-column:auto;
+  }
+}
