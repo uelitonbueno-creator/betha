@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261005-globalsearch2">
+  <link rel="stylesheet" href="style.css?v=20261005-globalsearch3">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -203,15 +203,16 @@
 
         <section id="chartGrid" class="chart-grid" aria-label="Gráficos"></section>
 
-        <section class="panel source-panel">
-          <div class="panel-header">
+        <details class="panel source-panel source-disclosure">
+          <summary class="source-disclosure-summary">
             <div>
               <h2>Fontes utilizadas nesta visão</h2>
-              <p>O sistema prioriza a Integrações BI e usa a API base do Tributos para complementar histórico e cadastros.</p>
+              <p>Integrações BI e Dados do Tributos usados nesta leitura.</p>
             </div>
-          </div>
+            <i class="mdi mdi-chevron-down" aria-hidden="true"></i>
+          </summary>
           <div id="sourceSummary" class="source-summary"></div>
-        </section>
+        </details>
         </div>
 
         <section id="usersAdminView" class="users-admin-view" hidden>
@@ -577,6 +578,6 @@
   <script src="auth/auth.js?v=20261002-kvsession1"></script>
   <script src="dashboard-catalog.js?v=20261005-nav2"></script>
   <div id="uiToast" class="ui-toast" role="status" aria-live="polite" aria-atomic="true"></div>
-  <script src="app.js?v=20261005-globalsearch2"></script>
+  <script src="app.js?v=20261005-globalsearch3"></script>
 </body>
 </html>
