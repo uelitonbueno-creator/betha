@@ -817,10 +817,10 @@
         </div>
         <div class="chart-body">
           <canvas></canvas>
-          <div class="chart-empty">
+          <div class="chart-empty" data-empty-state>
             <i class="mdi mdi-chart-box-outline"></i>
-            <strong>Sem dados para o filtro atual</strong>
-            <span>Atualize os dados ou ajuste os filtros desta visão.</span>
+            <strong>Carregando dados...</strong>
+            <span>Aguardando resposta das fontes desta visão.</span>
           </div>
         </div>
       `;
@@ -1132,6 +1132,48 @@
     });
   }
 
+  function chartSourceState(source,payload) {
+    const audits=payload?.meta?.sourceAudit||{};
+    const warnings=Array.isArray(payload?.meta?.warnings)?payload.meta.warnings:[];
+    const candidates=sourceKeyCandidates(source);
+    const matched=candidates.map(key=>({key,audit:audits[key]})).filter(x=>x.audit);
+    const warning=warnings.find(w=>candidates.includes(String(w?.source||"")));
+    if(warning) return {kind:"error",detail:warning.errorDetail||warning.error||"Falha informada pela fonte"};
+    if(!matched.length) return {kind:"unavailable",detail:"A carga não informou cobertura para esta fonte."};
+    if(matched.some(x=>x.audit?.error)) {
+      const a=matched.find(x=>x.audit?.error)?.audit||{};
+      return {kind:"error",detail:a.errorDetail||a.error||"Falha ao consultar a fonte."};
+    }
+    const loaded=matched.reduce((n,x)=>n+(Number(x.audit?.loaded)||0),0);
+    const complete=matched.every(x=>x.audit?.complete===true);
+    if(loaded===0 && complete) return {kind:"empty",detail:"A fonte respondeu com carga completa e nenhum registro para o período/filtros."};
+    if(loaded===0) return {kind:"partial",detail:"A fonte não retornou registros e a carga não foi concluída."};
+    return {kind:"loaded",detail:loaded.toLocaleString("pt-BR")+" registro(s) carregado(s)."};
+  }
+
+  function renderChartEmptyState(chartDef,payload) {
+    const card=document.querySelector(`[data-chart="${cssEscape(chartDef.id)}"]`);
+    const empty=card?.querySelector("[data-empty-state]");
+    if(!empty) return;
+    const state=chartSourceState(chartDef.source,payload);
+    const title=empty.querySelector("strong");
+    const detail=empty.querySelector("span");
+    if(state.kind==="error"){
+      title.textContent="Fonte indisponível";
+      detail.textContent=state.detail;
+    } else if(state.kind==="partial"){
+      title.textContent="Carga parcial";
+      detail.textContent=state.detail;
+    } else if(state.kind==="unavailable"){
+      title.textContent="Fonte não carregada";
+      detail.textContent=state.detail;
+    } else {
+      title.textContent="Sem registros para o filtro atual";
+      detail.textContent=state.detail;
+    }
+    empty.hidden=false;
+  }
+
   function renderPayload(payload) {
     currentPayload = payload || {};
     setDashboardLoading(false);
@@ -1149,7 +1191,11 @@
 
     const charts = payload.charts || {};
     for (const chartDef of def.charts || []) {
-      if (charts[chartDef.id]) renderChartData(chartDef, charts[chartDef.id]);
+      const chartData=charts[chartDef.id];
+      const hasData=chartData && Array.isArray(chartData.labels) && chartData.labels.length &&
+        Array.isArray(chartData.datasets) && chartData.datasets.some(ds=>Array.isArray(ds.data) && ds.data.some(v=>Number(v)!==0));
+      if (hasData) renderChartData(chartDef,chartData);
+      else renderChartEmptyState(chartDef,payload);
     }
 
     const sourceRows = payload && payload.meta && payload.meta.sourceRows ? payload.meta.sourceRows : {};
