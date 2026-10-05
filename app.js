@@ -2462,14 +2462,22 @@
       <div class="detail-analytic-toolbar">
         <label class="detail-search"><i class="mdi mdi-magnify"></i><input type="search" data-detail-search placeholder="Buscar nos ${rows.length} registros desta página" aria-label="Buscar nos registros exibidos"></label>
         <span class="detail-visible-count" data-detail-visible-count>${rows.length.toLocaleString("pt-BR")} exibidos</span>
+        <div class="collection-queue-tools" data-collection-queue>
+          <button type="button" data-queue-filter="priority"><i class="mdi mdi-alert-outline"></i> Crítica/Alta</button>
+          <button type="button" data-queue-filter="overdue"><i class="mdi mdi-calendar-alert"></i> Vencidos</button>
+          <button type="button" data-queue-filter="debt"><i class="mdi mdi-bank-outline"></i> Dívida/cobrança</button>
+          <button type="button" data-queue-filter="legal"><i class="mdi mdi-gavel"></i> Protesto/execução</button>
+          <button type="button" data-queue-filter="installment"><i class="mdi mdi-calendar-check-outline"></i> Parcelados</button>
+          <button type="button" data-queue-sort><i class="mdi mdi-sort-descending"></i> Priorizar</button>
+        </div>
       </div>
       <div class="detail-table-wrap" tabindex="0" aria-label="Tabela analítica; cabeçalho permanece visível durante a rolagem">
         <table class="detail-table detail-table-analytic">
           <thead><tr>${columns.map((col,index)=>'<th><button type="button" class="detail-sort" data-detail-sort="'+index+'" aria-label="Ordenar por '+escapeHtml(col.label||col.key)+'"><span>'+escapeHtml(col.label||col.key)+'</span><i class="mdi mdi-unfold-more-horizontal"></i></button></th>').join("")}<th class="detail-action-column"><span class="sr-only">Ações</span></th></tr></thead>
           <tbody data-detail-tbody>
-            ${rows.map((row,rowIndex)=>'<tr data-detail-row="'+rowIndex+'">'+columns.map(col=>
+            ${rows.map((row,rowIndex)=>{const risk=collectionRiskData(row);return '<tr data-detail-row="'+rowIndex+'" data-risk-score="'+risk.score+'" data-risk-level="'+risk.level.key+'" data-risk-flags="'+risk.flags.join(" ")+'">'+columns.map(col=>
               '<td data-sort-value="'+escapeHtml(String(row[col.key]??""))+'">'+escapeHtml(formatDetailCell(row[col.key],col.format))+'</td>'
-            ).join("")+'<td class="detail-row-action"><button type="button" data-detail-record="'+rowIndex+'" title="Abrir registro" aria-label="Abrir detalhes deste registro"><i class="mdi mdi-chevron-right"></i></button></td></tr>').join("")}
+            ).join("")+'<td class="detail-row-action"><button type="button" data-detail-record="'+rowIndex+'" title="Abrir registro" aria-label="Abrir detalhes deste registro"><i class="mdi mdi-chevron-right"></i></button></td></tr>';}).join("")}
           </tbody>
         </table>
       </div>
@@ -2523,23 +2531,27 @@
     return '<section class="record-executive-summary"><div class="record-executive-title"><span><i class="mdi mdi-view-dashboard-outline"></i><strong>Resumo executivo</strong></span>'+(status?'<em>'+escapeHtml(status)+'</em>':'')+'</div>'+(metrics.length?'<div class="record-executive-grid">'+metrics.map(item=>'<div><i class="mdi '+item.icon+'"></i><span><small>'+escapeHtml(item.label)+'</small><strong>'+escapeHtml(item.value)+'</strong></span></div>').join("")+'</div>':'')+(alerts.length?'<div class="record-executive-alert"><i class="mdi mdi-alert-outline"></i><span><small>ATENÇÃO</small><strong>'+escapeHtml([...new Set(alerts)].join(" · "))+'</strong></span></div>':'')+'</section>';
   }
 
-  function collectionRiskHtml(row) {
+  function collectionRiskData(row) {
     const pick=(keys)=>keys.map(key=>row?.[key]).find(value=>value!==undefined&&value!==null&&String(value).trim()!=="");
     const text=[pick(["situacao","situacaoDebito","statusDivida","situacaoParcelamento","status"]),pick(["sitExecucao"]),pick(["protesto"]),pick(["penhora"])].filter(Boolean).join(" ");
     const due=pick(["dtVcto","dataVencimento"]);
     const balance=Number(pick(["valorPendente","valorSaldo","saldo","vlSaldo","valorTributoInscrito","valorInscrito"])||0);
     const installment=pick(["idParcelamento","parcelamento","situacaoParcelamento","valorParcelado","vlParcelado"]);
-    let score=0;
-    const reasons=[];
-    if(/inadimpl|vencid/i.test(text)){score+=3;reasons.push("Inadimplência ou vencimento identificado");}
-    if(/protest/i.test(text)){score+=3;reasons.push("Protesto identificado");}
-    if(/execu|penhora/i.test(text)){score+=4;reasons.push("Execução ou penhora identificada");}
-    if(/cobran/i.test(text)){score+=2;reasons.push("Registro em cobrança");}
-    if(balance>0){score+=1;reasons.push("Existe saldo financeiro informado");}
-    if(due){const d=new Date(due);if(!Number.isNaN(d.getTime())&&d.getTime()<Date.now()){score+=2;reasons.push("Vencimento anterior à data atual");}}
-    if(installment){score=Math.max(0,score-1);reasons.push("Parcelamento identificado");}
-    if(!reasons.length) return "";
+    let score=0; const reasons=[]; const flags=new Set();
+    if(/inadimpl|vencid/i.test(text)){score+=3;reasons.push("Inadimplência ou vencimento identificado");flags.add("overdue");}
+    if(/protest/i.test(text)){score+=3;reasons.push("Protesto identificado");flags.add("legal");}
+    if(/execu|penhora/i.test(text)){score+=4;reasons.push("Execução ou penhora identificada");flags.add("legal");}
+    if(/cobran/i.test(text)){score+=2;reasons.push("Registro em cobrança");flags.add("debt");}
+    if(balance>0){score+=1;reasons.push("Existe saldo financeiro informado");flags.add("debt");}
+    if(due){const d=new Date(due);if(!Number.isNaN(d.getTime())&&d.getTime()<Date.now()){score+=2;reasons.push("Vencimento anterior à data atual");flags.add("overdue");}}
+    if(installment){score=Math.max(0,score-1);reasons.push("Parcelamento identificado");flags.add("installment");}
     const level=score>=7?{label:"Crítica",key:"critical",icon:"mdi-alert-octagon-outline"}:score>=4?{label:"Alta",key:"high",icon:"mdi-alert-outline"}:score>=2?{label:"Média",key:"medium",icon:"mdi-alert-circle-outline"}:{label:"Baixa",key:"low",icon:"mdi-shield-check-outline"};
+    return {score,reasons,flags:[...flags],level};
+  }
+
+  function collectionRiskHtml(row) {
+    const {score,reasons,level}=collectionRiskData(row);
+    if(!reasons.length) return "";
     return '<section class="collection-risk collection-risk-'+level.key+'"><div class="collection-risk-head"><span><i class="mdi '+level.icon+'"></i><span><small>PRIORIDADE DE COBRANÇA</small><strong>'+level.label+'</strong></span></span><em>'+score+' ponto(s)</em></div><div class="collection-risk-reasons">'+reasons.map(reason=>'<span><i class="mdi mdi-check-circle-outline"></i>'+escapeHtml(reason)+'</span>').join("")+'</div><small class="collection-risk-note">Classificação indicativa baseada somente nos sinais disponíveis neste registro; não altera a situação fiscal oficial.</small></section>';
   }
 
@@ -2631,6 +2643,24 @@
 
     const visibleRows=()=>[...tbody.querySelectorAll("tr")].filter(row=>!row.hidden);
     const updateCount=()=>{ if(count) count.textContent=visibleRows().length.toLocaleString("pt-BR")+" exibidos"; };
+    let queueFilter="";
+    const applyQueueFilter=()=>{
+      [...tbody.querySelectorAll("tr")].forEach(row=>{
+        const flags=String(row.dataset.riskFlags||"").split(" ");
+        const level=row.dataset.riskLevel||"low";
+        row.hidden=queueFilter==="priority"?!["critical","high"].includes(level):Boolean(queueFilter&&!flags.includes(queueFilter));
+      });
+      updateCount();
+    };
+    container.querySelectorAll("[data-queue-filter]").forEach(button=>button.addEventListener("click",()=>{
+      queueFilter=queueFilter===button.dataset.queueFilter?"":button.dataset.queueFilter;
+      container.querySelectorAll("[data-queue-filter]").forEach(item=>item.classList.toggle("active",item.dataset.queueFilter===queueFilter));
+      applyQueueFilter();
+    }));
+    container.querySelector("[data-queue-sort]")?.addEventListener("click",()=>{
+      [...tbody.querySelectorAll("tr")].sort((a,b)=>Number(b.dataset.riskScore||0)-Number(a.dataset.riskScore||0)).forEach(row=>tbody.appendChild(row));
+      showToast("Fila ordenada por prioridade de cobrança.");
+    });
 
     search?.addEventListener("input",()=>{
       const term=String(search.value||"").normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").toLocaleLowerCase("pt-BR").trim();
