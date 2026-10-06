@@ -6874,6 +6874,7 @@ function errorResponse(request,env,error) {
     USER_TOKEN_REQUIRED:401,
     ADMIN_REQUIRED:403,
     USER_ACCESS_MANAGEMENT_FORBIDDEN:403,
+    USER_ACCESS_TECHNICAL_READ_ONLY:403,
     PAGE_PERMISSION_DENIED:403,
     DATA_RESOURCE_PERMISSION_DENIED:403,
     PAGE_MAPPING_SCOPE_REQUIRED:503,
@@ -6932,7 +6933,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-06-user-access-context-v77",
+        buildVersion:"2026-10-06-user-access-rules-v78",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
@@ -7753,7 +7754,10 @@ export default {
       try {
         const tenant=await resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
-        if (!auth.access || (!auth.access.admin && !auth.access.technical)) throw new Error("ADMIN_REQUIRED");
+        // Betha allows technical users to inspect the Access Manager, but its
+        // own product rules keep technical access read-only even when admin.
+        if (auth.access && auth.access.technical===true) throw new Error("USER_ACCESS_TECHNICAL_READ_ONLY");
+        if (!auth.access || auth.access.admin!==true) throw new Error("ADMIN_REQUIRED");
         const body=await request.json();
         const user=String(body && body.user || "").trim();
         if (!user) throw new Error("USER_REQUIRED");
@@ -7787,7 +7791,8 @@ export default {
       try {
         const tenant=await resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
-        if (!auth.access || (!auth.access.admin && !auth.access.technical)) throw new Error("ADMIN_REQUIRED");
+        if (auth.access && auth.access.technical===true) throw new Error("USER_ACCESS_TECHNICAL_READ_ONLY");
+        if (!auth.access || auth.access.admin!==true) throw new Error("ADMIN_REQUIRED");
         const body=await deleteContextUser(auth.userToken,auth.userAccess,deleteUserMatch[1]);
         await writeAuditEvent(env,{
           tenantId:tenant.id,
