@@ -4557,3 +4557,334 @@ button{touch-action:manipulation}
     height:240px!important;
   }
 }
+
+
+/* Lançamentos e débitos · layout analítico executivo v1 · 2026-10-06 */
+#dashboardView[data-dashboard="debitos"]{
+  --debt-accent:#078a61;
+  --debt-risk:#a66b00;
+  --debt-risk-soft:#fff8ea;
+}
+#dashboardView[data-dashboard="debitos"] .page-heading{
+  margin-bottom:18px;
+}
+#dashboardView[data-dashboard="debitos"] .page-heading h1{
+  font-size:clamp(28px,2.35vw,35px);
+  letter-spacing:-.042em;
+}
+#dashboardView[data-dashboard="debitos"] .page-heading p{
+  max-width:780px;
+  color:#587066;
+  font-size:12.5px;
+}
+#dashboardView[data-dashboard="debitos"]>.filter-row:not(.advanced-filter-row){
+  margin-bottom:16px;
+  border-color:#dbe7e1;
+  border-radius:16px;
+  background:linear-gradient(180deg,#fff,#fbfdfc);
+  box-shadow:0 7px 24px rgba(18,67,48,.04);
+}
+#dashboardView[data-dashboard="debitos"] .advanced-filter-row{
+  border-color:#dbe7e1;
+  border-radius:16px;
+  background:#fbfdfc;
+}
+#dashboardView[data-dashboard="debitos"] .active-filter-chip{
+  border-color:#d3e8dd;
+  background:#f2faf6;
+}
+
+.debt-section-heading{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:18px;
+  margin:4px 2px 10px;
+}
+.debt-section-heading>div{min-width:0}
+.debt-section-heading span{
+  display:block;
+  margin-bottom:3px;
+  color:#16805e;
+  font-size:8px;
+  font-weight:800;
+  letter-spacing:.095em;
+}
+.debt-section-heading h2{
+  margin:0;
+  color:#173328;
+  font-size:16px;
+  line-height:1.2;
+  font-weight:760;
+  letter-spacing:-.018em;
+}
+.debt-section-heading p{
+  max-width:500px;
+  margin:0;
+  color:#78887f;
+  font-size:9.5px;
+  line-height:1.45;
+  text-align:right;
+}
+
+/* Main exposure + overdue risk, with operational indicators below. */
+#dashboardView[data-dashboard="debitos"] .kpi-grid{
+  display:grid;
+  grid-template-columns:repeat(12,minmax(0,1fr));
+  grid-auto-flow:row;
+  gap:12px;
+  margin-bottom:20px;
+}
+#dashboardView[data-dashboard="debitos"] .kpi-card{
+  min-height:108px;
+  padding:15px 16px;
+  border:1px solid #dce8e2;
+  border-top:2px solid rgba(7,138,97,.25);
+  border-radius:17px;
+  background:#fff;
+  box-shadow:0 4px 16px rgba(18,67,48,.035);
+}
+#dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="vl-lancado"]{
+  grid-column:1/8;
+  grid-row:1;
+}
+#dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="vencidos"]{
+  grid-column:8/13;
+  grid-row:1;
+}
+#dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="qtd-debitos"]{
+  grid-column:1/5;
+  grid-row:2;
+}
+#dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="pagos"]{
+  grid-column:5/9;
+  grid-row:2;
+}
+#dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="descontos-debito"]{
+  grid-column:9/13;
+  grid-row:2;
+}
+#dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="vl-lancado"],
+#dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="vencidos"]{
+  min-height:142px;
+  padding:20px;
+  background:
+    radial-gradient(circle at 100% 0,rgba(7,138,97,.09),transparent 35%),
+    linear-gradient(180deg,#fff,#fbfdfc);
+}
+#dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="vl-lancado"]{
+  border-top:3px solid rgba(7,138,97,.54);
+}
+#dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="vencidos"]{
+  border-top:3px solid rgba(166,107,0,.52);
+  background:
+    radial-gradient(circle at 100% 0,rgba(166,107,0,.09),transparent 38%),
+    linear-gradient(180deg,#fff,#fffaf2);
+}
+#dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="vl-lancado"] small,
+#dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="vencidos"] small{
+  margin-bottom:9px;
+  color:#557065;
+  font-size:11px;
+}
+#dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="vl-lancado"] strong,
+#dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="vencidos"] strong{
+  margin-bottom:8px;
+  font-size:clamp(28px,2.45vw,37px);
+  line-height:1.08;
+}
+#dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="vl-lancado"] strong{
+  color:#123f2e;
+}
+#dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="vencidos"] strong{
+  color:#7c520a;
+}
+#dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="vencidos"] .kpi-kind-icon{
+  color:#a66b00;
+}
+#dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="descontos-debito"]{
+  border-top-color:rgba(166,107,0,.28);
+}
+#dashboardView[data-dashboard="debitos"] .kpi-card span{
+  font-size:8px;
+}
+
+/* Formation + aging become the decision row. */
+.debt-executive{
+  display:grid;
+  grid-template-columns:minmax(0,1.65fr) minmax(320px,.82fr);
+  gap:16px;
+  align-items:stretch;
+  margin-bottom:20px;
+}
+.debt-executive>.chart-card{
+  min-width:0;
+  margin:0;
+  border:1px solid #dce8e2;
+  border-radius:18px;
+  background:#fff;
+  box-shadow:0 6px 22px rgba(18,67,48,.04);
+}
+.debt-executive .chart-card-header{
+  min-height:64px!important;
+  padding:17px 17px 10px!important;
+}
+.debt-executive .chart-title-block h2{
+  font-size:14.5px!important;
+}
+.debt-executive .chart-body{
+  height:310px!important;
+  padding:6px 15px 15px!important;
+}
+.debt-executive .chart-display-controls{
+  grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
+  padding:0 15px 10px;
+}
+.debt-executive-side{
+  border-top:3px solid rgba(166,107,0,.40)!important;
+  background:linear-gradient(180deg,#fff,#fffdf8)!important;
+}
+.debt-executive-side .chart-body{
+  height:310px!important;
+}
+.debt-executive-side .chart-display-controls{
+  grid-template-columns:1fr;
+}
+
+/* Portfolio composition below the decision row. */
+#dashboardView[data-dashboard="debitos"] #chartGrid{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:16px;
+  margin-bottom:18px;
+}
+#dashboardView[data-dashboard="debitos"] #chartGrid>.chart-card{
+  grid-column:auto;
+  border-color:#dfe8e3;
+  border-radius:16px;
+  box-shadow:0 3px 14px rgba(18,67,48,.03);
+}
+#dashboardView[data-dashboard="debitos"] #chartGrid>.chart-card:first-child{
+  grid-column:1/-1;
+  border-color:#d6e6dd;
+  box-shadow:0 5px 18px rgba(18,67,48,.035);
+}
+#dashboardView[data-dashboard="debitos"] #chartGrid>.chart-card:first-child .chart-body{
+  height:310px;
+}
+#dashboardView[data-dashboard="debitos"] #chartGrid>.chart-card:nth-child(n+2) .chart-body{
+  height:255px;
+}
+#dashboardView[data-dashboard="debitos"] #chartGrid .chart-card-header{
+  min-height:60px;
+  padding:14px 14px 9px;
+}
+#dashboardView[data-dashboard="debitos"] #chartGrid .chart-title-block h2{
+  font-size:12.5px;
+}
+#dashboardView[data-dashboard="debitos"] #chartGrid .chart-title-block p{
+  font-size:9px;
+}
+#dashboardView[data-dashboard="debitos"] #chartGrid .chart-display-controls{
+  padding:0 13px 10px;
+}
+#dashboardView[data-dashboard="debitos"] .integration-coverage{
+  margin:0 0 12px;
+  border-style:dashed;
+  background:#fbfdfc;
+  box-shadow:none;
+}
+
+/* Tablet */
+@media(max-width:1180px){
+  #dashboardView[data-dashboard="debitos"] .kpi-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  #dashboardView[data-dashboard="debitos"] .kpi-card,
+  #dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi]{
+    grid-column:auto;
+    grid-row:auto;
+  }
+  #dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="vl-lancado"],
+  #dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="vencidos"]{
+    min-height:120px;
+  }
+  .debt-executive{
+    grid-template-columns:1fr;
+  }
+  .debt-executive-side .chart-body{
+    height:280px!important;
+  }
+}
+
+/* Mobile */
+@media(max-width:820px){
+  #dashboardView[data-dashboard="debitos"] .page-heading h1{
+    font-size:27px;
+  }
+  .debt-section-heading{
+    align-items:flex-start;
+    flex-direction:column;
+    gap:3px;
+    margin-bottom:9px;
+  }
+  .debt-section-heading p{
+    max-width:none;
+    text-align:left;
+  }
+  #dashboardView[data-dashboard="debitos"] .kpi-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:9px;
+  }
+  #dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="vl-lancado"],
+  #dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="vencidos"]{
+    grid-column:1/-1;
+    min-height:116px;
+  }
+  #dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="vl-lancado"] strong,
+  #dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="vencidos"] strong{
+    font-size:27px;
+  }
+  .debt-executive{
+    grid-template-columns:1fr;
+    gap:12px;
+  }
+  .debt-executive .chart-body,
+  .debt-executive-side .chart-body{
+    height:260px!important;
+  }
+  #dashboardView[data-dashboard="debitos"] #chartGrid{
+    grid-template-columns:1fr;
+    gap:12px;
+  }
+  #dashboardView[data-dashboard="debitos"] #chartGrid>.chart-card:first-child{
+    grid-column:auto;
+  }
+  #dashboardView[data-dashboard="debitos"] #chartGrid>.chart-card:first-child .chart-body,
+  #dashboardView[data-dashboard="debitos"] #chartGrid>.chart-card:nth-child(n+2) .chart-body{
+    height:250px;
+  }
+}
+
+/* Small phones */
+@media(max-width:480px){
+  #dashboardView[data-dashboard="debitos"] .kpi-grid{
+    grid-template-columns:1fr;
+  }
+  #dashboardView[data-dashboard="debitos"] .kpi-card,
+  #dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi]{
+    grid-column:auto;
+    grid-row:auto;
+    min-height:106px;
+    padding:13px 14px;
+  }
+  #dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="vl-lancado"] strong,
+  #dashboardView[data-dashboard="debitos"] .kpi-card[data-kpi="vencidos"] strong{
+    font-size:24px;
+  }
+  .debt-executive .chart-body,
+  .debt-executive-side .chart-body,
+  #dashboardView[data-dashboard="debitos"] #chartGrid>.chart-card:first-child .chart-body,
+  #dashboardView[data-dashboard="debitos"] #chartGrid>.chart-card:nth-child(n+2) .chart-body{
+    height:240px!important;
+  }
+}
