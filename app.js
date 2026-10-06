@@ -4463,6 +4463,9 @@
   }
 
   function openUserDrawer() {
+    if(userAccessSaving)return;
+    const feedback=document.getElementById("userSaveFeedback");
+    if(feedback){feedback.hidden=true;feedback.textContent="";}
     selectedCentralUser = null;
     wizardStep = 1;
     document.getElementById("centralUserSearch").value = "";
@@ -4564,8 +4567,9 @@
       .map(id=>({id,revokedOperations:[]}));
   }
 
+  let userAccessSaving=false;
   async function saveUserAccess() {
-    if(!selectedCentralUser) return;
+    if(!selectedCentralUser||userAccessSaving) return;
 
     const save=document.getElementById("wizardSave");
     const result=document.getElementById("centralUserResult");
@@ -4589,6 +4593,9 @@
       expiresIn
     };
 
+    const feedback=document.getElementById("userSaveFeedback");
+    if(feedback){feedback.hidden=false;feedback.textContent="Salvando o acesso na Betha…";feedback.classList.remove("is-error");}
+    userAccessSaving=true;
     save.disabled=true;
     save.textContent="SALVANDO…";
 
@@ -4599,14 +4606,17 @@
         body:JSON.stringify(body)
       });
       closeDrawer("userDrawer");
-      await loadUsers();
+      selectedCentralUser=null;
+      showToast("Usuário salvo com sucesso.");
+      try{await loadUsers();}catch{showToast("Usuário salvo. Atualize a lista para conferir o acesso.");}
     } catch(error) {
       setWizardStep(4);
       save.disabled=false;
       const feedback=document.getElementById("userSaveFeedback");
       const msg=feedback || document.getElementById("centralUserResult");
-      if(msg) msg.textContent="Não foi possível conceder o acesso: "+pageMappingFriendly(error.message);
+      if(msg){msg.hidden=false;msg.classList.add("is-error");msg.textContent="Não foi possível salvar o usuário: "+pageMappingFriendly(error.message);}
     } finally {
+      userAccessSaving=false;
       save.textContent="SALVAR";
       updateWizardSaveState();
     }
