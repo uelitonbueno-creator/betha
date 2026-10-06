@@ -58,6 +58,7 @@
   let currentView = ADMIN_VIEWS.has(query.view) ? query.view :
     (query.view && dashboards[query.view] ? query.view : "visao-geral");
   let currentPayload = null;
+  let dashboardLoadGeneration = 0;
   let currentDetailPayload = null;
   let currentDetailResource = "";
   let currentDetailTitle = "";
@@ -1184,7 +1185,10 @@
     for (const kpi of def.kpis || []) {
       const el = document.querySelector(`[data-kpi="${cssEscape(kpi.id)}"] [data-value]`);
       const raw = kpis[kpi.id];
-      if (el && raw !== undefined) el.textContent = formatValue(raw, kpi.format);
+      const sourceState=chartSourceState(kpi.source,payload);
+      if (el && raw !== undefined) el.textContent =
+        sourceState.kind==="error" || (sourceState.kind==="partial"&&Number(raw)===0)
+          ? "—" : formatValue(raw, kpi.format);
     }
     syncFavoriteKpiSnapshots(payload);
     renderPersonalHome();
@@ -1548,7 +1552,7 @@
     });
   }
 
-  async function loadDashboardFromSupabase(view) {
+  async function loadDashboardFromSupabase(view, isActive = () => true) {
     if (!tenantId || hasActiveDashboardFilters(view)) return false;
     try {
       const periodo=document.getElementById("periodo")?.value || "ano";
@@ -1575,6 +1579,7 @@
       const rows=await response.json();
       const row=Array.isArray(rows)?rows[0]:null;
       if(!row || !row.payload_json) return false;
+      if (!isActive()) return false;
 
       renderPayload(row.payload_json);
 
@@ -1894,11 +1899,13 @@
     const sessionMaxIterations=Math.max(1,Number(options.sessionMaxIterations)||25);
 
     while(iterations<safetyMaxIterations && iterations<sessionMaxIterations){
+      if (options.isActive && !options.isActive()) return aggregate;
       iterations++;
 
       if (typeof onProgress==="function") onProgress(aggregate,iterations,"requesting",offset);
 
       const payload=await requestOverviewChunk(part,params,offset,profile);
+      if (options.isActive && !options.isActive()) return aggregate;
       mergeDashboardPart(aggregate,payload);
 
       const audits=Object.values(payload?.meta?.sourceAudit||{});
@@ -1965,7 +1972,7 @@
     return false;
   }
 
-  async function loadOverviewSharded(params) {
+  async function loadOverviewSharded(params, isActive = () => true) {
     const parts = [
       "contribuintes",
       "imoveis",
@@ -2001,6 +2008,7 @@
     merged.meta.warnings=[];
 
     for (let index=0; index<parts.length; index++) {
+      if (!isActive()) return null;
       const partName=parts[index];
       const sourceKey=sourceKeyForOverviewPart(partName);
       const existingAudit=existingAuditForPart(partName,merged);
@@ -2083,6 +2091,7 @@
           partName,
           params,
           (partial,iteration,phase,currentOffset,audit)=>{
+            if (!isActive()) return;
             setStatus(
               "waiting",
               "Carregando " + (index+1) + "/" + parts.length +
@@ -2101,8 +2110,9 @@
               saveDashboardCache("visao-geral",preview,"partial");
             }
           },
-          {startOffset:resumeOffset}
+          {startOffset:resumeOffset,isActive}
         );
+        if (!isActive()) return null;
         mergeDashboardPart(merged,result);
 
         // Se a fonte ainda possui muitas páginas, encerra esta rodada de forma
@@ -2118,6 +2128,7 @@
           return merged;
         }
       } catch(error) {
+        if (!isActive()) return null;
         merged.meta.warnings.push({
           source:sourceKey,
           error:error.message === "REQUEST_TIMEOUT" ? "Tempo limite excedido na página" : (error.message || "PART_REQUEST_FAILED"),
@@ -2146,7 +2157,39 @@
     return merged;
   }
 
+  async function loadDashboardProgressively(view, params, isActive) {
+    params.set("progressive","1");
+    params.set("loadId",crypto.randomUUID());
+    let pendingRetries=0;
+    for (let batch=0;batch<600;batch++) {
+      if (!isActive()) return null;
+      let payload;
+      try {
+        payload=await api("/api/dashboard/"+encodeURIComponent(view)+"?"+params.toString(),{timeoutMs:60000});
+        pendingRetries=0;
+      } catch (error) {
+        if (error.message!=="DASHBOARD_BATCH_PENDING"||pendingRetries++>=30) throw error;
+        await new Promise(resolve=>setTimeout(resolve,2000));
+        continue;
+      }
+      if (!isActive()) return null;
+      const audits=Object.values(payload?.meta?.sourceAudit||{});
+      const complete=audits.length>0&&audits.every(a=>a.complete===true);
+      renderPayload(payload);
+      saveDashboardCache(view,payload,complete?"complete":"partial");
+      if (payload.loading?.hasMore!==true) return payload;
+      const loaded=audits.reduce((sum,a)=>sum+(Number(a.loaded)||0),0);
+      setStatus("waiting","Carregando · "+loaded.toLocaleString("pt-BR")+" registros consultados · dados parciais");
+      params.set("cursor",JSON.stringify(payload.loading.cursor||{}));
+      await new Promise(resolve=>setTimeout(resolve,1200));
+    }
+    throw new Error("DASHBOARD_BATCH_LIMIT");
+  }
+
   async function loadDashboardData(view, options = {}) {
+    const generation=++dashboardLoadGeneration;
+    const requestedTenant=tenantId;
+    const isActive=()=>generation===dashboardLoadGeneration&&view===currentView&&tenantId===requestedTenant;
     const force = options.force === true;
 
     if (!force) {
@@ -2154,7 +2197,8 @@
       // Não encerram mais a carga: a Betha continua sendo consultada para evitar
       // que um snapshot vazio, parcial ou antigo congele os painéis sem disparar
       // /api/dashboard/*.
-      const loadedFromSupabase=await loadDashboardFromSupabase(view);
+      const loadedFromSupabase=await loadDashboardFromSupabase(view,isActive);
+      if (!isActive()) return;
       const loadedFromCache=loadedFromSupabase ? false : loadDashboardFromCache(view);
 
       if (loadedFromSupabase || loadedFromCache) {
@@ -2171,6 +2215,7 @@
 
     try {
       const health = await api("/api/health");
+      if (!isActive()) return;
       const missing = [];
       if (!health.accessTokenConfigured) missing.push("BETHA_ACCESS_TOKEN");
       if (!health.tenantsConfigured) missing.push("BETHA_TENANTS_JSON");
@@ -2210,11 +2255,15 @@
       }
 
       const payload = view === "visao-geral"
-        ? await loadOverviewSharded(params)
-        : await api("/api/dashboard/" + encodeURIComponent(view) + "?" + params.toString());
+        ? await loadOverviewSharded(params,isActive)
+        : await loadDashboardProgressively(view,params,isActive);
+
+      if (!payload || !isActive()) return;
 
       renderPayload(payload);
-      saveDashboardCache(view, payload, "complete");
+      const audits=Object.values(payload?.meta?.sourceAudit||{});
+      const complete=audits.length>0&&audits.every(a=>a.complete===true);
+      saveDashboardCache(view, payload, complete?"complete":"partial");
 
       const warnings = payload && payload.meta && Array.isArray(payload.meta.warnings)
         ? payload.meta.warnings
@@ -2224,12 +2273,13 @@
       const stamp = saved ? formatCacheTime(saved.savedAt) : "";
       setLastUpdated(saved?.savedAt || new Date().toISOString(),"Betha");
 
-      if (warnings.length) {
-        setStatus("waiting", "Atualizado " + stamp + " · " + warnings.length + " fonte(s) com aviso");
+      if (warnings.length || !complete) {
+        setStatus("waiting", "Atualizado " + stamp + " · carga parcial" + (warnings.length ? " · "+warnings.length+" fonte(s) com aviso" : ""));
       } else {
         setStatus("online", "Atualizado " + stamp + " · salvo localmente");
       }
     } catch (error) {
+      if (!isActive()) return;
       console.warn("Falha ao atualizar dashboard:", error);
       setDashboardLoading(false);
 
@@ -2244,7 +2294,7 @@
         setStatus("error", "Atualização indisponível");
       }
     } finally {
-      setRefreshBusy(false);
+      if (isActive()) setRefreshBusy(false);
     }
   }
 

@@ -1433,8 +1433,14 @@ async function bethaGet(env,tenant,source,resource,query="") {
   const {base,path}=resolveResource(env,source,resource);
   if (!tenant.accessToken) throw new Error("BETHA_ACCESS_TOKEN_NOT_CONFIGURED");
   const target=String(base).replace(/\/$/,"")+path+(query?"?"+query:"");
+  const controller=new AbortController();
+  const timer=env.BI_SOURCE_TIMEOUT_MS
+    ? setTimeout(()=>controller.abort(),env.BI_SOURCE_TIMEOUT_MS)
+    : null;
+  try {
   const response=await fetch(target,{
     method:"GET",
+    signal:controller.signal,
     headers:{
       "Accept":"application/json",
       "Authorization":"Bearer "+tenant.accessToken,
@@ -1449,6 +1455,9 @@ async function bethaGet(env,tenant,source,resource,query="") {
     throw error;
   }
   return parsed.body;
+  } finally {
+    if (timer!==null) clearTimeout(timer);
+  }
 }
 
 function payloadRows(payload) {
@@ -1636,6 +1645,14 @@ async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=nu
 }
 
 async function safeBethaRows(env,tenant,source,resource,options={}) {
+  if (env.BI_DASHBOARD_LOAD && Object.keys(options).length===0) {
+    const load=env.BI_DASHBOARD_LOAD;
+    const sourceKey=source+":"+resource;
+    if (!load.pending.has(sourceKey)) {
+      load.pending.set(sourceKey,loadDashboardSourceBatch(env,tenant,source,resource));
+    }
+    return load.pending.get(sourceKey);
+  }
   const heavyFinancial=new Set([
     "pagamentos",
     "pagamentos-detalhados",
@@ -1701,6 +1718,82 @@ async function safeBethaRows(env,tenant,source,resource,options={}) {
     errorStatus:lastError ? (lastError.status || null) : null,
     errorDetail:detail
   };
+}
+
+// Each authorized dashboard request advances one page per source. Raw rows
+// stay in temporary, tenant/context-scoped KV entries; only aggregates leave
+// the Worker. Existing full-read consumers and detail routes are unchanged.
+async function loadDashboardSourceBatch(env,tenant,source,resource) {
+  const load=env.BI_DASHBOARD_LOAD;
+  const sourceKey=source+":"+resource;
+  const prefix=load.prefix+":"+sourceKey;
+  const manifestKey=prefix+":manifest";
+  let manifest=await env.BI_SESSIONS.get(manifestKey,"json");
+  const expected=Number(load.expected[sourceKey]||0);
+  if ((!manifest && expected>0) || (manifest && manifest.pages<expected)) {
+    throw new Error("DASHBOARD_BATCH_PENDING");
+  }
+  manifest=manifest||{pages:0,nextOffset:0,complete:false,truncated:false};
+  const chunks=[];
+  // Bound concurrent KV reads as well as Betha requests.
+  const blockCount=Math.ceil(manifest.pages/20);
+  for (let start=0;start<blockCount;start+=10) {
+    const batch=await Promise.all(Array.from({length:Math.min(10,blockCount-start)},(_,i)=>
+      env.BI_SESSIONS.get(prefix+":block:"+(start+i),"json")));
+    if (batch.some(chunk=>!chunk)) throw new Error("DASHBOARD_BATCH_PENDING");
+    chunks.push(...batch.flat());
+  }
+  if (chunks.length<manifest.pages) throw new Error("DASHBOARD_BATCH_PENDING");
+  chunks.length=manifest.pages;
+  if (!manifest.complete && !manifest.truncated) {
+    const plainEnv={...env};
+    delete plainEnv.BI_DASHBOARD_LOAD;
+    plainEnv.BI_SOURCE_TIMEOUT_MS=12000;
+    const chunk=await safeBethaRows(plainEnv,tenant,source,resource,{
+      limit:250,maxPages:1,startOffset:manifest.nextOffset
+    });
+    if (chunk.error) {
+      // Preserve prior rows, while explicitly reporting an interrupted source.
+      chunks.push(chunk);
+    } else {
+      const fingerprint=JSON.stringify(chunk.rows.slice(0,10));
+      const repeated=chunk.rows.length>0 && chunks.some(previous=>
+        JSON.stringify(previous.rows.slice(0,10))===fingerprint);
+      chunk.repeatedPage=chunk.repeatedPage||repeated;
+      chunk.truncated=chunk.truncated||repeated||(!chunk.complete && manifest.pages>=499);
+      chunk.hasMore=!chunk.complete&&!chunk.truncated;
+      if (repeated) chunk.rows=[];
+      chunks.push(chunk);
+      const block=Math.floor(manifest.pages/20);
+      await env.BI_SESSIONS.put(prefix+":block:"+block,JSON.stringify(chunks.slice(block*20)),{expirationTtl:3600});
+      manifest={pages:manifest.pages+1,nextOffset:chunk.nextOffset,
+        complete:chunk.complete,truncated:chunk.truncated};
+      await env.BI_SESSIONS.put(manifestKey,JSON.stringify(manifest),{expirationTtl:3600});
+    }
+  }
+  const seen=new Set();
+  const rows=[];
+  for (const chunk of chunks) for (const row of chunk.rows) {
+    const id=firstValue(row,["id","codigo","idIntegracao","uuid"]);
+    if (id!==undefined&&id!==null&&id!=="") {
+      if (seen.has(String(id))) continue;
+      seen.add(String(id));
+    }
+    rows.push(row);
+  }
+  const last=chunks[chunks.length-1]||{};
+  let reportedTotal=chunks.find(chunk=>chunk.reportedTotal!==null&&chunk.reportedTotal!==undefined)?.reportedTotal??null;
+  if (reportedTotal!==null&&rows.length>reportedTotal) reportedTotal=null;
+  const complete=manifest.complete&&!last.error;
+  const result={...last,rows,loaded:rows.length,pages:chunks.reduce((n,c)=>n+(c.pages||0),0),
+    pageMeta:chunks.flatMap(chunk=>chunk.pageMeta||[]),startOffset:0,
+    reportedTotal,total:complete?rows.length:Math.max(reportedTotal||0,rows.length),
+    complete,truncated:Boolean(manifest.truncated),
+    totalMismatch:complete&&reportedTotal!==null&&reportedTotal!==rows.length,
+    hasMore:!complete&&!manifest.truncated&&!last.error,nextOffset:manifest.nextOffset};
+  load.cursors[sourceKey]=manifest.pages;
+  if (result.hasMore) load.hasMore=true;
+  return result;
 }
 
 function valueAt(obj,path) {
@@ -3555,6 +3648,18 @@ async function buildItbiDashboard(env,tenant,url) {
       compradores:chartGroups([...soldGroups.entries()],"Operações","number")
     },
     meta:dashboardMeta([["solicitacoes",sol],["itens",itens],["movimentacoes",mov],["transferencias",trans],["compras",compra]],{filteredRows:{transferencias:transRows.length,movimentacoes:movRows.length}})
+  };
+}
+
+function completenessChart(rows,fields) {
+  const counts=fields.map(field=>rows.filter(row=>{
+    const value=firstValue(row,field.paths);
+    return value!==undefined&&value!==null&&String(value).trim()!=="";
+  }).length);
+  return {
+    format:"percent",
+    labels:fields.map(field=>field.label),
+    datasets:[{label:"Preenchimento (%)",data:counts.map(count=>rows.length?count*100/rows.length:0)}]
   };
 }
 
@@ -5953,6 +6058,9 @@ function publicCatalog(env) {
 function errorResponse(request,env,error) {
   const code=error && error.message ? error.message : "UNKNOWN_ERROR";
   const statusByCode={
+    DASHBOARD_BATCH_PENDING:409,
+    DASHBOARD_LOAD_ID_INVALID:400,
+    DASHBOARD_CURSOR_INVALID:400,
     TENANT_REQUIRED:400,
     TENANT_NOT_FOUND:403,
     TENANT_USER_ACCESS_NOT_CONFIGURED:503,
@@ -6011,7 +6119,8 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-05-audit-history-v62",
+        buildVersion:"2026-10-06-progressive-panels-v63",
+        progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
         detailAuthorization:"betha-session+tenant+resource-permission",
@@ -6407,7 +6516,31 @@ export default {
         const builder=dashboardBuilder(view);
         if (!builder) return json(request,env,501,{error:"DASHBOARD_NOT_IMPLEMENTED",view});
 
-        const body=await builder(env,tenant,url);
+        let dashboardEnv=env;
+        if (url.searchParams.get("progressive")==="1" && view!=="visao-geral") {
+          if (!env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
+          const loadId=url.searchParams.get("loadId")||"";
+          if (!/^[a-f0-9-]{36}$/i.test(loadId)) throw new Error("DASHBOARD_LOAD_ID_INVALID");
+          const cursorText=url.searchParams.get("cursor")||"{}";
+          if (cursorText.length>5000) throw new Error("DASHBOARD_CURSOR_INVALID");
+          let expected;
+          try { expected=JSON.parse(cursorText); } catch { throw new Error("DASHBOARD_CURSOR_INVALID"); }
+          if (!expected||Array.isArray(expected)||typeof expected!=="object"||
+              Object.values(expected).some(value=>!Number.isInteger(value)||value<0||value>500)) {
+            throw new Error("DASHBOARD_CURSOR_INVALID");
+          }
+          const scope=await sha256Hex(JSON.stringify([tenant.id,tenant.userAccess,auth.context.database,auth.context.entity]));
+          dashboardEnv={...env,BI_DASHBOARD_LOAD:{
+            prefix:"dashboard-batch:v1:"+scope+":"+loadId,
+            expected,cursors:{},hasMore:false,pending:new Map()
+          }};
+        }
+        const body=await builder(dashboardEnv,tenant,url);
+        if (dashboardEnv.BI_DASHBOARD_LOAD) {
+          const load=dashboardEnv.BI_DASHBOARD_LOAD;
+          body.loading={hasMore:load.hasMore,cursor:load.cursors};
+          body.meta.auditMode="PROGRESSIVE";
+        }
         return json(request,env,200,body);
       } catch(error) {
         if (error&&error.message==="PAGE_PERMISSION_DENIED") {

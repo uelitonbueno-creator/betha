@@ -4,7 +4,7 @@ Front-end de BI tributário no padrão visual Betha, preparado para operar de fo
 
 ## Estado atual
 
-- 12 visões analíticas.
+- 16 visões analíticas.
 - 55 KPIs.
 - 95 gráficos/visualizações cadastradas.
 - Drill-down preparado: visão geral → composição → registros → detalhe individual.
@@ -98,3 +98,18 @@ Para transformar a estrutura em dados reais:
 5. liberar progressivamente as demais entidades.
 
 Nenhum gráfico do front utiliza valores fictícios: enquanto a fonte real não estiver conectada, o componente permanece em estado **aguardando dados**.
+
+## Carga dos painéis
+
+Os 15 painéis além da Visão Geral consultam as fontes em lotes de 250 registros,
+com continuidade automática e recálculo sobre todos os registros já carregados.
+A cobertura permanece **PARCIAL** até a fonte confirmar o fim da paginação.
+Respostas de consultas anteriores são ignoradas quando o usuário muda o painel,
+os filtros ou a prefeitura. Erros de fonte não são apresentados como KPIs zerados.
+
+Os lotes brutos permanecem somente no backend, em cache temporário de uma hora,
+isolado pelo contexto da prefeitura. Cada lote continua exigindo sessão e as
+permissões existentes. DETALHAR e MCP mantêm seus fluxos atuais de leitura.
+
+Validação de paginação, erros, isolamento e cobertura dos 15 builders:
+`node --test tests/dashboard-loading.test.cjs`.
