@@ -970,7 +970,7 @@
               const el=document.querySelector('[data-home-source="'+cssEscape(card.id)+'"]');
               if(!el) continue;
               el.querySelector("[data-home-count]").textContent=card.count===null?"—":Number(card.count).toLocaleString("pt-BR")+(card.partial?"+":"");
-              el.querySelector("[data-home-state]").textContent=card.state==="unavailable"?"Fonte indisponível":card.partial?"Registros consultados · contagem parcial":card.state==="reported"?"Total informado pela fonte":"Total de registros";
+              el.querySelector("[data-home-state]").textContent=card.state==="loading"?"Carga inicial em andamento":card.state==="unavailable"?"Fonte indisponível":card.partial?"Registros consultados · contagem parcial":card.state==="reported"?"Total informado pela fonte":"Total de registros";
               if(card.state==="unavailable") unavailable++;
             }
           } catch(error) {
@@ -3383,6 +3383,7 @@
     const snapshot=currentPayload?.meta?.snapshot;
     if(!snapshot){showToast("Aguarde a primeira consulta para detalhar.");return;}
     const params=new URLSearchParams({periodo:document.getElementById("periodo").value,exercicio:document.getElementById("exercicio").value,loadId:snapshot.loadId,cursor:JSON.stringify(snapshot.cursor)});
+    if(snapshot.cacheJob)params.set("cacheJob",snapshot.cacheJob);
     for(const [k,v]of Object.entries(currentDashboardFilters()))params.set(k,v);
     if(selected?.label)params.set("panelCategory",selected.label);
     const resource="panel~"+chartDef.apiSource+"~"+chartDef.apiPanel;
@@ -4195,6 +4196,24 @@
     }
   }
 
+  let entitySyncTimer=null;
+  function entitySyncPath(){const id=document.getElementById('entitySettingsForm').elements.id.value.trim();if(!entitySettingsRecords.some(r=>r.id===id))throw new Error('Salve ou selecione uma prefeitura antes de iniciar a carga.');return '/api/admin/sync?entity='+encodeURIComponent(id);}
+  async function entitySyncAction(method='GET'){
+    const status=document.getElementById('entitySyncStatus'),start=document.getElementById('initialLoadButton');
+    clearTimeout(entitySyncTimer);
+    try{
+      const path=entitySyncPath();start.disabled=true;
+      const payload=await api(path,{method,...(method==='PUT'?{headers:{'Content-Type':'application/json'},body:JSON.stringify({intervalMinutes:Number(document.getElementById('entitySyncInterval').value)})}:{})});
+      if(method!=='PUT')document.getElementById('entitySyncInterval').value=String(payload.config?.intervalMinutes??60);
+      const job=payload.job;
+      status.textContent=method==='PUT'?'Frequência salva.':!job?'Carga inicial ainda não executada.':job.state==='running'?'Carga em segundo plano: '+job.completed+' de '+job.total+' fontes concluídas · '+Number(job.rows).toLocaleString('pt-BR')+' registros.':(job.failures?.length?'Carga concluída com '+job.failures.length+' fonte(s) indisponível(is): '+job.failures.map(f=>f.source).join(', '):'Todos os painéis atualizados')+' · '+new Date(job.finishedAt).toLocaleString('pt-BR')+'.';
+      start.disabled=job?.state==='running';
+      if(job?.state==='running'&&currentView==='configuracoes-admin')entitySyncTimer=setTimeout(()=>entitySyncAction(),15000);
+    }catch(error){status.textContent='Carga: '+error.message;start.disabled=false;}
+  }
+  document.getElementById('initialLoadButton').addEventListener('click',()=>entitySyncAction('POST'));
+  document.getElementById('saveSyncScheduleButton').addEventListener('click',()=>entitySyncAction('PUT'));
+  document.getElementById('refreshSyncStatusButton').addEventListener('click',()=>entitySyncAction());
   let entitySettingsRecords=[];
   let entitySettingsBusy=false;
   function resetEntitySettings(record=null) {
@@ -4209,6 +4228,9 @@
       form.elements.accessToken.placeholder=record.accessTokenConfigured?"Token salvo — deixe em branco para manter":"Informe o token";
     }
     document.getElementById("entitySettingsMessage").textContent="";
+    clearTimeout(entitySyncTimer);
+    if(record)entitySyncAction();
+    else document.getElementById("entitySyncStatus").textContent="Salve ou selecione uma prefeitura antes de iniciar a carga.";
   }
   async function loadEntitySettings() {
     const list=document.getElementById("entitySettingsList");

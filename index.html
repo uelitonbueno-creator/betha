@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261006-navigation3">
+  <link rel="stylesheet" href="style.css?v=20261006-background4">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -296,6 +296,13 @@
               <p class="entity-form-note">Ao editar, deixe as chaves em branco para mantê-las. As chaves salvas não são exibidas. Seu acesso administrativo Betha precisa incluir a entidade informada.</p>
               <div class="entity-settings-actions"><button id="testEntityButton" type="button" class="btn-secondary-betha">TESTAR CONEXÃO</button><button type="submit" class="btn-primary-betha">SALVAR PREFEITURA</button></div>
               <p id="entitySettingsMessage" role="status" aria-live="polite"></p>
+              <section class="entity-sync-controls" aria-label="Carga e atualização dos painéis">
+                <h3>Carga e atualização dos painéis</h3>
+                <p>Salve ou selecione a prefeitura. A carga consulta todas as fontes em segundo plano, mesmo com o BI fechado.</p>
+                <label>Atualização automática<select id="entitySyncInterval"><option value="0">Somente manual</option><option value="15">A cada 15 minutos</option><option value="30">A cada 30 minutos</option><option value="60" selected>A cada hora</option><option value="180">A cada 3 horas</option><option value="360">A cada 6 horas</option><option value="720">A cada 12 horas</option><option value="1440">Diariamente</option></select></label>
+                <div class="entity-settings-actions"><button id="initialLoadButton" type="button" class="btn-primary-betha">CARGA INICIAL / ATUALIZAR TODOS</button><button id="saveSyncScheduleButton" type="button" class="btn-secondary-betha">SALVAR FREQUÊNCIA</button><button id="refreshSyncStatusButton" type="button" class="btn-secondary-betha">VERIFICAR CARGA</button></div>
+                <p id="entitySyncStatus" role="status" aria-live="polite">Selecione uma prefeitura salva para consultar a carga.</p>
+              </section>
             </form>
           </section>
 
@@ -681,10 +688,10 @@
 
   <script src="config.js?v=20261002-kvsession1"></script>
   <script src="auth/auth.js?v=20261002-kvsession1"></script>
-  <script src="dashboard-catalog.js?v=20261006-navigation3"></script>
+  <script src="dashboard-catalog.js?v=20261006-background4"></script>
   <div id="uiToast" class="ui-toast" role="status" aria-live="polite" aria-atomic="true"></div>
-  <script src="api-panel-catalog.js?v=20261006-navigation3"></script>
-  <script src="app.js?v=20261006-navigation3"></script>
+  <script src="api-panel-catalog.js?v=20261006-background4"></script>
+  <script src="app.js?v=20261006-background4"></script>
   <script src="global-search.js?v=20261005-1"></script>
 </body>
 </html>
