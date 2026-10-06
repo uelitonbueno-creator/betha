@@ -4138,7 +4138,8 @@
       PAGE_MAPPING_WRITE_SCOPE_REQUIRED:"Para publicar, ative o escopo autorizacoes.plataforma.betha.cloud/parceiro.escrita na credencial de serviço e renove o token.",
       PAGE_MAPPING_TOKEN_INVALID:"O token de serviço não foi aceito pela API de Autorizações Dados.",
       ADMIN_REQUIRED:"Seu usuário não possui perfil de administrador para alterar esta configuração.",
-      USER_ACCESS_MANAGEMENT_FORBIDDEN:"A Betha recusou a alteração deste acesso. Entre com um usuário administrador da entidade e tente novamente; acessos técnicos podem ficar limitados a consulta no Gerenciador de Acessos.",
+      USER_ACCESS_MANAGEMENT_FORBIDDEN:"A Betha recusou a alteração deste acesso. Entre com um administrador da entidade que não esteja usando Acesso técnico.",
+      USER_ACCESS_TECHNICAL_READ_ONLY:"Acesso técnico é somente leitura no Gerenciador de Acessos da Betha. Entre com um administrador da entidade para conceder ou alterar usuários.",
       PLATFORM_HTTP_403:"A Betha recusou esta operação para o usuário ou contexto atual."
     };
     return map[code] || code;
@@ -4476,6 +4477,8 @@
     document.getElementById("accessExpires").value = "";
     document.getElementById("accessAdmin").checked = false;
     document.getElementById("accessTechnical").checked = false;
+    const technicalRow=document.getElementById("accessTechnicalRow");
+    if(technicalRow) technicalRow.hidden=true;
     const defaultProfile=document.querySelector('input[name="biGroup"][value="consulta"]');
     if(defaultProfile) defaultProfile.checked=true;
     setWizardStep(1);
@@ -4520,6 +4523,18 @@
     return document.querySelector('input[name="biGroup"]:checked')?.value || "consulta";
   }
 
+  function centralUserTechnicalEligible(user) {
+    if(!user || typeof user!=="object") return false;
+    const flags=[user.technical,user.tecnico,user.isTechnical,user.usuarioTecnico,user.technicalUser];
+    if(flags.some(value=>value===true || String(value).toLowerCase()==="true")) return true;
+    const labels=[
+      user.tipoUsuario,user.userType,user.profile,user.perfil,user.category,
+      ...(Array.isArray(user.roles)?user.roles:[]),
+      ...(Array.isArray(user.perfis)?user.perfis:[])
+    ].filter(Boolean).map(value=>typeof value==="object" ? (value.nome||value.descricao||value.id||"") : value);
+    return labels.some(value=>/t[eé]cnic/i.test(String(value)));
+  }
+
   function applyPermissionPreset() {
     const profile=selectedProfile();
     const inputs=[...document.querySelectorAll('#permissionsList input[type="checkbox"]')];
@@ -4543,12 +4558,18 @@
 
     const profile=selectedProfile();
     const admin=document.getElementById("accessAdmin").checked || profile==="administrador";
-    const canSave=Boolean(selectedCentralUser) && (admin || pageMappingReady);
+    const tenant=currentTenantInfo();
+    const actorCanManage=Boolean(tenant && tenant.admin===true && tenant.technical!==true);
+    const canSave=Boolean(selectedCentralUser) && actorCanManage && (admin || pageMappingReady);
 
     save.disabled=!canSave;
 
     if(!selectedCentralUser) {
       save.title="Localize um usuário válido antes de salvar.";
+    } else if(!actorCanManage) {
+      save.title=tenant&&tenant.technical===true
+        ? "A Betha mantém acessos técnicos em modo somente leitura no Gerenciador de Acessos."
+        : "É necessário entrar com um administrador da entidade para conceder acessos.";
     } else if(!admin && !pageMappingReady) {
       save.title="Publique a matriz de permissões em Configurações → Sistema e permissões antes de criar acesso limitado.";
     } else {
@@ -4579,8 +4600,26 @@
     const userId=selectedCentralUser.id || selectedCentralUser.user || selectedCentralUser.login;
     const profile=selectedProfile();
     const admin=document.getElementById("accessAdmin").checked || profile==="administrador";
-    const technical=document.getElementById("accessTechnical").checked;
+    const technicalRequested=document.getElementById("accessTechnical").checked;
+    const technical=technicalRequested && centralUserTechnicalEligible(selectedCentralUser);
     const expiresIn=document.getElementById("accessExpires").value || null;
+    const tenant=currentTenantInfo();
+
+    if(tenant&&tenant.technical===true){
+      setWizardStep(4);
+      if(result) result.textContent="A Betha permite consulta com acesso técnico, mas bloqueia concessão ou alteração de acessos. Entre com um administrador da entidade que não seja acesso técnico.";
+      return;
+    }
+    if(!tenant||tenant.admin!==true){
+      setWizardStep(4);
+      if(result) result.textContent="É necessário entrar com um administrador da entidade para conceder acessos.";
+      return;
+    }
+    if(technicalRequested&&!technical){
+      setWizardStep(4);
+      if(result) result.textContent="Acesso técnico só pode ser concedido a usuários previamente cadastrados como técnicos na Betha.";
+      return;
+    }
 
     if(!admin && !pageMappingReady){
       setWizardStep(2);
@@ -4656,6 +4695,11 @@
         return;
       }
       selectedCentralUser = user;
+      const technicalEligible=centralUserTechnicalEligible(user);
+      const technicalRow=document.getElementById("accessTechnicalRow");
+      const technicalInput=document.getElementById("accessTechnical");
+      if(technicalRow) technicalRow.hidden=!technicalEligible;
+      if(technicalInput && !technicalEligible) technicalInput.checked=false;
       updateWizardSaveState();
       const id = user.id || user.user || user.login;
       const name = user.name || user.nome || user.fullName || user.userName || id;
