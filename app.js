@@ -4137,7 +4137,9 @@
       PAGE_MAPPING_SCOPE_REQUIRED:"A credencial de serviço precisa do escopo autorizacoes.plataforma.betha.cloud/parceiro.leitura.",
       PAGE_MAPPING_WRITE_SCOPE_REQUIRED:"Para publicar, ative o escopo autorizacoes.plataforma.betha.cloud/parceiro.escrita na credencial de serviço e renove o token.",
       PAGE_MAPPING_TOKEN_INVALID:"O token de serviço não foi aceito pela API de Autorizações Dados.",
-      ADMIN_REQUIRED:"Seu usuário não possui perfil de administrador para alterar esta configuração."
+      ADMIN_REQUIRED:"Seu usuário não possui perfil de administrador/técnico para alterar esta configuração.",
+      BI_USER_NOT_AUTHORIZED:"Seu usuário foi validado na Betha, mas ainda não possui autorização cadastrada neste BI.",
+      USER_NOT_FOUND:"O usuário não foi encontrado na Central Betha."
     };
     return map[code] || code;
   }
@@ -4435,7 +4437,7 @@
       tbody.innerHTML = '<tr><td colspan="7" class="table-empty">Selecione uma entidade autorizada para gerenciar usuários.</td></tr>';
       return;
     }
-    tbody.innerHTML = '<tr><td colspan="7" class="table-empty">Consultando autorizações da entidade…</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="table-empty">Consultando usuários autorizados no BI…</td></tr>';
     try {
       const payload = await api("/api/admin/users?limit=100&offset=0");
       renderUsersTable(payload);
@@ -4539,25 +4541,18 @@
     const save=document.getElementById("wizardSave");
     if(!save) return;
 
-    const profile=selectedProfile();
-    const admin=document.getElementById("accessAdmin").checked || profile==="administrador";
-    const canSave=Boolean(selectedCentralUser) && (admin || pageMappingReady);
-
+    const canSave=Boolean(selectedCentralUser);
     save.disabled=!canSave;
 
     if(!selectedCentralUser) {
       save.title="Localize um usuário válido antes de salvar.";
-    } else if(!admin && !pageMappingReady) {
-      save.title="Publique a matriz de permissões em Configurações → Sistema e permissões antes de criar acesso limitado.";
     } else {
-      save.title="Conceder o acesso selecionado para esta prefeitura.";
+      save.title="Salvar as permissões deste usuário no BI.";
     }
 
     const help=document.getElementById("permissionMappingHelp");
     if(help){
-      help.textContent=pageMappingReady
-        ? "Selecione os módulos que este usuário poderá consultar. A matriz de permissões está disponível na Betha."
-        : "Acesso limitado exige que a matriz de permissões seja publicada. Acesso de Administrador pode ser concedido diretamente.";
+      help.textContent="As permissões são gravadas no BI. No acesso ao sistema, a identidade e a entidade são validadas novamente pela Central Betha.";
     }
   }
 
@@ -4580,12 +4575,6 @@
     const technical=document.getElementById("accessTechnical").checked;
     const expiresIn=document.getElementById("accessExpires").value || null;
 
-    if(!admin && !pageMappingReady){
-      setWizardStep(2);
-      if(result) result.textContent="Publique a matriz de permissões antes de criar um acesso limitado.";
-      return;
-    }
-
     const body={
       user:String(userId),
       admin,
@@ -4595,7 +4584,7 @@
     };
 
     const feedback=document.getElementById("userSaveFeedback");
-    if(feedback){feedback.hidden=false;feedback.textContent="Salvando o acesso na Betha…";feedback.classList.remove("is-error");}
+    if(feedback){feedback.hidden=false;feedback.textContent="Salvando as permissões no BI…";feedback.classList.remove("is-error");}
     userAccessSaving=true;
     save.disabled=true;
     save.textContent="SALVANDO…";
