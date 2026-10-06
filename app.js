@@ -4137,7 +4137,9 @@
       PAGE_MAPPING_SCOPE_REQUIRED:"A credencial de serviço precisa do escopo autorizacoes.plataforma.betha.cloud/parceiro.leitura.",
       PAGE_MAPPING_WRITE_SCOPE_REQUIRED:"Para publicar, ative o escopo autorizacoes.plataforma.betha.cloud/parceiro.escrita na credencial de serviço e renove o token.",
       PAGE_MAPPING_TOKEN_INVALID:"O token de serviço não foi aceito pela API de Autorizações Dados.",
-      ADMIN_REQUIRED:"Seu usuário não possui perfil de administrador para alterar esta configuração."
+      ADMIN_REQUIRED:"Seu usuário não possui perfil de administrador para alterar esta configuração.",
+      USER_ACCESS_MANAGEMENT_FORBIDDEN:"A Betha recusou a alteração deste acesso. Entre com um usuário administrador da entidade e tente novamente; acessos técnicos podem ficar limitados a consulta no Gerenciador de Acessos.",
+      PLATFORM_HTTP_403:"A Betha recusou esta operação para o usuário ou contexto atual."
     };
     return map[code] || code;
   }
