@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261005-tributos-green2">
+  <link rel="stylesheet" href="style.css?v=20261006-entities-green3">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -54,10 +54,7 @@
 
   <bth-app id="bethaApp" menu-bg-color="#078a61">
 
-    <bth-marca-produto
-      slot="menu_marca_produto"
-      produto="BI Tributos">
-    </bth-marca-produto>
+    <div slot="menu_marca_produto" class="bi-product-brand"><span aria-hidden="true">B</span><strong>BI Tributos</strong></div>
 
     <div slot="menu_ferramentas" class="menu-tools" aria-label="Ferramentas">
       <button class="tool-button" id="globalSearchButton" type="button" title="Busca global (Ctrl+K)" aria-label="Abrir busca global"><i class="mdi mdi-magnify"></i></button>
@@ -265,13 +262,31 @@
           <header class="page-heading users-heading">
             <div>
               <div class="level-label">CONFIGURAÇÕES</div>
-              <h1>Sistema e permissões</h1>
-              <p>Acompanhe a integração, o contexto da prefeitura e a matriz de permissões publicada na Betha.</p>
+              <h1>Configurações do BI</h1>
+              <p>Gerencie prefeituras, tenants, chaves de integração e permissões.</p>
             </div>
             <button id="refreshConfigButton" class="btn-secondary-betha" type="button">
               <i class="mdi mdi-refresh"></i> ATUALIZAR STATUS
             </button>
           </header>
+
+          <section class="entity-settings config-panel" aria-labelledby="entitySettingsTitle">
+            <div class="section-title"><div><h2 id="entitySettingsTitle">Entidades e prefeituras</h2><p>Cadastre o contexto Betha e as credenciais de integração diretamente no BI.</p></div><button id="newEntityButton" class="btn-secondary-betha" type="button">NOVA PREFEITURA</button></div>
+            <div id="entitySettingsList" aria-live="polite">Carregando entidades…</div>
+            <form id="entitySettingsForm" class="entity-settings-form" autocomplete="off">
+              <label>Nome da prefeitura<input name="name" required maxlength="160" placeholder="Prefeitura Municipal"></label>
+              <label>Tenant (identificador no BI)<input name="id" required pattern="[a-z0-9][a-z0-9_-]{1,79}" placeholder="nome-da-prefeitura"></label>
+              <label>ID da entidade Betha<input name="entityId" required inputmode="numeric" pattern="[0-9]+"></label>
+              <label>ID do banco / database<input name="databaseId" required inputmode="numeric" pattern="[0-9]+"></label>
+              <label>User-Access<input name="userAccess" type="password" autocomplete="new-password" placeholder="Informe a chave de acesso da entidade"></label>
+              <label>Access Token da integração<input name="accessToken" type="password" autocomplete="new-password" placeholder="Informe o token de serviço"></label>
+              <label class="entity-check"><input name="useSharedToken" type="checkbox">Usar token de integração compartilhado já configurado</label>
+              <label class="entity-check"><input name="enabled" type="checkbox" checked>Entidade ativa</label>
+              <p class="entity-form-note">Ao editar, deixe as chaves em branco para mantê-las. As chaves salvas não são exibidas. Seu acesso administrativo Betha precisa incluir a entidade informada.</p>
+              <div class="entity-settings-actions"><button id="testEntityButton" type="button" class="btn-secondary-betha">TESTAR CONEXÃO</button><button type="submit" class="btn-primary-betha">SALVAR PREFEITURA</button></div>
+              <p id="entitySettingsMessage" role="status" aria-live="polite"></p>
+            </form>
+          </section>
 
           <section class="config-grid">
             <article class="config-card">
@@ -655,9 +670,9 @@
 
   <script src="config.js?v=20261002-kvsession1"></script>
   <script src="auth/auth.js?v=20261002-kvsession1"></script>
-  <script src="dashboard-catalog.js?v=20261005-nav2"></script>
+  <script src="dashboard-catalog.js?v=20261006-entities1"></script>
   <div id="uiToast" class="ui-toast" role="status" aria-live="polite" aria-atomic="true"></div>
-  <script src="app.js?v=20261006-progressive-panels1"></script>
+  <script src="app.js?v=20261006-entities-filters1"></script>
   <script src="global-search.js?v=20261005-1"></script>
 </body>
 </html>

@@ -3044,3 +3044,26 @@ html,body{
     font-size:24px;
   }
 }
+
+/* Betha green identity and native entity administration. */
+:root { --ui-primary:#078a61; --ui-primary-soft:#eaf7f1; --bth-primary:#078a61; --bth-primary-hover:#066f4e; --bth-primary-soft:#eaf7f1; }
+.bi-product-brand { display:flex; align-items:center; gap:9px; color:#fff; padding:14px 18px; white-space:nowrap; }
+.bi-product-brand>span { display:grid; place-items:center; background:#066f4e; color:white; border-radius:7px; width:30px; height:30px; font-size:22px; font-weight:800; }
+.entity-settings { padding:24px; margin:0 0 24px; background:#fff; border:1px solid #e3e8e5; border-radius:12px; }
+.entity-settings .section-title { display:flex; justify-content:space-between; align-items:center; gap:16px; }
+.entity-settings-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin-top:24px; }
+.entity-settings-form label { display:flex; flex-direction:column; gap:6px; font-weight:600; font-size:13px; }
+.entity-settings-form input:not([type=checkbox]) { width:100%; padding:10px 12px; border:1px solid #cdd8d2; border-radius:6px; min-height:42px; }
+.entity-settings-form label.entity-check { flex-direction:row; align-items:center; }
+.entity-form-note,.entity-settings-actions,#entitySettingsMessage { grid-column:1/-1; }
+.entity-form-note { font-size:13px; color:#5d6c65; margin:0; }
+.entity-settings-actions { display:flex; gap:12px; flex-wrap:wrap; }
+.entity-settings-table { overflow:auto; margin-top:18px; }
+.entity-settings-table table { border-collapse:collapse; width:100%; text-align:left; }
+.entity-settings-table th,.entity-settings-table td { padding:12px; border-bottom:1px solid #e8eeeb; }
+@media(max-width:700px) { .entity-settings-form {grid-template-columns:1fr;} .entity-settings .section-title {align-items:flex-start; flex-direction:column;} }
+
+.detail-micro-filters {display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; padding:16px 0;}
+.detail-micro-filters>label {display:flex; flex-direction:column; gap:5px; font-size:12px; font-weight:600; flex:1 1 150px;}
+.detail-micro-filters input,.detail-micro-filters select {min-height:38px; width:100%; border:1px solid #cdd8d2; border-radius:6px; padding:8px; background:#fff;}
+.detail-filter-summary {font-size:12px; color:#50665b;}

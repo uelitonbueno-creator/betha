@@ -513,6 +513,6 @@ window.BI_MENU = [
   ]},
   { id:"grupo-administracao", descricao:"Administração", icone:"cog-outline", possuiPermissao:true, submenus:[
     {id:"usuarios-admin",descricao:"Usuários e acessos",icone:"account-cog-outline",rota:"usuarios-admin",possuiPermissao:true},
-    {id:"configuracoes-admin",descricao:"Sistema e permissões",icone:"tune-variant",rota:"configuracoes-admin",possuiPermissao:true}
+    {id:"configuracoes-admin",descricao:"Configurações",icone:"tune-variant",rota:"configuracoes-admin",possuiPermissao:true}
   ]}
 ];

@@ -408,6 +408,18 @@ const BI_PAGE_MAPPING = [
 ];
 
 const DETAIL_RESOURCES = Object.freeze({
+"pagamentos":{"source": "bi", "resource": "pagamentos", "columns": [["id", "ID", ["id"], "text"], ["data", "Pagamento", ["dataPagamento", "dtPagamento", "dtPgto", "dhPagamento"], "date"], ["contribuinte", "Contribuinte", ["pessoa.nome", "contribuinte.nome"], "text"], ["situacao", "Situação", ["situacao"], "text"], ["valor", "Valor pago", ["vlPago", "valorPago"], "currency"]], "datePaths": ["dataPagamento", "dtPagamento", "dtPgto", "dhPagamento"]},
+"dividas-receitas":{"source": "bi", "resource": "dividas-receitas", "columns": [["id", "ID", ["id"], "text"], ["divida", "ID dívida", ["idDividas", "idDivida"], "text"], ["credito", "Crédito / receita", ["idCreditosTributariosRec"], "text"], ["inscrito", "Inscrito", ["vlInscritoCredito"], "currency"], ["saldo", "Saldo", ["vlSaldo"], "currency"]], "datePaths": []},
+"parcelamentos-referentes":{"source": "bi", "resource": "parcelamentos-referentes", "columns": [["id", "ID", ["id"], "text"], ["parcelamento", "ID parcelamento", ["idParcelamentos"], "text"], ["tipo", "Tipo referente", ["tipoReferente"], "text"], ["referente", "Referente", ["idReferente", "referente"], "text"], ["valor", "Valor", ["vlReferente", "valor"], "currency"]], "datePaths": []},
+"encerramento-dividas":{"source": "base", "resource": "encerramento-dividas", "columns": [["id", "ID", ["id"], "text"], ["ano", "Ano encerramento", ["anoEncerramento"], "number"], ["mes", "Mês encerramento", ["mesEncerramento"], "number"], ["divida", "ID dívida", ["idDivida", "divida.id"], "text"], ["credito", "Crédito", ["creditoTributario.descricao", "credito.descricao"], "text"], ["situacao", "Situação", ["situacao", "statusDivida"], "text"], ["inscrito", "Inscrito", ["valorInscrito"], "currency"], ["saldo", "Saldo", ["valorSaldo"], "currency"]], "datePaths": []},
+"encerramento-lancamentos":{"source": "base", "resource": "encerramento-lancamentos", "columns": [["id", "ID", ["id"], "text"], ["ano", "Ano encerramento", ["anoEncerramento"], "number"], ["mes", "Mês encerramento", ["mesEncerramento"], "number"], ["credito", "Crédito", ["creditoTributario.descricao", "credito.descricao"], "text"], ["lancado", "Lançado", ["valorLancado"], "currency"], ["pago", "Pago", ["valorPago"], "currency"], ["saldo", "Saldo", ["valorSaldo"], "currency"]], "datePaths": []},
+"indexadores":{"source": "bi", "resource": "indexadores", "columns": [["id", "ID", ["id"], "text"], ["nome", "Indexador", ["nome"], "text"], ["sigla", "Sigla", ["sigla"], "text"], ["corrente", "Corrente", ["corrente"], "text"]], "datePaths": []},
+"bairros":{"source": "base", "resource": "bairros", "columns": [["id", "ID", ["id"], "text"], ["nome", "Bairro", ["nome"], "text"], ["zonaFiscal", "Zona fiscal", ["zonaFiscal"], "text"]], "datePaths": []},
+"distritos":{"source": "base", "resource": "distritos", "columns": [["id", "ID", ["id"], "text"], ["nome", "Distrito", ["nome"], "text"]], "datePaths": []},
+"obras-responsaveis":{"source": "base", "resource": "obras-responsaveis", "columns": [["id", "ID", ["id"], "text"], ["obra", "Obra", ["obra.id", "idObra"], "text"], ["responsavel", "Responsável", ["responsavel.nome", "pessoa.nome"], "text"], ["tipo", "Tipo", ["tipoResponsabilidade.descricao", "tipo"], "text"]], "datePaths": []},
+"creditos-tributarios-receitas":{"source": "base", "resource": "creditos-tributarios-receitas", "columns": [["id", "ID", ["id"], "text"], ["credito", "Crédito", ["creditoTributario.descricao", "credito.descricao"], "text"], ["receita", "Receita", ["receita.descricao"], "text"], ["tipo", "Tipo", ["tipoReceita.descricao", "tipo"], "text"]], "datePaths": []},
+"transferencias-imoveis-compra":{"source": "bi", "resource": "transferencias-imoveis-compra", "columns": [["id", "ID", ["id"], "text"], ["transferencia", "Transferência", ["idTransferencia", "transferencia.id"], "text"], ["comprador", "Comprador", ["comprador.nome", "pessoa.nome"], "text"], ["valor", "Valor da compra", ["vlCompra", "valorCompra", "valor"], "currency"]], "datePaths": []},
+
   "pagamentos-detalhados-valores":{
     source:"bi",resource:"pagamentos-detalhados-valores",
     datePaths:["dtPagamento","pagamento.dtPagamento"],
@@ -839,10 +851,65 @@ function getTenantId(request,url) {
   return (request.headers.get("X-Tenant-Id") || url.searchParams.get("tenant") || "").trim();
 }
 
-function resolveTenant(env, tenantId) {
+const TENANT_CONFIG_PREFIX="tenant-config:v1:";
+
+async function tenantConfigKey(env) {
+  if(!env.BETHA_TENANT_CONFIG_KEY) throw new Error("TENANT_CONFIG_KEY_REQUIRED");
+  const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(env.BETHA_TENANT_CONFIG_KEY));
+  return crypto.subtle.importKey("raw",digest,{name:"AES-GCM"},false,["encrypt","decrypt"]);
+}
+async function encodeTenantConfig(env,id,config) {
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const encrypted=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:new TextEncoder().encode(id)},await tenantConfigKey(env),new TextEncoder().encode(JSON.stringify(config)));
+  return JSON.stringify({iv:Array.from(iv),data:Array.from(new Uint8Array(encrypted))});
+}
+async function decodeTenantConfig(env,id,value) {
+  const envelope=typeof value==="string"?JSON.parse(value):value;
+  const plain=await crypto.subtle.decrypt({name:"AES-GCM",iv:new Uint8Array(envelope.iv),additionalData:new TextEncoder().encode(id)},await tenantConfigKey(env),new Uint8Array(envelope.data));
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+async function tenantRegistry(env) {
+  const registry=parseJsonObject(env.BETHA_TENANTS_JSON,{});
+  if(!env.BI_SESSIONS) return registry;
+  let cursor;
+  do {
+    const page=await env.BI_SESSIONS.list({prefix:TENANT_CONFIG_PREFIX,...(cursor?{cursor}: {})});
+    for(const entry of page.keys||[]) {
+      const id=entry.name.slice(TENANT_CONFIG_PREFIX.length);
+      const stored=await env.BI_SESSIONS.get(entry.name);
+      if(stored) registry[id]=await decodeTenantConfig(env,id,stored);
+    }
+    cursor=page.list_complete===false?page.cursor:null;
+  } while(cursor);
+  return registry;
+}
+function publicTenantConfig(id,config,env) {
+  return {id,name:config.name||id,entityId:String(config.entityId||""),databaseId:String(config.databaseId||""),enabled:config.enabled!==false,userAccessConfigured:Boolean(config.userAccess),accessTokenConfigured:Boolean(config.accessToken||env.BETHA_ACCESS_TOKEN),usesSharedToken:!config.accessToken,updatedAt:config.updatedAt||null};
+}
+function validateTenantConfig(input,previous={}) {
+  const id=String(input.id||"").trim();
+  if(!/^[a-z0-9][a-z0-9_-]{1,79}$/.test(id)) throw new Error("TENANT_CONFIG_INVALID");
+  const config={...previous,name:String(input.name||"").trim(),entityId:String(input.entityId||"").trim(),databaseId:String(input.databaseId||"").trim(),enabled:input.enabled!==false};
+  if(!config.name||config.name.length>160||!/^\d+$/.test(config.entityId)||!/^\d+$/.test(config.databaseId)) throw new Error("TENANT_CONFIG_INVALID");
+  for(const key of ["userAccess","accessToken"]) {
+    const value=String(input[key]||"").trim();
+    if(value.length>8192||/[\r\n]/.test(value)) throw new Error("TENANT_CONFIG_INVALID");
+    if(value) config[key]=value;
+  }
+  if(input.useSharedToken===true) delete config.accessToken;
+  if(!config.userAccess) throw new Error("TENANT_USER_ACCESS_NOT_CONFIGURED");
+  return {id,config};
+}
+function requireTenantConfigAdmin(auth) {
+  requireConstraintPermission(auth,"BIConfiguracoesPage");
+  if(auth?.access?.admin!==true&&auth?.access?.technical!==true) throw new Error("TENANT_CONFIG_FORBIDDEN");
+}
+
+async function resolveTenant(env, tenantId) {
   if (!tenantId) throw new Error("TENANT_REQUIRED");
   const tenants=parseJsonObject(env.BETHA_TENANTS_JSON,{});
-  const tenant=tenants[tenantId];
+  const stored=env.BI_SESSIONS?await env.BI_SESSIONS.get(TENANT_CONFIG_PREFIX+tenantId):null;
+  const tenant=stored?await decodeTenantConfig(env,tenantId,stored):tenants[tenantId];
   if (!tenant || tenant.enabled===false) throw new Error("TENANT_NOT_FOUND");
   if (!tenant.userAccess) throw new Error("TENANT_USER_ACCESS_NOT_CONFIGURED");
   return {
@@ -3295,8 +3362,8 @@ async function buildInstallmentsDashboard(env,tenant,url) {
   });
 
   const selectedIds=new Set(rows.map(r=>String(firstValue(r,["id"])||"")).filter(Boolean));
-  const parcelRows=parcelas.rows.filter(r=>periodo==="todos"||selectedIds.has(String(firstValue(r,["idParcelamentos"])||"")));
-  const refRows=refs.rows.filter(r=>periodo==="todos"||selectedIds.has(String(firstValue(r,["idParcelamentos"])||"")));
+  const parcelRows=parcelas.rows.filter(r=>selectedIds.has(String(firstValue(r,["idParcelamentos"])||"")));
+  const refRows=refs.rows.filter(r=>selectedIds.has(String(firstValue(r,["idParcelamentos"])||"")));
 
   const mon=monthlyCount(rows,["dtParcelamento","dhParcelamento"],periodo,exercicio);
   const situ=groupCount(rows,["situacao.descricao","situacao.valor"],10);
@@ -3328,7 +3395,7 @@ async function buildInstallmentsDashboard(env,tenant,url) {
   const paidParcelRows=parcelRows.filter(r=>Boolean(firstValue(r,["dtPgto"])));
   const linkedPaymentRows=pagPar.rows.filter(row=>{
     const agreementId=String(firstValue(row,["idParcelamento","idParcelamentos","parcelamento.id"])||"");
-    return periodo==="todos" || !agreementId || selectedIds.has(agreementId);
+    return selectedIds.has(agreementId);
   });
   const paymentRows=linkedPaymentRows.length ? linkedPaymentRows : paidParcelRows;
   const pay=monthSeries(paymentRows,{
@@ -4532,10 +4599,10 @@ function detailFilterRows(resource,rows,url,context={}) {
   const def=DETAIL_RESOURCES[resource]||{};
 
   let out=rows;
-  if(periodo!=="todos" && Array.isArray(def.datePaths) && def.datePaths.length){
+  if(periodo!=="todos" && !["contribuintes","imoveis","economicos","economicos-atividades","imoveis-responsaveis","imoveis-corresponsaveis"].includes(resource) && !(resource==="parcelamentos-parcelas"&&url.searchParams.get("parcelamentoId")) && ((def.datePaths||[]).length||(def.yearPaths||[]).length)){
     out=out.filter(row=>periodIncludes(row,{
       periodo,exercicio,
-      datePaths:def.datePaths,
+      datePaths:def.datePaths||[],
       yearPaths:def.yearPaths||[]
     }));
   }
@@ -4597,11 +4664,7 @@ function detailFilterRows(resource,rows,url,context={}) {
   } else if(resource==="parcelamentos-parcelas"){
     const parcelamentoId=dashboardFilterValue(url,"parcelamentoId");
     if(parcelamentoId){
-      out=out.filter(row=>matchesDashboardFilter(row,parcelamentoId,[
-        "idParcelamentos","idParcelamento","parcelamento.id",
-        "parcelamento.idParcelamentos","parcelamento.idParcelamento",
-        "idAcordo","acordo.id","parcelamentoId"
-      ]));
+      out=out.filter(row=>["idParcelamentos","idParcelamento","parcelamento.id","parcelamento.idParcelamentos","parcelamento.idParcelamento","idAcordo","acordo.id","parcelamentoId"].some(path=>String(valueAt(row,path)??"")===parcelamentoId));
     }
   } else if(["contribuintes","imoveis","economicos"].includes(resource)){
     const situacao=dashboardFilterValue(url,"situacao");
@@ -4634,6 +4697,76 @@ function detailFilterRows(resource,rows,url,context={}) {
     });
   }
 
+  // Local analytic filters reference real columns of this source.
+  const search=normalizeGlobalSearch(url.searchParams.get("detailSearch")||url.searchParams.get("busca")||"");
+  const field=url.searchParams.get("detailField")||"";
+  const value=normalizeGlobalSearch(url.searchParams.get("detailValue")||"");
+  const situation=url.searchParams.get("detailSituation")||"";
+  const dateField=def.columns?.find(column=>column[0]===(url.searchParams.get("detailDateField")||"data")&&column[3]==="date");
+  const from=url.searchParams.get("detailFrom")||"";
+  const to=url.searchParams.get("detailTo")||"";
+  const selectedColumn=def.columns?.find(column=>column[0]===field);
+  const situationColumn=def.columns?.find(column=>column[0]==="situacao");
+  const mainPaths={
+    bairro:["nomeBairro","bairro.nome","bairro"],setor:["setor.codigo","setor","nomeSetor"],cidade:["nomeCidade","cidade.nome"],
+    tipoPessoa:["tipoPessoa.descricao","tipoPessoa"],credito:["creditoTributario.descricao","credito.descricao","idCreditosTributarios"],origem:["tipoReferente","origem"],
+    classificacaoReceita:["classificacao"],tipoCredito:["tipoCadastro.descricao"],tipoLogradouro:["tipoLogradouroDescricao"],zonaFiscal:["zonaFiscal"],indexador:["moeda.nome","moeda.sigla"]
+  };
+  const mainKeys={contribuintes:["tipoPessoa","cidade"],imoveis:["bairro","setor"],economicos:["bairro"],debitos:["credito","origem"],dividas:["credito"],receitas:["classificacaoReceita"],"creditos-tributarios":["tipoCredito"],logradouros:["tipoLogradouro","zonaFiscal"],"indexadores-valores":["indexador"]};
+  out=out.filter(row=>{
+    for(const key of mainKeys[resource]||[]) if(!matchesDashboardFilter(row,dashboardFilterValue(url,key),mainPaths[key])) return false;
+    if(search&&!normalizeGlobalSearch((def.columns||[]).map(column=>stringValue(row,column[2],"")).join(" ")).includes(search)) return false;
+    if(value&&!normalizeGlobalSearch(selectedColumn?stringValue(row,selectedColumn[2],""):(def.columns||[]).map(column=>stringValue(row,column[2],"")).join(" ")).includes(value)) return false;
+    if(situation&&situationColumn&&!matchesDashboardFilter(row,situation,situationColumn[2])) return false;
+    if((from||to)&&dateField) {
+      const date=dateValue(row,dateField[2]);
+      if(!date) return false;
+      const day=date.toISOString().slice(0,10);
+      if(from&&day<from||to&&day>to) return false;
+    }
+    if(["obras","transferencias-imoveis","solicitacoes-transferencias-imoveis"].includes(resource)&&!matchesDashboardFilter(row,dashboardFilterValue(url,"situacao"),["situacao","situacao.descricao","status"])) return false;
+    if(resource==="obras") {
+      const released=Boolean(firstValue(row,["dataLiberacao","dtLiberacao"]));
+      const filter=dashboardFilterValue(url,"liberacao");
+      if(filter==="liberada"&&!released||filter==="pendente"&&released) return false;
+    }
+    if(resource==="transferencias-imoveis") {
+      if(!matchesDashboardFilter(row,dashboardFilterValue(url,"certidao"),["statusCertidaoITBI","statusCertidao","certidaoStatus"])||!matchesDashboardFilter(row,dashboardFilterValue(url,"cobranca"),["tipoCobranca","tipoCobranca.descricao","cobranca"])) return false;
+    }
+    if(resource==="guias-unificadas") {
+      const paid=Boolean(firstValue(row,["nroBaixa"]));
+      const due=dateValue(row,["dtVencimento"]);
+      const overdue=!paid&&Boolean(due&&due.getTime()<Date.now());
+      const situation=dashboardFilterValue(url,"situacao"),boleto=dashboardFilterValue(url,"boleto");
+      if(situation==="paga"&&!paid||situation==="vencida"&&!overdue||situation==="aberta"&&(paid||overdue)) return false;
+      const registered=truthyValue(row,["boletoRegistrado"]);
+      if(boleto==="sim"&&!registered||boleto==="nao"&&registered) return false;
+    }
+    if(resource==="indexadores") {
+      if(!matchesDashboardFilter(row,dashboardFilterValue(url,"indexador"),["nome","sigla"])) return false;
+      const current=truthyValue(row,["corrente"]),filter=dashboardFilterValue(url,"corrente");
+      if(filter==="sim"&&!current||filter==="nao"&&current) return false;
+    }
+    if(resource.startsWith("encerramento-")) {
+      if(!matchesDashboardFilter(row,dashboardFilterValue(url,"competencia"),["mesEncerramento","competencia","mes","referencia"])) return false;
+    }
+    if(resource==="creditos-tributarios") {
+      const inactive=truthyValue(row,["desativado.valor","desativado"]),filter=dashboardFilterValue(url,"situacaoCredito");
+      if(filter==="ativo"&&inactive||filter==="inativo"&&!inactive) return false;
+    }
+    if(resource==="imoveis") {
+      const rural=truthyValue(row,["rural"])||/rural/i.test(stringValue(row,["tipoZona","zona"],""));
+      const inactive=truthyValue(row,["desativado"])||/inativ|desativ|cancel/i.test(stringValue(row,["situacao","status"],""));
+      const zona=dashboardFilterValue(url,"zona"),cadastro=dashboardFilterValue(url,"cadastro");
+      if(zona==="rural"&&!rural||zona==="urbana"&&rural||cadastro==="ativo"&&inactive||cadastro==="inativo"&&!inactive) return false;
+    }
+    if(resource==="contribuintes") {
+      const simples=dashboardFilterValue(url,"simples");
+      const opted=truthyValue(row,["optanteSimples","simplesNacional","optanteSimplesNacional"]);
+      if(simples==="sim"&&!opted||simples==="nao"&&opted) return false;
+    }
+    return true;
+  });
   return out;
 }
 
@@ -4744,7 +4877,7 @@ async function buildDetailPage(env,tenant,resource,url) {
   let scanOffset=src.nextOffset;
   let scanHasMore=src.hasMore===true;
   let scanPages=1;
-  const scanMaxPages=relationScan ? 500 : 20;
+  const scanMaxPages=4;
   while(filtered.length===0 && scanHasMore && scanOffset!==null && scanOffset!==undefined && scanPages<scanMaxPages){
     const page=await safeBethaRows(env,tenant,def.source,def.resource,{
       limit,
@@ -4752,7 +4885,7 @@ async function buildDetailPage(env,tenant,resource,url) {
       startOffset:Number(scanOffset),
       chunkMode:true
     });
-    if(page.error) break;
+    if(page.error) {const error=new Error(page.error);error.status=page.errorStatus||502;throw error;}
     filtered=detailFilterRows(resource,page.rows,url,detailContext);
     scanOffset=page.nextOffset;
     scanHasMore=page.hasMore===true;
@@ -4785,6 +4918,7 @@ async function buildDetailPage(env,tenant,resource,url) {
       loaded:rows.length,
       sourceLoaded:src.loaded,
       scannedPages:scanPages,
+      searching:rows.length===0&&scanHasMore,
       hasMore:scanHasMore,
       nextOffset:scanOffset
     }
@@ -4871,6 +5005,21 @@ function permissionViewsForAccess(access) {
 }
 
 const DETAIL_PERMISSION_VIEWS = Object.freeze({
+  "debitos-receitas":["debitos"],
+  "pagamentos-parcelamentos":["arrecadacao","parcelamentos"],
+  "solicitacoes-transferencias-imoveis-movimentacoes":["itbi"],
+"pagamentos":["visao-geral", "arrecadacao"],
+"dividas-receitas":["divida"],
+"parcelamentos-referentes":["parcelamentos"],
+"encerramento-dividas":["divida", "encerramento"],
+"encerramento-lancamentos":["encerramento"],
+"indexadores":["indexadores"],
+"bairros":["territorio"],
+"distritos":["territorio"],
+"obras-responsaveis":["obras"],
+"creditos-tributarios-receitas":["receitas-creditos"],
+"transferencias-imoveis-compra":["itbi"],
+
   "pagamentos-detalhados-valores":["arrecadacao","divida"],
   "pagamentos-detalhados":["visao-geral","arrecadacao","economicos","imobiliario","receitas-creditos"],
   debitos:["visao-geral","debitos"],
@@ -5448,7 +5597,7 @@ async function readMcpCredential(request,env) {
   }
 
   // Revalida o vínculo do usuário na Betha em toda chamada MCP.
-  const tenant=resolveTenant(env,String(payload.tenantId));
+  const tenant=await resolveTenant(env,String(payload.tenantId));
   const [accesses,context]=await Promise.all([
     getUserAccesses(payload.userToken),
     getTenantContext(payload.userToken,tenant)
@@ -6097,6 +6246,9 @@ function errorResponse(request,env,error) {
     BASE_RESOURCE_NOT_CONFIGURED:501,
     BETHA_ACCESS_TOKEN_NOT_CONFIGURED:503,
     INVALID_SOURCE:400,
+    TENANT_CONFIG_INVALID:400,
+    TENANT_CONFIG_FORBIDDEN:403,
+    TENANT_CONFIG_KEY_REQUIRED:503,
     DETAIL_RESOURCE_NOT_ALLOWED:404,
     MCP_TOKEN_REQUIRED:401,
     MCP_TOKEN_INVALID:401,
@@ -6119,7 +6271,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-06-progressive-panels-v63",
+        buildVersion:"2026-10-06-entities-filters-v64",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
@@ -6464,9 +6616,52 @@ export default {
       }
     }
 
+    if(url.pathname.startsWith("/api/admin/entities") && ["GET","POST","PUT"].includes(request.method)) {
+      try {
+        if(!["/api/admin/entities","/api/admin/entities/test"].includes(url.pathname)) return json(request,env,404,{error:"NOT_FOUND"});
+        const current=await resolveTenant(env,getTenantId(request,url));
+        const auth=await authorizeTenant(request,env,current);
+        requireTenantConfigAdmin(auth);
+        if(!env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
+        const registry=await tenantRegistry(env);
+        const accesses=await getUserAccesses(auth.userToken);
+        const canManage=config=>{
+          const access=matchAccess(accesses,{entity:String(config.entityId||""),database:String(config.databaseId||"")});
+          return Boolean(access&&(access.admin===true||access.technical===true)&&(!access.expiresIn||new Date(access.expiresIn).getTime()>=Date.now()));
+        };
+        if(request.method==="GET") {
+          if(url.pathname!=="/api/admin/entities") return json(request,env,405,{error:"METHOD_NOT_ALLOWED"});
+          const entities=Object.entries(registry).filter(([id,config])=>id===current.id||canManage(config)).map(([id,config])=>publicTenantConfig(id,config,env));
+          const response=json(request,env,200,{entities});
+          response.headers.set("Cache-Control","no-store");
+          return response;
+        }
+        const origin=request.headers.get("Origin");
+        if(origin&&!corsHeaders(request,env)["Access-Control-Allow-Origin"]) throw new Error("TENANT_CONFIG_FORBIDDEN");
+        if(!/^application\/json(?:;|$)/i.test(request.headers.get("Content-Type")||"")) throw new Error("TENANT_CONFIG_INVALID");
+        const text=await request.text();
+        if(text.length>20000) throw new Error("TENANT_CONFIG_INVALID");
+        let input; try {input=JSON.parse(text);} catch {throw new Error("TENANT_CONFIG_INVALID");}
+        const previous=Object.hasOwn(registry,String(input.id||""))?registry[String(input.id)]:{};
+        if(Object.keys(previous).length&&!canManage(previous)&&String(input.id)!==current.id) throw new Error("TENANT_CONFIG_FORBIDDEN");
+        const {id,config}=validateTenantConfig(input,previous);
+        if(!canManage(config)) throw new Error("TENANT_CONFIG_FORBIDDEN");
+        const candidate={id,...config,accessToken:config.accessToken||env.BETHA_ACCESS_TOKEN||""};
+        // Test before persistence: invalid credentials never replace a working configuration.
+        await bethaGet(env,candidate,"bi","contribuintes","limit=1&fields=id");
+        if(url.pathname.endsWith("/test")) return json(request,env,200,{ok:true,message:"Conexão Betha validada."});
+        config.updatedAt=new Date().toISOString();
+        await env.BI_SESSIONS.put(TENANT_CONFIG_PREFIX+id,await encodeTenantConfig(env,id,config));
+        await writeAuditEvent(env,{tenantId:current.id,actor:auditActorLabel(auth.access),category:"configuration",action:"entity.save",subject:id,meta:{enabled:config.enabled,entityId:config.entityId,databaseId:config.databaseId}});
+        return json(request,env,200,{ok:true,entity:publicTenantConfig(id,config,env)});
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
     if (url.pathname==="/api/cache/snapshot" && request.method==="POST") {
       try {
-        const tenant=resolveTenant(env,getTenantId(request,url));
+        const tenant=await resolveTenant(env,getTenantId(request,url));
         await authorizeTenant(request,env,tenant);
         const body=await request.json();
         const result=await persistSupabaseCache(env,body);
@@ -6481,7 +6676,7 @@ export default {
       let tenant=null;
       let auth=null;
       try {
-        tenant=resolveTenant(env,getTenantId(request,url));
+        tenant=await resolveTenant(env,getTenantId(request,url));
         auth=await authorizeTenant(request,env,tenant);
         requireViewPermission(auth,"visao-geral");
         const body=await buildOverviewPart(env,tenant,url,overviewPartMatch[1]);
@@ -6506,7 +6701,7 @@ export default {
       let auth=null;
       const view=dashboardMatch[1];
       try {
-        tenant=resolveTenant(env,getTenantId(request,url));
+        tenant=await resolveTenant(env,getTenantId(request,url));
         auth=await authorizeTenant(request,env,tenant);
         requireViewPermission(auth,view);
 
@@ -6559,7 +6754,7 @@ export default {
       try {
         const query=String(url.searchParams.get("q")||"").trim();
         if(query.length<2) return json(request,env,400,{error:"SEARCH_QUERY_REQUIRED"});
-        const tenant=resolveTenant(env,getTenantId(request,url));
+        const tenant=await resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
         const result=await buildGlobalSearch(env,tenant,auth,url);
         return json(request,env,200,result);
@@ -6574,7 +6769,7 @@ export default {
       let auth=null;
       const resource=decodeURIComponent(detailMatch[1]);
       try {
-        tenant=resolveTenant(env,getTenantId(request,url));
+        tenant=await resolveTenant(env,getTenantId(request,url));
         auth=await authorizeTenant(request,env,tenant);
         requireDetailPermission(auth,resource);
         const result=await buildDetailPage(env,tenant,resource,url);
@@ -6600,7 +6795,7 @@ export default {
     if (url.pathname==="/api/connection-test" && request.method==="GET") {
       try {
         await validateDevSession(request,env);
-        const tenant=resolveTenant(env,getTenantId(request,url));
+        const tenant=await resolveTenant(env,getTenantId(request,url));
         const body=await bethaGet(env,tenant,"bi","contribuintes","limit=1&fields=id");
         return json(request,env,200,{
           ok:true,
@@ -6635,13 +6830,13 @@ export default {
         const accesses=await getUserAccesses(userToken);
         await authTrace(env,"TENANTS_ACCESSES_OK",{count:Array.isArray(accesses)?accesses.length:0});
 
-        const registry=parseJsonObject(env.BETHA_TENANTS_JSON,{});
+        const registry=await tenantRegistry(env);
         const tenants=[];
         const tenantErrors=[];
 
         for (const id of Object.keys(registry)) {
           try {
-            const tenant=resolveTenant(env,id);
+            const tenant=await resolveTenant(env,id);
             const context=await getTenantContext(userToken,tenant);
             const contextMatches=matchingAccesses(accesses,context);
             const access=matchAccess(accesses,context);
@@ -6703,7 +6898,7 @@ export default {
 
     if (url.pathname==="/api/mcp/tokens" && request.method==="GET") {
       try {
-        const tenant=resolveTenant(env,getTenantId(request,url));
+        const tenant=await resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
         const ownerHash=await mcpOwnerHash(auth);
         const includeAll=Boolean(auth.access&&(auth.access.admin===true||auth.access.technical===true));
@@ -6716,7 +6911,7 @@ export default {
 
     if (url.pathname==="/api/mcp/tokens" && request.method==="POST") {
       try {
-        const tenant=resolveTenant(env,getTenantId(request,url));
+        const tenant=await resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
         const body=await request.json().catch(()=>({}));
         const ttlHours=Math.max(0.25,Math.min(Number(body.ttlHours)||8,8));
@@ -6752,7 +6947,7 @@ export default {
     const deleteMcpTokenMatch=url.pathname.match(/^\/api\/mcp\/tokens\/([A-Fa-f0-9]{8,64})$/);
     if (deleteMcpTokenMatch && request.method==="DELETE") {
       try {
-        const tenant=resolveTenant(env,getTenantId(request,url));
+        const tenant=await resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
         const ownerHash=await mcpOwnerHash(auth);
         const includeAll=Boolean(auth.access&&(auth.access.admin===true||auth.access.technical===true));
@@ -6774,7 +6969,7 @@ export default {
 
     if (url.pathname==="/api/admin/audit" && request.method==="GET") {
       try {
-        const tenant=resolveTenant(env,getTenantId(request,url));
+        const tenant=await resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
         requireConstraintPermission(auth,"BIConfiguracoesPage");
         const audit=await listAuditEvents(env,tenant.id,url.searchParams.get("limit")||100);
@@ -6800,7 +6995,7 @@ export default {
 
     if (url.pathname==="/api/admin/page-mapping/status" && request.method==="GET") {
       try {
-        const tenant=resolveTenant(env,getTenantId(request,url));
+        const tenant=await resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
         if (!auth.access || (!auth.access.admin && !auth.access.technical)) throw new Error("ADMIN_REQUIRED");
         const status=await getPageMappingStatus(tenant);
@@ -6817,7 +7012,7 @@ export default {
 
     if (url.pathname==="/api/admin/page-mapping" && request.method==="PUT") {
       try {
-        const tenant=resolveTenant(env,getTenantId(request,url));
+        const tenant=await resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
         if (!auth.access || auth.access.admin!==true) throw new Error("ADMIN_REQUIRED");
         const result=await publishPageMapping(tenant);
@@ -6838,7 +7033,7 @@ export default {
 
     if (url.pathname==="/api/admin/users" && request.method==="GET") {
       try {
-        const tenant=resolveTenant(env,getTenantId(request,url));
+        const tenant=await resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
         requireConstraintPermission(auth,"BIUsuariosPage");
         const body=await listContextUsers(auth.userToken,tenant,url);
@@ -6850,7 +7045,7 @@ export default {
 
     if (url.pathname==="/api/admin/user-search" && request.method==="GET") {
       try {
-        const tenant=resolveTenant(env,getTenantId(request,url));
+        const tenant=await resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
         requireConstraintPermission(auth,"BIUsuariosPage");
         const user=url.searchParams.get("user") || "";
@@ -6864,7 +7059,7 @@ export default {
 
     if (url.pathname==="/api/admin/users" && request.method==="POST") {
       try {
-        const tenant=resolveTenant(env,getTenantId(request,url));
+        const tenant=await resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
         if (!auth.access || (!auth.access.admin && !auth.access.technical)) throw new Error("ADMIN_REQUIRED");
         const body=await request.json();
@@ -6898,7 +7093,7 @@ export default {
     const deleteUserMatch=url.pathname.match(/^\/api\/admin\/users\/([^/]+)$/);
     if (deleteUserMatch && request.method==="DELETE") {
       try {
-        const tenant=resolveTenant(env,getTenantId(request,url));
+        const tenant=await resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
         if (!auth.access || (!auth.access.admin && !auth.access.technical)) throw new Error("ADMIN_REQUIRED");
         const body=await deleteContextUser(auth.userToken,tenant,deleteUserMatch[1]);
@@ -6924,7 +7119,7 @@ export default {
       const resource=dataMatch[1];
       const source=(url.searchParams.get("source") || "bi").toLowerCase();
       try {
-        tenant=resolveTenant(env,getTenantId(request,url));
+        tenant=await resolveTenant(env,getTenantId(request,url));
         auth=await authorizeTenant(request,env,tenant);
         // Valida primeiro a allowlist técnica e depois a permissão funcional.
         // Recursos customizados sem mapeamento permanecem fail-closed para usuários comuns.

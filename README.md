@@ -113,3 +113,11 @@ permissões existentes. DETALHAR e MCP mantêm seus fluxos atuais de leitura.
 
 Validação de paginação, erros, isolamento e cobertura dos 15 builders:
 `node --test tests/dashboard-loading.test.cjs`.
+
+### Cadastro de entidades no próprio BI
+
+Em **Configurações → Entidades e prefeituras**, administradores e técnicos podem cadastrar ou editar nome, tenant, entityId, databaseId, User-Access e Access Token. O BI exige acesso administrativo Betha ao contexto informado e valida as credenciais antes de salvar. As chaves não são retornadas ao navegador; campos vazios na edição preservam os valores existentes. O token compartilhado é uma opção explícita no formulário.
+
+As novas configurações são armazenadas por tenant no KV `BI_SESSIONS`, cifradas com AES-GCM e uma chave independente `BETHA_TENANT_CONFIG_KEY`, que deve permanecer estável entre publicações. Elas têm prioridade sobre `BETHA_TENANTS_JSON`; a configuração legada continua válida. Não remova ou troque a chave de cifragem sem migrar os registros existentes. O cadastro não cria licenças ou acessos na Central Betha.
+
+O analítico oferece busca, filtro por campos efetivamente presentes na fonte e intervalo de datas quando houver colunas de data. Parcelas vinculadas consultam todos os exercícios e a exportação preserva o vínculo e os filtros locais. A busca paginada informa a continuidade até concluir a fonte e não transforma falhas da API em resultado vazio.

@@ -2505,6 +2505,7 @@
   }
 
   const DETAIL_SUPPORTED = new Set([
+"pagamentos","dividas-receitas","parcelamentos-referentes","encerramento-dividas","encerramento-lancamentos","indexadores","bairros","distritos","obras-responsaveis","creditos-tributarios-receitas","transferencias-imoveis-compra",
     "pagamentos-detalhados-valores","pagamentos-detalhados",
     "debitos","debitos-receitas","dividas","parcelamentos","parcelamentos-parcelas","pagamentos-parcelamentos",
     "guias-unificadas","contribuintes","imoveis","imoveis-responsaveis","imoveis-corresponsaveis","economicos","economicos-atividades",
@@ -2514,6 +2515,7 @@
   ]);
 
   const DETAIL_RESOURCE_LABELS = Object.freeze({
+"pagamentos":"Pagamentos","dividas-receitas":"Dividas receitas","parcelamentos-referentes":"Parcelamentos referentes","encerramento-dividas":"Encerramento dividas","encerramento-lancamentos":"Encerramento lancamentos","indexadores":"Indexador","bairros":"Bairro","distritos":"Distrito","obras-responsaveis":"Obras responsaveis","creditos-tributarios-receitas":"Creditos tributarios receitas","transferencias-imoveis-compra":"Transferencias imoveis compra",
     contribuintes:"Contribuintes",
     imoveis:"Imóveis",
     "imoveis-responsaveis":"Responsáveis dos imóveis",
@@ -2744,6 +2746,8 @@
   }
 
   async function fetchDetailExport(resource,maxRecords) {
+    const exportQuery=detailQuerySnapshot;
+    const exportTenant=tenantId;
     const columns=[];
     const rows=[];
     let offset=0;
@@ -2752,13 +2756,10 @@
 
     while(rows.length<maxRecords && !seen.has(offset)){
       seen.add(offset);
-      const params=new URLSearchParams({
-        periodo:document.getElementById("periodo")?.value||"todos",
-        exercicio:document.getElementById("exercicio")?.value||String(new Date().getFullYear()),
-        limit:"50",
-        offset:String(offset)
-      });
-      for(const [key,value] of Object.entries(currentDashboardFilters())) params.set(key,value);
+      if(detailQuerySnapshot!==exportQuery||tenantId!==exportTenant) throw new Error("O detalhamento mudou durante a exportação.");
+      const params=new URLSearchParams(exportQuery);
+      params.set("limit","50");
+      params.set("offset",String(offset));
 
       const payload=await api(
         "/api/detail/"+encodeURIComponent(resource)+"?"+params.toString(),
@@ -2891,6 +2892,14 @@
     }
   }
 
+  function detailExportContext() {
+    const params=new URLSearchParams(detailQuerySnapshot);
+    const labels={detailSearch:"Busca",detailField:"Campo",detailValue:"Valor",detailDateField:"Data",detailFrom:"De",detailTo:"Até",parcelamentoId:"Parcelamento"};
+    const parts=[params.get("periodo")==="todos"?"Todos os exercícios":exportContextLabel().summary];
+    for(const [key,label] of Object.entries(labels)) if(params.get(key)) parts.push(label+": "+params.get(key));
+    return {summary:parts.filter(Boolean).join(" · ")};
+  }
+
   async function exportDetailCsv() {
     if(!currentDetailResource) return;
     setExportBusy(true);
@@ -2912,7 +2921,7 @@
     setExportBusy(true);
     try{
       const payload=await fetchDetailExport(currentDetailResource,10000);
-      const context=exportContextLabel();
+      const context=detailExportContext();
       const meta=[
         "BI Tributos",
         "Entidade: "+(entityLabel||tenantId||""),
@@ -2938,7 +2947,7 @@
       const payload=await fetchDetailExport(currentDetailResource,1000);
       const {jsPDF}=window.jspdf;
       const pdf=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
-      const context=exportContextLabel();
+      const context=detailExportContext();
       const columns=payload.columns||[];
       const head=[columns.map(col=>col.label||col.key)];
       const body=payload.rows.map(row=>columns.map(col=>formatDetailCell(row[col.key],col.format)));
@@ -3012,111 +3021,84 @@
     `;
   }
 
+  let detailLoadGeneration=0;
+  let detailQuerySnapshot="";
+  let detailPageOffsets=[];
+  function detailRequestParams(container,offset,qualityIssue) {
+    const linked=Boolean(container.dataset.relationValue);
+    const params=new URLSearchParams({periodo:linked?"todos":document.getElementById("periodo")?.value||"todos",exercicio:document.getElementById("exercicio")?.value||String(new Date().getFullYear()),limit:"25",offset:String(offset||0)});
+    if(!linked) for(const [key,value] of Object.entries(currentDashboardFilters())) params.set(key,value);
+    if(qualityIssue) params.set("qualityIssue",qualityIssue);
+    for(const input of container.querySelectorAll("[data-detail-param]")) if(input.value.trim()) params.set(input.dataset.detailParam,input.value.trim());
+    if(linked) params.set(container.dataset.relationKey,container.dataset.relationValue);
+    return params;
+  }
+  function analyticFilterControls(payload,params) {
+    const columns=payload.columns||[];
+    const fields=columns.filter(column=>column.format!=="date");
+    const dates=columns.filter(column=>column.format==="date");
+    const input=(key,label,type="text")=>'<label>'+label+'<input type="'+type+'" data-detail-param="'+key+'" value="'+escapeHtml(params.get(key)||"")+'"></label>';
+    return '<div class="detail-micro-filters">'+input("detailSearch","Pesquisar nos registros","search")+
+      '<label>Campo<select data-detail-param="detailField"><option value="">Todos os campos</option>'+fields.map(column=>'<option value="'+escapeHtml(column.key)+'" '+(params.get("detailField")===column.key?'selected':'')+'>'+escapeHtml(column.label)+'</option>').join('')+'</select></label>'+input("detailValue","Valor do campo")+
+      (dates.length?'<label>Data de referência<select data-detail-param="detailDateField">'+dates.map(column=>'<option value="'+escapeHtml(column.key)+'" '+(params.get("detailDateField")===column.key?'selected':'')+'>'+escapeHtml(column.label)+'</option>').join('')+'</select></label>'+input("detailFrom","De","date")+input("detailTo","Até","date"):'')+
+      '<button class="btn-primary-betha" type="button" data-apply-detail-filters>APLICAR FILTROS</button><button class="btn-secondary-betha" type="button" data-clear-detail-filters>LIMPAR</button></div>';
+  }
   async function loadDetailRecords(resource,offset=0,qualityIssue="") {
     const container=document.querySelector("[data-detail-container]");
     if(!container) return;
-
+    const generation=++detailLoadGeneration;
+    const activeTenant=tenantId;
+    const isActive=()=>generation===detailLoadGeneration&&container.isConnected&&activeTenant===tenantId;
+    // Capture values before replacing the form with its loading state.
+    const params=detailRequestParams(container,offset,qualityIssue);
+    detailQuerySnapshot=params.toString();
+    if(offset===0) detailPageOffsets=[];
+    if(!detailPageOffsets.includes(offset)) detailPageOffsets.push(offset);
+    currentDetailPayload=null;
+    document.getElementById("drawerExportActions").hidden=true;
     container.innerHTML='<div class="detail-empty-state compact"><i class="mdi mdi-loading mdi-spin"></i><span>Consultando registros autorizados…</span></div>';
-
-    const params=new URLSearchParams({
-      periodo:document.getElementById("periodo")?.value||"todos",
-      exercicio:document.getElementById("exercicio")?.value||String(new Date().getFullYear()),
-      limit:"25",
-      offset:String(offset||0)
-    });
-    for(const [key,value] of Object.entries(currentDashboardFilters())) params.set(key,value);
-    if(qualityIssue) params.set("qualityIssue",qualityIssue);
-
     try {
-      // Filtros do próprio micro (busca/situação/etc.) são enviados junto
-      // aos filtros herdados do painel.
-      const microSearch=container.querySelector("[data-detail-search]")?.value?.trim()||"";
-      const microSituation=container.querySelector("[data-detail-situation]")?.value||"";
-      if(microSearch) params.set("busca",microSearch);
-      if(microSituation) params.set("situacao",microSituation);
-      const relationKey=container.dataset.relationKey||"";
-      const relationValue=container.dataset.relationValue||"";
-      if(relationKey&&relationValue) params.set(relationKey,relationValue);
-
-      const payload=await api("/api/detail/"+encodeURIComponent(resource)+"?"+params.toString(),{timeoutMs:30000});
+      let payload;
+      let scanOffset=offset;
+      const seen=new Set();
+      do {
+        if(seen.has(scanOffset)) throw new Error("A fonte não avançou na paginação.");
+        seen.add(scanOffset);
+        params.set("offset",String(scanOffset));
+        payload=await api("/api/detail/"+encodeURIComponent(resource)+"?"+params.toString(),{timeoutMs:30000});
+        if(!isActive()) return;
+        if(!payload.pagination?.searching) break;
+        scanOffset=Number(payload.pagination.nextOffset);
+        container.innerHTML='<div class="detail-empty-state compact"><i class="mdi mdi-loading mdi-spin"></i><span>Procurando registros vinculados ao recorte… '+scanOffset.toLocaleString("pt-BR")+' registros consultados.</span><button type="button" class="btn-secondary-betha" data-stop-detail>INTERROMPER BUSCA</button></div>';
+        container.querySelector("[data-stop-detail]")?.addEventListener("click",()=>{detailLoadGeneration++;container.innerHTML='<div class="detail-empty-state compact">Busca interrompida antes de concluir a consulta.</div>';});
+      } while(isActive());
+      if(!isActive()) return;
       currentDetailPayload=payload;
       currentDetailResource=resource;
       currentDetailTitle=document.getElementById("drawerTitle")?.textContent||resource;
-      const exportActions=document.getElementById("drawerExportActions");
-      if(exportActions) exportActions.hidden=false;
-      const pagination=payload?.pagination||{};
-      const pageNumber=Math.floor(Number(offset||0)/25)+1;
-      const situationOptions=Array.from(new Set(
-        (payload?.rows||[]).map(row=>String(row.situacao??row.status??"").trim()).filter(Boolean)
-      )).sort((a,b)=>a.localeCompare(b,"pt-BR"));
-      const microFilters=`
-        <div class="detail-micro-filters">
-          <div class="field filter-search-field">
-            <label>Pesquisar no analítico</label>
-            <div class="filter-search-wrap"><i class="mdi mdi-magnify"></i>
-              <input type="search" data-detail-search placeholder="Nome, documento, número ou ID">
-            </div>
-          </div>
-          <div class="field">
-            <label>Situação</label>
-            <select data-detail-situation>
-              <option value="">Todas</option>
-              ${situationOptions.map(value=>'<option value="'+escapeHtml(value)+'">'+escapeHtml(value)+'</option>').join("")}
-            </select>
-          </div>
-          <button class="btn-primary-betha" type="button" data-apply-detail-filters="${escapeHtml(resource)}">
-            <i class="mdi mdi-filter-check-outline"></i><span>Aplicar filtros</span>
-          </button>
-          <button class="btn-secondary-betha" type="button" data-clear-detail-filters="${escapeHtml(resource)}">
-            <i class="mdi mdi-filter-remove-outline"></i><span>Limpar</span>
-          </button>
-        </div>`;
-      container.innerHTML=detailContextHtml()+installmentSummaryHtml(payload)+microFilters+detailPageTable(payload)+`
-        <div class="detail-pagination">
-          <div class="detail-page-summary">
-            <strong>Página ${pageNumber.toLocaleString("pt-BR")}</strong>
-            <span>${Number(pagination.loaded||0).toLocaleString("pt-BR")} registro(s) exibidos</span>
-          </div>
-          <div class="detail-page-actions">
-            ${offset>0 ? '<button class="btn-secondary-betha" type="button" data-detail-page="'+escapeHtml(resource)+'" data-detail-offset="'+Math.max(0,offset-25)+'" '+(qualityIssue ? 'data-detail-quality-issue="'+escapeHtml(qualityIssue)+'"' : '')+'><i class="mdi mdi-chevron-left"></i><span>Anterior</span></button>' : ''}
-            ${pagination.hasMore && pagination.nextOffset!==null && pagination.nextOffset!==undefined
-              ? '<button class="btn-secondary-betha" type="button" data-detail-page="'+escapeHtml(resource)+'" data-detail-offset="'+escapeHtml(pagination.nextOffset)+'" '+(qualityIssue ? 'data-detail-quality-issue="'+escapeHtml(qualityIssue)+'"' : '')+'><span>Próxima</span><i class="mdi mdi-chevron-right"></i></button>'
-              : ''}
-          </div>
-        </div>
-      `;
-      container.querySelector("[data-apply-detail-filters]")?.addEventListener("click",()=>{
-        loadDetailRecords(resource,0,qualityIssue);
-      });
-      container.querySelector("[data-clear-detail-filters]")?.addEventListener("click",()=>{
-        const search=container.querySelector("[data-detail-search]");
-        const situation=container.querySelector("[data-detail-situation]");
-        if(search) search.value="";
-        if(situation) situation.value="";
-        loadDetailRecords(resource,0,qualityIssue);
-      });
-      container.querySelectorAll("[data-row-drill-resource]").forEach(button=>{
-        button.addEventListener("click",()=>{
-          const childResource=button.dataset.rowDrillResource||"";
-          if(!childResource) return;
-          container.dataset.relationKey=button.dataset.rowDrillKey||"";
-          container.dataset.relationValue=button.dataset.rowDrillValue||"";
-          container.dataset.detailResource=childResource;
-          const heading=button.dataset.rowDrillLabel||"Parcelas";
-          loadDetailRecords(childResource,0,qualityIssue).then(()=>{
-            const context=container.querySelector(".detail-context-bar");
-            if(context) context.insertAdjacentHTML("afterbegin",'<span class="detail-context-chip"><small>Detalhamento</small><strong>'+escapeHtml(heading)+'</strong></span>');
-          });
-        });
-      });
-      container.querySelector("[data-detail-search]")?.addEventListener("keydown",event=>{
-        if(event.key==="Enter"){
-          event.preventDefault();
-          loadDetailRecords(resource,0,qualityIssue);
-        }
-      });
+      document.getElementById("drawerExportActions").hidden=false;
+      const pagination=payload.pagination||{};
+      const pageIndex=detailPageOffsets.indexOf(offset);
+      const linked=Boolean(container.dataset.relationValue);
+      const localSummary=[params.get("detailSearch"),params.get("detailValue"),params.get("detailFrom"),params.get("detailTo")].filter(Boolean).map(escapeHtml).join(" · ");
+      container.innerHTML=(linked?'<div class="detail-context-bar"><strong>Parcelamento '+escapeHtml(container.dataset.relationValue)+' · Todos os exercícios</strong><button type="button" class="btn-secondary-betha" data-parent-detail>VOLTAR AOS PARCELAMENTOS</button></div>':detailContextHtml())+(localSummary?'<p class="detail-filter-summary">Filtros do analítico: '+localSummary+'</p>':'')+installmentSummaryHtml(payload)+analyticFilterControls(payload,params)+detailPageTable(payload)+
+        '<div class="detail-pagination"><div class="detail-page-summary"><strong>Página '+(pageIndex+1)+'</strong><span>'+Number(pagination.loaded||0).toLocaleString("pt-BR")+' registro(s) exibidos</span></div><div class="detail-page-actions">'+
+        (pageIndex>0?'<button class="btn-secondary-betha" type="button" data-prev-detail>ANTERIOR</button>':'')+
+        (pagination.hasMore?'<button class="btn-secondary-betha" type="button" data-next-detail>PRÓXIMA</button>':'')+'</div></div>';
+      container.querySelector("[data-prev-detail]")?.addEventListener("click",()=>loadDetailRecords(resource,detailPageOffsets[pageIndex-1],qualityIssue));
+      container.querySelector("[data-next-detail]")?.addEventListener("click",()=>loadDetailRecords(resource,Number(pagination.nextOffset),qualityIssue));
+      container.querySelector("[data-apply-detail-filters]")?.addEventListener("click",()=>loadDetailRecords(resource,0,qualityIssue));
+      container.querySelector("[data-clear-detail-filters]")?.addEventListener("click",()=>{container.querySelectorAll("[data-detail-param]").forEach(input=>input.value="");loadDetailRecords(resource,0,qualityIssue);});
+      container.querySelector("[data-parent-detail]")?.addEventListener("click",()=>{delete container.dataset.relationKey;delete container.dataset.relationValue;container.innerHTML="";loadDetailRecords("parcelamentos",0,qualityIssue);});
+      container.querySelectorAll("[data-row-drill-resource]").forEach(button=>button.addEventListener("click",()=>{
+        container.dataset.relationKey=button.dataset.rowDrillKey||"";
+        container.dataset.relationValue=button.dataset.rowDrillValue||"";
+        container.innerHTML="";
+        loadDetailRecords(button.dataset.rowDrillResource,0,qualityIssue);
+      }));
+      container.querySelectorAll("input[data-detail-param]").forEach(input=>input.addEventListener("keydown",event=>{if(event.key==="Enter"){event.preventDefault();loadDetailRecords(resource,0,qualityIssue);}}));
     } catch(error) {
-      container.innerHTML='<div class="detail-empty-state compact"><strong>Detalhamento indisponível</strong><span>'+escapeHtml(error.message||"Falha na consulta")+'</span></div>';
+      if(isActive()) container.innerHTML='<div class="detail-empty-state compact"><strong>Detalhamento indisponível</strong><span>'+escapeHtml(error.message||"Falha na consulta")+'</span></div>';
     }
   }
 
@@ -3233,6 +3215,9 @@
   }
 
   function openDrawer(title, html) {
+    detailLoadGeneration++;
+    detailQuerySnapshot="";
+    detailPageOffsets=[];
     currentDetailPayload=null;
     currentDetailResource="";
     currentDetailTitle=title||"Detalhamento";
@@ -3252,6 +3237,7 @@
   }
 
   function closeDrawer(id) {
+    if(id==="detailDrawer") detailLoadGeneration++;
     document.getElementById(id).classList.remove("open");
     document.getElementById(id).setAttribute("aria-hidden","true");
     const anyOpen = document.querySelector(".detail-drawer.open");
@@ -3264,6 +3250,8 @@
   document.getElementById("drawerBody").addEventListener("click",(event)=>{
     const loadButton=event.target.closest("[data-load-detail]");
     if(loadButton){
+      const container=document.querySelector("[data-detail-container]");
+      if(container){delete container.dataset.relationKey;delete container.dataset.relationValue;container.innerHTML="";}
       loadDetailRecords(loadButton.dataset.loadDetail,0,loadButton.dataset.detailQualityIssue||"");
       return;
     }
@@ -3945,7 +3933,73 @@
     }
   }
 
+  let entitySettingsRecords=[];
+  let entitySettingsBusy=false;
+  function resetEntitySettings(record=null) {
+    const form=document.getElementById("entitySettingsForm");
+    form.reset();
+    form.elements.id.readOnly=Boolean(record);
+    if(record) {
+      for(const key of ["id","name","entityId","databaseId"]) form.elements[key].value=record[key]||"";
+      form.elements.enabled.checked=record.enabled;
+      form.elements.useSharedToken.checked=record.usesSharedToken;
+      form.elements.userAccess.placeholder=record.userAccessConfigured?"Chave salva — deixe em branco para manter":"Informe a chave";
+      form.elements.accessToken.placeholder=record.accessTokenConfigured?"Token salvo — deixe em branco para manter":"Informe o token";
+    }
+    document.getElementById("entitySettingsMessage").textContent="";
+  }
+  async function loadEntitySettings() {
+    const list=document.getElementById("entitySettingsList");
+    try {
+      const payload=await api("/api/admin/entities");
+      entitySettingsRecords=payload.entities||[];
+      list.innerHTML='<div class="entity-settings-table"><table><thead><tr><th>Prefeitura</th><th>Tenant</th><th>Entidade / banco</th><th>Integração</th><th></th></tr></thead><tbody>'+entitySettingsRecords.map(record=>'<tr><td>'+escapeHtml(record.name)+'</td><td>'+escapeHtml(record.id)+'</td><td>'+escapeHtml(record.entityId)+' / '+escapeHtml(record.databaseId)+'</td><td>'+(record.enabled?'Ativa':'Inativa')+' · '+(record.userAccessConfigured&&record.accessTokenConfigured?'Chaves configuradas':'Chaves pendentes')+'</td><td><button type="button" class="btn-secondary-betha" data-edit-entity="'+escapeHtml(record.id)+'">EDITAR</button></td></tr>').join('')+'</tbody></table></div>';
+    } catch(error) {
+      list.textContent="Cadastro indisponível: "+error.message;
+      document.getElementById("entitySettingsForm").hidden=true;
+      document.getElementById("newEntityButton").disabled=true;
+    }
+  }
+  async function submitEntitySettings(testOnly=false) {
+    if(entitySettingsBusy) return;
+    const form=document.getElementById("entitySettingsForm");
+    if(!form.reportValidity()) return;
+    const body={};
+    for(const key of ["id","name","entityId","databaseId","userAccess","accessToken"]) body[key]=form.elements[key].value.trim();
+    body.enabled=form.elements.enabled.checked;
+    body.useSharedToken=form.elements.useSharedToken.checked;
+    const message=document.getElementById("entitySettingsMessage");
+    entitySettingsBusy=true;
+    form.querySelectorAll("button").forEach(button=>button.disabled=true);
+    message.textContent=testOnly?"Testando conexão Betha…":"Validando e salvando prefeitura…";
+    try {
+      await api("/api/admin/entities"+(testOnly?"/test":""),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),timeoutMs:30000});
+      message.textContent=testOnly?"Conexão validada com sucesso.":"Prefeitura salva. Atualizando entidades autorizadas…";
+      if(!testOnly) {
+        form.elements.userAccess.value="";
+        form.elements.accessToken.value="";
+        form.elements.id.readOnly=true;
+        await loadEntitySettings();
+        await loadTenants();
+        message.textContent="Prefeitura salva e seleção de entidades atualizada.";
+      }
+    } catch(error) {
+      message.textContent="Não foi possível "+(testOnly?"testar":"salvar")+": "+error.message;
+    } finally {
+      entitySettingsBusy=false;
+      form.querySelectorAll("button").forEach(button=>button.disabled=false);
+    }
+  }
+  document.getElementById("entitySettingsForm")?.addEventListener("submit",event=>{event.preventDefault();submitEntitySettings(false);});
+  document.getElementById("testEntityButton")?.addEventListener("click",()=>submitEntitySettings(true));
+  document.getElementById("newEntityButton")?.addEventListener("click",()=>resetEntitySettings());
+  document.getElementById("entitySettingsList")?.addEventListener("click",event=>{
+    const button=event.target.closest("[data-edit-entity]");
+    if(button) resetEntitySettings(entitySettingsRecords.find(record=>record.id===button.dataset.editEntity));
+  });
+
   async function loadConfigAdmin() {
+    const entitySettingsPromise=loadEntitySettings();
     const healthPromise=api("/api/health");
     const mappingPromise=readPageMappingStatus({silent:false});
     const mcpTokensPromise=loadMcpTokens();
@@ -3994,7 +4048,7 @@
       setConfigText("configDataDetail",error.message||"Falha na consulta.");
     }
 
-    await Promise.all([mappingPromise,mcpTokensPromise,auditPromise]);
+    await Promise.all([mappingPromise,mcpTokensPromise,auditPromise,entitySettingsPromise]);
   }
 
   function renderConfigAdmin() {
@@ -4159,7 +4213,7 @@
     const container = document.getElementById("permissionsList");
     const items = Object.entries(dashboards).map(([id, def]) => ({id, label:def.title}));
     items.push({id:"usuarios-admin",label:"Usuários e acessos"});
-    items.push({id:"configuracoes-admin",label:"Sistema e permissões"});
+    items.push({id:"configuracoes-admin",label:"Configurações"});
 
     container.innerHTML = items.map(item =>
       '<label class="permission-item"><input type="checkbox" value="' + escapeHtml(item.id) + '" checked> ' + escapeHtml(item.label) + '</label>'
