@@ -5853,3 +5853,332 @@ button{touch-action:manipulation}
     height:240px!important;
   }
 }
+
+
+/* Imobiliário e IPTU · layout executivo territorial v1 · 2026-10-06 */
+#dashboardView[data-dashboard="imobiliario"]{
+  --property-green:#078a61;
+  --property-earth:#8a6a2d;
+}
+#dashboardView[data-dashboard="imobiliario"] .page-heading{
+  margin-bottom:18px;
+}
+#dashboardView[data-dashboard="imobiliario"] .page-heading h1{
+  font-size:clamp(28px,2.35vw,35px);
+  letter-spacing:-.042em;
+}
+#dashboardView[data-dashboard="imobiliario"] .page-heading p{
+  max-width:820px;
+  color:#587066;
+  font-size:12.5px;
+}
+#dashboardView[data-dashboard="imobiliario"]>.filter-row:not(.advanced-filter-row){
+  margin-bottom:16px;
+  border-color:#dbe7e1;
+  border-radius:16px;
+  background:linear-gradient(180deg,#fff,#fbfdfc);
+  box-shadow:0 7px 24px rgba(18,67,48,.04);
+}
+#dashboardView[data-dashboard="imobiliario"] .advanced-filter-row{
+  border-color:#dbe7e1;
+  border-radius:16px;
+  background:#fbfdfc;
+}
+#dashboardView[data-dashboard="imobiliario"] .active-filter-chip{
+  border-color:#d3e8dd;
+  background:#f2faf6;
+}
+
+.property-section-heading{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:18px;
+  margin:4px 2px 10px;
+}
+.property-section-heading>div{min-width:0}
+.property-section-heading span{
+  display:block;
+  margin-bottom:3px;
+  color:#16805e;
+  font-size:8px;
+  font-weight:800;
+  letter-spacing:.095em;
+}
+.property-section-heading h2{
+  margin:0;
+  color:#173328;
+  font-size:16px;
+  line-height:1.2;
+  font-weight:760;
+  letter-spacing:-.018em;
+}
+.property-section-heading p{
+  max-width:520px;
+  margin:0;
+  color:#78887f;
+  font-size:9.5px;
+  line-height:1.45;
+  text-align:right;
+}
+
+/* Estoque total e base ativa ficam em primeiro plano. */
+#dashboardView[data-dashboard="imobiliario"] .kpi-grid{
+  display:grid;
+  grid-template-columns:repeat(12,minmax(0,1fr));
+  gap:12px;
+  margin-bottom:20px;
+}
+#dashboardView[data-dashboard="imobiliario"] .kpi-card{
+  min-height:108px;
+  padding:15px 16px;
+  border:1px solid #dce8e2;
+  border-top:2px solid rgba(7,138,97,.25);
+  border-radius:17px;
+  background:#fff;
+  box-shadow:0 4px 16px rgba(18,67,48,.035);
+}
+#dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi="imoveis-total"]{
+  grid-column:span 7;
+}
+#dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi="imoveis-ativos"]{
+  grid-column:span 5;
+}
+#dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi="imoveis-total"],
+#dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi="imoveis-ativos"]{
+  min-height:142px;
+  padding:20px;
+  border-top:3px solid rgba(7,138,97,.54);
+  background:
+    radial-gradient(circle at 100% 0,rgba(7,138,97,.09),transparent 36%),
+    linear-gradient(180deg,#fff,#fbfdfc);
+}
+#dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi="imoveis-total"] small,
+#dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi="imoveis-ativos"] small{
+  margin-bottom:9px;
+  color:#557065;
+  font-size:11px;
+}
+#dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi="imoveis-total"] strong,
+#dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi="imoveis-ativos"] strong{
+  margin-bottom:8px;
+  color:#123f2e;
+  font-size:clamp(28px,2.45vw,37px);
+  line-height:1.08;
+}
+#dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi="rurais"],
+#dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi="responsaveis"],
+#dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi="transferencias"]{
+  grid-column:span 4;
+}
+#dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi="rurais"]{
+  border-top-color:rgba(138,106,45,.34);
+  background:linear-gradient(180deg,#fff,#fffaf2);
+}
+#dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi="rurais"] .kpi-kind-icon{
+  color:#8a6a2d;
+}
+#dashboardView[data-dashboard="imobiliario"] .kpi-card span{
+  font-size:8px;
+}
+
+/* Base urbana/rural e arrecadação imobiliária formam a faixa decisória. */
+.property-executive{
+  display:grid;
+  grid-template-columns:minmax(0,1.45fr) minmax(360px,1fr);
+  gap:16px;
+  align-items:stretch;
+  margin-bottom:20px;
+}
+.property-executive>.chart-card{
+  min-width:0;
+  margin:0;
+  border:1px solid #dce8e2;
+  border-radius:18px;
+  background:#fff;
+  box-shadow:0 6px 22px rgba(18,67,48,.04);
+}
+.property-executive .chart-card-header{
+  min-height:64px!important;
+  padding:17px 17px 10px!important;
+}
+.property-executive .chart-title-block h2{
+  font-size:14.5px!important;
+}
+.property-executive .chart-body{
+  height:310px!important;
+  padding:6px 15px 15px!important;
+}
+.property-executive .chart-display-controls{
+  grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
+  padding:0 15px 10px;
+}
+.property-executive-main{
+  border-top:3px solid rgba(7,138,97,.40)!important;
+}
+.property-executive-side{
+  border-top:3px solid rgba(7,138,97,.46)!important;
+  background:linear-gradient(180deg,#fff,#f8fcfa)!important;
+}
+.property-executive-side .chart-display-controls{
+  grid-template-columns:1fr;
+}
+
+/* Recortes territoriais e de responsabilidade. */
+#dashboardView[data-dashboard="imobiliario"] #chartGrid{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:16px;
+  margin-bottom:18px;
+}
+#dashboardView[data-dashboard="imobiliario"] #chartGrid>.chart-card{
+  grid-column:auto;
+  border-color:#dfe8e3;
+  border-radius:16px;
+  box-shadow:0 3px 14px rgba(18,67,48,.03);
+}
+#dashboardView[data-dashboard="imobiliario"] #chartGrid>.chart-card[data-chart="bairro-imoveis"],
+#dashboardView[data-dashboard="imobiliario"] #chartGrid>.chart-card[data-chart="imoveis-contribuinte"]{
+  grid-column:1/-1;
+  border-color:#d6e6dd;
+  box-shadow:0 5px 18px rgba(18,67,48,.035);
+}
+#dashboardView[data-dashboard="imobiliario"] #chartGrid>.chart-card[data-chart="bairro-imoveis"] .chart-body,
+#dashboardView[data-dashboard="imobiliario"] #chartGrid>.chart-card[data-chart="imoveis-contribuinte"] .chart-body{
+  height:310px;
+}
+#dashboardView[data-dashboard="imobiliario"] #chartGrid>.chart-card:not([data-chart="bairro-imoveis"]):not([data-chart="imoveis-contribuinte"]) .chart-body{
+  height:255px;
+}
+#dashboardView[data-dashboard="imobiliario"] #chartGrid .chart-card-header{
+  min-height:60px;
+  padding:14px 14px 9px;
+}
+#dashboardView[data-dashboard="imobiliario"] #chartGrid .chart-title-block h2{
+  font-size:12.5px;
+}
+#dashboardView[data-dashboard="imobiliario"] #chartGrid .chart-title-block p{
+  font-size:9px;
+}
+#dashboardView[data-dashboard="imobiliario"] #chartGrid .chart-display-controls{
+  padding:0 13px 10px;
+}
+#dashboardView[data-dashboard="imobiliario"] .additional-chart-section{
+  grid-column:1/-1;
+  border-radius:16px;
+}
+#dashboardView[data-dashboard="imobiliario"] .additional-chart-section>summary{
+  min-height:44px;
+  display:flex;
+  align-items:center;
+  padding:0 14px;
+  border:1px solid #dfe8e3;
+  border-radius:12px;
+  background:#fbfdfc;
+  color:#496358;
+  font-weight:700;
+}
+#dashboardView[data-dashboard="imobiliario"] .additional-chart-section[open]>summary{
+  margin-bottom:12px;
+}
+#dashboardView[data-dashboard="imobiliario"] .additional-chart-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:14px;
+}
+#dashboardView[data-dashboard="imobiliario"] .integration-coverage{
+  margin:0 0 12px;
+  border-style:dashed;
+  background:#fbfdfc;
+  box-shadow:none;
+}
+
+/* Tablet */
+@media(max-width:1180px){
+  #dashboardView[data-dashboard="imobiliario"] .kpi-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  #dashboardView[data-dashboard="imobiliario"] .kpi-card,
+  #dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi]{
+    grid-column:auto;
+  }
+  #dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi="imoveis-total"],
+  #dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi="imoveis-ativos"]{
+    min-height:120px;
+  }
+  .property-executive{
+    grid-template-columns:1fr;
+  }
+  .property-executive-side .chart-body{
+    height:280px!important;
+  }
+}
+
+/* Mobile */
+@media(max-width:820px){
+  #dashboardView[data-dashboard="imobiliario"] .page-heading h1{
+    font-size:27px;
+  }
+  .property-section-heading{
+    align-items:flex-start;
+    flex-direction:column;
+    gap:3px;
+    margin-bottom:9px;
+  }
+  .property-section-heading p{
+    max-width:none;
+    text-align:left;
+  }
+  #dashboardView[data-dashboard="imobiliario"] .kpi-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:9px;
+  }
+  #dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi="imoveis-total"],
+  #dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi="imoveis-ativos"]{
+    grid-column:1/-1;
+    min-height:116px;
+  }
+  #dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi="imoveis-total"] strong,
+  #dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi="imoveis-ativos"] strong{
+    font-size:27px;
+  }
+  .property-executive{
+    grid-template-columns:1fr;
+    gap:12px;
+  }
+  .property-executive .chart-body,
+  .property-executive-side .chart-body{
+    height:260px!important;
+  }
+  #dashboardView[data-dashboard="imobiliario"] #chartGrid,
+  #dashboardView[data-dashboard="imobiliario"] .additional-chart-grid{
+    grid-template-columns:1fr;
+    gap:12px;
+  }
+  #dashboardView[data-dashboard="imobiliario"] #chartGrid>.chart-card[data-chart]{
+    grid-column:auto;
+  }
+  #dashboardView[data-dashboard="imobiliario"] #chartGrid>.chart-card[data-chart] .chart-body{
+    height:250px;
+  }
+}
+
+/* Small phones */
+@media(max-width:480px){
+  #dashboardView[data-dashboard="imobiliario"] .kpi-grid{
+    grid-template-columns:1fr;
+  }
+  #dashboardView[data-dashboard="imobiliario"] .kpi-card,
+  #dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi]{
+    grid-column:auto;
+    min-height:106px;
+    padding:13px 14px;
+  }
+  #dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi="imoveis-total"] strong,
+  #dashboardView[data-dashboard="imobiliario"] .kpi-card[data-kpi="imoveis-ativos"] strong{
+    font-size:24px;
+  }
+  .property-executive .chart-body,
+  .property-executive-side .chart-body,
+  #dashboardView[data-dashboard="imobiliario"] #chartGrid>.chart-card[data-chart] .chart-body{
+    height:240px!important;
+  }
+}
