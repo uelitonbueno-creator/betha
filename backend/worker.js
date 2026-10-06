@@ -1648,15 +1648,20 @@ function createSessionId() {
   return bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)));
 }
 
+function authSessionStores(env) {
+  return [env.AUTH_SESSIONS,env.BI_SESSIONS].filter((store,index,list)=>store&&list.indexOf(store)===index);
+}
+
 async function createStoredSession(env,accessToken,ttlSeconds) {
-  if (!env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
+  const store=env.AUTH_SESSIONS || env.BI_SESSIONS;
+  if (!store) throw new Error("SESSION_STORE_NOT_CONFIGURED");
   if (!accessToken) throw new Error("USER_TOKEN_REQUIRED");
 
   const ttl=Math.max(60,Math.min(Number(ttlSeconds)||8*60*60,8*60*60));
   const sid=createSessionId();
   const exp=Date.now()+ttl*1000;
 
-  await env.BI_SESSIONS.put(
+  await store.put(
     "session:"+sid,
     JSON.stringify({kind:"user-session",accessToken,exp}),
     {expirationTtl:ttl}
@@ -1666,35 +1671,45 @@ async function createStoredSession(env,accessToken,ttlSeconds) {
 }
 
 async function readStoredSession(request,env) {
-  if (!env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
+  const stores=authSessionStores(env);
+  if (!stores.length) throw new Error("SESSION_STORE_NOT_CONFIGURED");
 
   const sid=readCookie(request,SESSION_COOKIE);
   if (!sid) return null;
 
-  const raw=await env.BI_SESSIONS.get("session:"+sid);
+  let raw=null;
+  let sourceStore=null;
+  for (const store of stores) {
+    raw=await store.get("session:"+sid);
+    if (raw) {
+      sourceStore=store;
+      break;
+    }
+  }
   if (!raw) return null;
 
   try {
     const payload=JSON.parse(raw);
     if (!payload || !payload.accessToken) {
-      await env.BI_SESSIONS.delete("session:"+sid);
+      if(sourceStore) await sourceStore.delete("session:"+sid).catch(()=>{});
       return null;
     }
     if (payload.exp && Date.now()>=Number(payload.exp)) {
-      await env.BI_SESSIONS.delete("session:"+sid);
+      if(sourceStore) await sourceStore.delete("session:"+sid).catch(()=>{});
       return null;
     }
     return {sid,...payload};
   } catch {
-    await env.BI_SESSIONS.delete("session:"+sid);
+    if(sourceStore) await sourceStore.delete("session:"+sid).catch(()=>{});
     return null;
   }
 }
 
 async function destroyStoredSession(request,env) {
   const sid=readCookie(request,SESSION_COOKIE);
-  if (sid && env.BI_SESSIONS) {
-    await env.BI_SESSIONS.delete("session:"+sid);
+  if (!sid) return;
+  for (const store of authSessionStores(env)) {
+    await store.delete("session:"+sid).catch(()=>{});
   }
 }
 
@@ -6876,7 +6891,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-06-sync-round-robin-v75",
+        buildVersion:"2026-10-06-auth-kv-isolation-v82",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
