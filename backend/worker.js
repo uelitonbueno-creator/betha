@@ -1076,7 +1076,7 @@ async function buildHomeGroupSummary(env,tenant,auth,groupId) {
       const index=next++,card=group.cards[index];
       try {
         const result=await fetchBethaRows({...env,BI_SOURCE_TIMEOUT_MS:6000},tenant,card.source,card.resource,{limit:250,maxPages:1});
-        const suspicious=result.reportedTotal===1001&&result.hasMore;
+        const suspicious=result.hasMore&&result.reportedTotal===result.loaded+1;
         const known=!suspicious&&result.reportedTotal!==null&&result.reportedTotal>=result.loaded&&!(result.hasMore&&result.reportedTotal===result.loaded);
         cards[index]={id:card.id,count:result.complete?result.loaded:known?result.reportedTotal:result.loaded,partial:!result.complete&&!known,state:result.complete?"complete":known?"reported":"partial",updatedAt:new Date().toISOString()};
       } catch(error) {
@@ -2110,7 +2110,7 @@ async function loadDashboardSourceBatch(env,tenant,source,resource) {
   }
   if (chunks.length<manifest.pages) throw new Error("DASHBOARD_BATCH_PENDING");
   chunks.length=manifest.pages;
-  if (!manifest.complete && !manifest.truncated) {
+  if (!manifest.complete && !manifest.truncated && manifest.pages===expected) {
     const plainEnv={...env};
     delete plainEnv.BI_DASHBOARD_LOAD;
     plainEnv.BI_SOURCE_TIMEOUT_MS=12000;
@@ -6637,7 +6637,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-06-api-panels-v68",
+        buildVersion:"2026-10-06-interface-v69",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",

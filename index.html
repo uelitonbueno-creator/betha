@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261006-api-panels1">
+  <link rel="stylesheet" href="style.css?v=20261006-interface2">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -34,10 +34,15 @@
     })();
   </script>
   <div id="authGate" class="auth-gate" hidden>
-    <div class="auth-card auth-card-minimal">
+    <div class="auth-card auth-card-branded">
+      <img class="auth-betha-logo" src="assets/betha-logo.svg" alt="Betha" width="167" height="35">
+      <span class="auth-eyebrow">INTELIGÊNCIA TRIBUTÁRIA</span>
+      <h1>BI Tributos</h1>
+      <p>Informações e indicadores para a gestão do município.</p>
       <a id="loginButton" class="btn-primary-betha auth-login" href="/api/auth/login">
         ENTRAR COM BETHA
       </a>
+      <p class="auth-access-note">Acesse com sua conta Betha.</p>
     </div>
   </div>
 
@@ -676,10 +681,10 @@
 
   <script src="config.js?v=20261002-kvsession1"></script>
   <script src="auth/auth.js?v=20261002-kvsession1"></script>
-  <script src="dashboard-catalog.js?v=20261006-api-panels1"></script>
+  <script src="dashboard-catalog.js?v=20261006-interface2"></script>
   <div id="uiToast" class="ui-toast" role="status" aria-live="polite" aria-atomic="true"></div>
-  <script src="api-panel-catalog.js?v=20261006-api-panels1"></script>
-  <script src="app.js?v=20261006-api-panels1"></script>
+  <script src="api-panel-catalog.js?v=20261006-interface2"></script>
+  <script src="app.js?v=20261006-interface2"></script>
   <script src="global-search.js?v=20261005-1"></script>
 </body>
 </html>

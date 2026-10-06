@@ -836,6 +836,7 @@
             <p>${escapeHtml(chartDef.subtitle || "")}</p>
           </div>
           <div class="chart-meta">
+            ${chartTypeMenu(chartDef)}
             <span class="source-badge ${sourceClass(chartDef.source)}">${sourceLabel(chartDef.source)}</span>
             <button type="button" class="detail-button">VER DETALHES</button>
           </div>
@@ -851,6 +852,12 @@
         </div>
       `;
       card.querySelector(".detail-button").addEventListener("click", () => openChartDetail(displayChartDefinition(chartDef)));
+      card.querySelectorAll('[data-chart-type]').forEach(button=>button.addEventListener('click',()=>{
+        const select=card.querySelector('[data-chart-display="type"]');
+        select.value=button.dataset.chartType;select.dispatchEvent(new Event('change'));
+        card.querySelector('.chart-type-menu').open=false;
+      }));
+      card.querySelector('.chart-type-menu').addEventListener('keydown',event=>{if(event.key==='Escape')card.querySelector('.chart-type-menu').open=false;});
       card.querySelectorAll("[data-chart-display]").forEach(select=>select.addEventListener("change",()=>{
         const state=chartDisplayStateByView.get(view)||{};
         state[chartDef.id]={group:card.querySelector('[data-chart-display="group"]')?.value||chartDef.id,type:card.querySelector('[data-chart-display="type"]')?.value||chartDef.type};
@@ -953,7 +960,14 @@
     const groups=compatibleChartGroups(chartDef,dashboardCharts());
     const selected=displayChartDefinition(chartDef);
     const grouping=groups.length>1?'<label>Agrupar por<select data-chart-display="group" aria-label="Agrupamento de '+escapeHtml(chartDef.title)+'">'+groups.map(item=>'<option value="'+escapeHtml(item.id)+'" '+(item.id===selected.id?'selected':'')+'>'+escapeHtml(item.groupLabel||item.title)+'</option>').join('')+'</select></label>':'<span class="chart-group-label">'+escapeHtml(selected.groupLabel||selected.title)+'</span>';
-    return grouping+'<label>Tipo de gráfico<select data-chart-display="type" aria-label="Tipo de gráfico de '+escapeHtml(chartDef.title)+'">'+[["bar","Barras"],["pie","Pizza"],["doughnut","Rosca"],["line","Linhas"]].map(([value,label])=>'<option value="'+value+'" '+(value===selected.type?'selected':'')+'>'+label+'</option>').join('')+'</select></label>';
+    return grouping;
+  }
+
+  function chartTypeMenu(chartDef) {
+    const type=displayChartDefinition(chartDef).type;
+    const options=[["bar","chart-bar","Barras"],["pie","chart-pie","Pizza"],["doughnut","chart-donut","Rosca"],["line","chart-line","Linhas"]];
+    const current=options.find(([value])=>value===type)||options[0];
+    return '<details class="chart-type-menu"><summary aria-label="Alterar tipo de gráfico" title="Alterar tipo de gráfico"><i class="mdi mdi-'+current[1]+'" aria-hidden="true"></i><i class="mdi mdi-chevron-down" aria-hidden="true"></i></summary><div class="chart-type-options" role="group" aria-label="Tipo de gráfico">'+options.map(([value,icon,label])=>'<button type="button" data-chart-type="'+value+'" aria-label="'+label+'" title="'+label+'" aria-pressed="'+(value===type)+'"><i class="mdi mdi-'+icon+'" aria-hidden="true"></i></button>').join('')+'</div><select data-chart-display="type" hidden aria-label="Tipo de gráfico">'+options.map(([value,icon,label])=>'<option value="'+value+'" '+(value===type?'selected':'')+'>'+label+'</option>').join('')+'</select></details>';
   }
 
   function chartType(type) {
@@ -1014,6 +1028,9 @@
     }
     card.querySelector("h2").textContent=chartDef.title;
     card.querySelector(".chart-title-block p").textContent=data.note||chartDef.subtitle||"";
+    const icons={bar:'chart-bar',pie:'chart-pie',doughnut:'chart-donut',line:'chart-line'};
+    const menu=card.querySelector('.chart-type-menu');
+    if(menu){menu.querySelector('summary i').className='mdi mdi-'+(icons[chartDef.type]||'chart-bar');menu.querySelectorAll('[data-chart-type]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.chartType===chartDef.type)));}
     const circular=["pie","doughnut"].includes(chartDef.type);
     const horizontal=chartDef.type==="bar"&&data.labels.length>15;
     card.querySelector(".chart-canvas-wrap").style.height=horizontal?Math.max(300,data.labels.length*26)+"px":"300px";
@@ -2333,7 +2350,7 @@
       for(let batch=0;batch<600&&active();batch++){
         let payload;
         try {payload=await api(apiPanelPath(dashboards[view].apiSource)+"?"+params.toString(),{timeoutMs:60000});pending=0;}
-        catch(error){if(error.message!=="DASHBOARD_BATCH_PENDING"||pending++>=30)throw error;await new Promise(resolve=>setTimeout(resolve,1500));continue;}
+        catch(error){const transient=error.message==="DASHBOARD_BATCH_PENDING"||[429,502,503,504].includes(error.status)||error.message==="REQUEST_TIMEOUT";if(!transient||pending++>=6)throw error;setStatus("waiting","Consulta interrompida temporariamente · tentando novamente…");await new Promise(resolve=>setTimeout(resolve,Math.min(10000,1500*pending)));batch--;continue;}
         if(!active())return;
         renderPayload(payload);setLastUpdated(payload.meta?.updatedAt,"Betha");
         const loaded=Object.values(payload.meta?.sourceRows||{}).reduce((a,b)=>a+Number(b||0),0);

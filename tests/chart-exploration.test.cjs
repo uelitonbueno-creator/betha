@@ -8,7 +8,7 @@ function frontend() {
  context.dashboards=context.window.BI_DASHBOARDS;
  context.currentView='imobiliario';context.chartDisplayStateByView=new Map();
  context.chartInstances=new Map();context.cssEscape=value=>value;
- const nodes={};const card={querySelector:selector=>nodes[selector]||(nodes[selector]={style:{}})};
+ const nodes={};const card={querySelector:selector=>selector==='.chart-type-menu'?null:nodes[selector]||(nodes[selector]={style:{}})};
  context.document={querySelector:()=>card};
  let config;
  context.Chart=class {constructor(canvas,input){config=input;}destroy(){}};

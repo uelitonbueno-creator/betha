@@ -3101,3 +3101,23 @@ html,body{
 .additional-chart-section>summary {cursor:pointer; color:#426755; font-size:14px; font-weight:600; padding:16px; border:1px solid #e2ebe5; border-radius:8px;}
 .additional-chart-grid {display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin-top:18px;}
 @media(max-width:700px){.additional-chart-grid{grid-template-columns:1fr;}}
+
+/* Branded sign-in and compact chart controls. */
+.auth-gate{background:radial-gradient(ellipse at top,#e4f4ed 0,#f3f6f5 60%);}
+.auth-card-branded{width:min(440px,100%);padding:40px 36px 26px;border-radius:20px;border-top:4px solid #008c64;box-shadow:0 16px 50px rgba(21,66,48,.10);}
+.auth-betha-logo{display:block;margin:0 auto 34px;width:167px;height:35px;}
+.auth-eyebrow{display:block;font-size:10px;font-weight:700;letter-spacing:1.6px;color:#008c64;margin-bottom:12px;}
+.auth-card-branded h1{font-size:32px;font-weight:700;color:#143c2d;letter-spacing:-.7px;margin-bottom:12px;}
+.auth-card-branded p{font-size:14px;line-height:1.6;margin-bottom:28px;}
+.auth-card-branded .auth-login{min-height:48px;border-radius:9px;font-size:13px;}
+.auth-card-branded .auth-access-note{font-size:12px;margin:18px 0 0;color:#77847e;}
+.auth-login:focus-visible,.chart-type-menu summary:focus-visible,.chart-type-options button:focus-visible{outline:3px solid #71cdb1;outline-offset:3px;}
+.chart-type-menu{position:relative;flex-shrink:0;}
+.chart-type-menu summary{display:flex;align-items:center;justify-content:center;gap:3px;cursor:pointer;list-style:none;border:1px solid #dce8e1;border-radius:8px;color:#008c64;background:#fff;padding:7px;min-width:42px;min-height:36px;}
+.chart-type-menu summary::-webkit-details-marker{display:none;}
+.chart-type-menu summary i:first-child{font-size:19px;}
+.chart-type-options{position:absolute;right:0;top:calc(100% + 6px);z-index:20;display:flex;gap:4px;padding:6px;background:white;border:1px solid #dce8e1;border-radius:10px;box-shadow:0 8px 24px #183e2520;}
+.chart-type-options button{width:38px;height:38px;border:0;border-radius:6px;background:#fff;color:#547165;font-size:22px;cursor:pointer;}
+.chart-type-options button:hover,.chart-type-options button[aria-pressed="true"]{color:#008c64;background:#e4f4ed;}
+.chart-type-menu select[hidden]{display:none!important;}
+@media(max-width:480px){.auth-card-branded{padding:32px 24px 24px;}.chart-card-header{flex-wrap:wrap;}.chart-meta{margin-left:auto;}}
