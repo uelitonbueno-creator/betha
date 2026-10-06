@@ -798,6 +798,8 @@
     dashboardView.dataset.dashboard = view;
     document.getElementById("overviewExecutive")?.remove();
     document.getElementById("overviewAttention")?.remove();
+    document.getElementById("overviewKpiHeading")?.remove();
+    document.getElementById("overviewSecondaryHeading")?.remove();
     restoreViewPreferencesOnce(view);
     renderDashboardFilters(def);
 
@@ -847,6 +849,14 @@
       kpiGrid.appendChild(el);
     }
     updateKpiFavoriteButtons();
+
+    if(view==="visao-geral"){
+      const kpiHeading=document.createElement("div");
+      kpiHeading.id="overviewKpiHeading";
+      kpiHeading.className="overview-section-heading overview-kpi-heading";
+      kpiHeading.innerHTML='<div><span>RESUMO DO PERÍODO</span><h2>Indicadores principais</h2></div><p>Uma leitura rápida da arrecadação, carteira e base cadastral.</p>';
+      kpiGrid.insertAdjacentElement("beforebegin",kpiHeading);
+    }
 
     let coverage = document.getElementById("integrationCoverage");
     if (!coverage) {
@@ -918,6 +928,21 @@
       if(index<mainChartCount) chartGrid.insertBefore(card,chartGrid.querySelector(".additional-chart-section"));
       else additionalBody.appendChild(card);
     });
+
+    if(view==="visao-geral"){
+      const secondaryHeading=document.createElement("div");
+      secondaryHeading.id="overviewSecondaryHeading";
+      secondaryHeading.className="overview-section-heading overview-secondary-heading";
+      secondaryHeading.innerHTML='<div><span>ANÁLISES COMPLEMENTARES</span><h2>Composição e evolução</h2></div><p>Aprofunde a leitura pelos principais recortes tributários.</p>';
+      chartGrid.insertAdjacentElement("beforebegin",secondaryHeading);
+
+      const personalHome=document.getElementById("personalHome");
+      if(personalHome) chartGrid.insertAdjacentElement("afterend",personalHome);
+      if(coverage){
+        if(personalHome) personalHome.insertAdjacentElement("afterend",coverage);
+        else chartGrid.insertAdjacentElement("afterend",coverage);
+      }
+    }
 
     const sources = [...new Set([
       ...(def.kpis || []).map(x => x.source),
@@ -1236,9 +1261,9 @@
       executive=document.createElement("section");
       executive.id="overviewExecutive";
       executive.className="overview-executive";
-      const coverage=document.getElementById("integrationCoverage");
+      const secondaryHeading=document.getElementById("overviewSecondaryHeading");
       const chartGrid=document.getElementById("chartGrid");
-      if(coverage) coverage.insertAdjacentElement("beforebegin",executive);
+      if(secondaryHeading) secondaryHeading.insertAdjacentElement("beforebegin",executive);
       else if(chartGrid) chartGrid.insertAdjacentElement("beforebegin",executive);
     }
 
