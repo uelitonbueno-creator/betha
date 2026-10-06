@@ -816,6 +816,10 @@
     document.getElementById("installmentExecutive")?.remove();
     document.getElementById("installmentTrendHeading")?.remove();
     document.getElementById("installmentSecondaryHeading")?.remove();
+    document.getElementById("economicKpiHeading")?.remove();
+    document.getElementById("economicExecutive")?.remove();
+    document.getElementById("economicTrendHeading")?.remove();
+    document.getElementById("economicSecondaryHeading")?.remove();
     restoreViewPreferencesOnce(view);
     renderDashboardFilters(def);
 
@@ -903,6 +907,14 @@
       kpiHeading.id="installmentKpiHeading";
       kpiHeading.className="installment-section-heading installment-kpi-heading";
       kpiHeading.innerHTML='<div><span>ACORDOS E PARCELAS</span><h2>Saúde dos parcelamentos</h2></div><p>Priorize acordos ativos e parcelas vencidas, depois acompanhe entradas, quantidade de parcelas e cancelamentos.</p>';
+      kpiGrid.insertAdjacentElement("beforebegin",kpiHeading);
+    }
+
+    if(view==="economicos"){
+      const kpiHeading=document.createElement("div");
+      kpiHeading.id="economicKpiHeading";
+      kpiHeading.className="economic-section-heading economic-kpi-heading";
+      kpiHeading.innerHTML='<div><span>ATIVIDADE ECONÔMICA E ISS</span><h2>Empresas, movimentação e base ativa</h2></div><p>Destaque os cadastros ativos e novas aberturas; depois acompanhe encerramentos, atividades e arrecadação vinculada.</p>';
       kpiGrid.insertAdjacentElement("beforebegin",kpiHeading);
     }
 
@@ -1114,6 +1126,38 @@
       secondaryHeading.id="installmentSecondaryHeading";
       secondaryHeading.className="installment-section-heading installment-secondary-heading";
       secondaryHeading.innerHTML='<div><span>COMPOSIÇÃO DOS ACORDOS</span><h2>Novos parcelamentos, situação e cobrança</h2></div><p>Explore evolução dos acordos, situação, faixa de parcelas, entradas, execução/protesto, origem e cancelamentos.</p>';
+      chartGrid.insertAdjacentElement("beforebegin",secondaryHeading);
+
+      if(coverage) chartGrid.insertAdjacentElement("afterend",coverage);
+    }
+
+    if(view==="economicos"){
+      const executive=document.createElement("section");
+      executive.id="economicExecutive";
+      executive.className="economic-executive";
+
+      const trendHeading=document.createElement("div");
+      trendHeading.id="economicTrendHeading";
+      trendHeading.className="economic-section-heading economic-trend-heading";
+      trendHeading.innerHTML='<div><span>DINÂMICA E RECEITA</span><h2>Aberturas versus arrecadação associada</h2></div><p>Acompanhe o ritmo de novos econômicos ao lado da receita vinculada ao cadastro econômico.</p>';
+      chartGrid.insertAdjacentElement("beforebegin",trendHeading);
+      trendHeading.insertAdjacentElement("afterend",executive);
+
+      const openings=document.querySelector('#chartGrid [data-chart="aberturas"]');
+      const issRevenue=document.querySelector('#chartGrid [data-chart="iss-arrecadacao"]');
+      if(openings){
+        openings.classList.add("economic-executive-main");
+        executive.appendChild(openings);
+      }
+      if(issRevenue){
+        issRevenue.classList.add("economic-executive-side");
+        executive.appendChild(issRevenue);
+      }
+
+      const secondaryHeading=document.createElement("div");
+      secondaryHeading.id="economicSecondaryHeading";
+      secondaryHeading.className="economic-section-heading economic-secondary-heading";
+      secondaryHeading.innerHTML='<div><span>PERFIL ECONÔMICO</span><h2>Situação, atividades e localização</h2></div><p>Explore encerramentos, situação cadastral, tipo de econômico, principais atividades, vínculos e distribuição por bairro.</p>';
       chartGrid.insertAdjacentElement("beforebegin",secondaryHeading);
 
       if(coverage) chartGrid.insertAdjacentElement("afterend",coverage);
