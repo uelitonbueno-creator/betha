@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261006-chart-explore5">
+  <link rel="stylesheet" href="style.css?v=20261006-api-panels1">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -86,6 +86,12 @@
 
     <main slot="container_aplicacao" class="workspace">
       <section class="surface">
+        <section id="syntheticHomeView" hidden aria-labelledby="syntheticHomeTitle">
+          <header class="page-heading"><div><div class="level-label">SINTÉTICO</div><h1 id="syntheticHomeTitle">Painéis do município</h1><p>Selecione um resumo para abrir os gráficos e explorar seus detalhes.</p></div><button id="refreshHomeButton" type="button" class="btn-secondary-betha"><i class="mdi mdi-refresh"></i> ATUALIZAR RESUMOS</button></header>
+          <p class="home-summary-context">Totais de registros por fonte, sem filtro de exercício. Contagens parciais ficam identificadas.</p>
+          <p id="homeSummaryStatus" role="status" aria-live="polite"></p>
+          <div id="homeSummaryGroups"></div>
+        </section>
         <div id="dashboardView">
         <header class="page-heading">
           <div>
@@ -670,9 +676,10 @@
 
   <script src="config.js?v=20261002-kvsession1"></script>
   <script src="auth/auth.js?v=20261002-kvsession1"></script>
-  <script src="dashboard-catalog.js?v=20261006-chart-explore2"></script>
+  <script src="dashboard-catalog.js?v=20261006-api-panels1"></script>
   <div id="uiToast" class="ui-toast" role="status" aria-live="polite" aria-atomic="true"></div>
-  <script src="app.js?v=20261006-chart-explore2"></script>
+  <script src="api-panel-catalog.js?v=20261006-api-panels1"></script>
+  <script src="app.js?v=20261006-api-panels1"></script>
   <script src="global-search.js?v=20261005-1"></script>
 </body>
 </html>

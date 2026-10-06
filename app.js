@@ -3,6 +3,7 @@
   const SUPABASE_URL = "https://mliurxyjznxoafkwwtae.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1saXVyeHlqem54b2Fma3d3dGFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA5NjA2MjMsImV4cCI6MjEwNjUzNjYyM30.bxZPsSSLpiZTFvXD2yZjtuc-5sniwDfV5D7UMAsB9ec";
   const dashboards = window.BI_DASHBOARDS || {};
+  const HOME_VIEW="inicio";
   const ADMIN_VIEWS = new Set(["usuarios-admin","configuracoes-admin"]);
   const bethaApp = document.getElementById("bethaApp");
   const authGate = document.getElementById("authGate");
@@ -56,8 +57,7 @@
   const chartDisplayStateByView = new Map();
   const restoredPreferenceScopes = new Set();
   let toastTimer = null;
-  let currentView = ADMIN_VIEWS.has(query.view) ? query.view :
-    (query.view && dashboards[query.view] ? query.view : "visao-geral");
+  let currentView = query.view===HOME_VIEW?HOME_VIEW:ADMIN_VIEWS.has(query.view)?query.view:(query.view&&dashboards[query.view]?query.view:HOME_VIEW);
   let currentPayload = null;
   let dashboardLoadGeneration = 0;
   let currentDetailPayload = null;
@@ -82,6 +82,8 @@
   }
 
   function isViewAllowed(view) {
+    if(view===HOME_VIEW) return true;
+    if (dashboards[view]?.apiSource) return (dashboards[view].permissionViews||[]).some(v=>currentAllowedViews.has(v));
     if (dashboards[view]) return currentAllowedViews.has(view);
     if (ADMIN_VIEWS.has(view)) return currentAllowedAdminViews.has(view);
     return false;
@@ -101,7 +103,7 @@
 
     const allowed=item=>{
       const view=item?.rota||item?.id;
-      return dashboards[view] ? allowedViews.has(view) :
+      return view===HOME_VIEW?true:dashboards[view] ? allowedViews.has(view) :
         (ADMIN_VIEWS.has(view) ? allowedAdminViews.has(view) : false);
     };
 
@@ -116,10 +118,7 @@
   }
 
   function firstAllowedView() {
-    if(currentAllowedViews.has("visao-geral")) return "visao-geral";
-    const dashboardView=[...currentAllowedViews].find(view=>dashboards[view]);
-    if(dashboardView) return dashboardView;
-    return [...currentAllowedAdminViews][0] || "";
+    return HOME_VIEW;
   }
 
   function applyNavigationPermissions(tenant) {
@@ -181,12 +180,11 @@
   }
 
   function formatValue(value, format) {
+    if(value===null||value===undefined)return "—";
+    if(format==="percent")return Number(value).toLocaleString("pt-BR",{maximumFractionDigits:2})+"%";
     if (value === null || value === undefined || Number.isNaN(Number(value))) return "—";
     if (format === "currency") {
       return Number(value).toLocaleString("pt-BR", {style:"currency", currency:"BRL"});
-    }
-    if (format === "percent") {
-      return Number(value).toLocaleString("pt-BR", {maximumFractionDigits:1}) + "%";
     }
     return Number(value).toLocaleString("pt-BR");
   }
@@ -740,12 +738,15 @@
   }
 
   function renderDashboard(view) {
+    if(view===HOME_VIEW){renderSyntheticHome();return;}
+    document.getElementById("syntheticHomeView").hidden=true;
     document.getElementById("dashboardView").hidden = false;
     document.getElementById("usersAdminView").hidden = true;
     document.getElementById("configAdminView").hidden = true;
     destroyCharts();
     currentPayload = null;
     const def = dashboards[view];
+    const sourceChoice=document.getElementById("fontePreferencial")?.closest(".field");if(sourceChoice)sourceChoice.hidden=Boolean(def.apiSource);
     const dashboardView = document.getElementById("dashboardView");
     dashboardView.dataset.dashboard = view;
     document.getElementById("overviewExecutive")?.remove();
@@ -753,6 +754,9 @@
     restoreViewPreferencesOnce(view);
     renderDashboardFilters(def);
 
+    if(!document.getElementById("backToSyntheticHome")) {
+      const button=document.createElement("button");button.id="backToSyntheticHome";button.className="btn-secondary-betha";button.type="button";button.textContent="VOLTAR AOS RESUMOS";button.addEventListener("click",()=>navigate(HOME_VIEW));document.querySelector("#dashboardView .page-actions").prepend(button);
+    }
     document.getElementById("pageTitle").textContent = def.title;
     document.getElementById("pageDescription").textContent = def.description;
     document.getElementById("pageContext").textContent = def.title.toUpperCase();
@@ -782,8 +786,9 @@
         toggleKpiFavorite(view,kpi);
       });
       el.addEventListener("click", () => {
-        const candidates=(def.charts||[]).filter(chart=>chart.source===kpi.source);
-        const target=candidates.find(chart=>chart.dimension===kpi.field)||candidates.find(chart=>(chart.measures||[]).includes(kpi.field))||candidates.find(chart=>(chart.measures||[]).includes("count"));
+        if(def.apiSource){openChartDetail(displayChartDefinition(def.charts[0]));return;}
+        const candidates=dashboardCharts(view).filter(chart=>chart.source===kpi.source);
+        const target=candidates.find(chart=>chart.id===kpi.chart)||candidates.find(chart=>chart.dimension===kpi.field)||candidates.find(chart=>(chart.measures||[]).includes(kpi.field))||candidates.find(chart=>(chart.measures||[]).includes("count"));
         if(!target){openKpiDetail(kpi);return;}
         const state=chartDisplayStateByView.get(view)||{};
         state[target.id]={group:target.id,type:state[target.id]?.type||target.type};
@@ -815,7 +820,12 @@
 
     const chartGrid = document.getElementById("chartGrid");
     chartGrid.innerHTML = "";
-    (def.charts || []).forEach((chartDef, index) => {
+    const mainChartCount=(def.charts||[]).length;
+    let additionalBody=null;
+    if((def.additionalCharts||[]).length) {
+      const more=document.createElement("details");more.className="additional-chart-section";more.innerHTML='<summary>Outros indicadores de imóveis</summary><div class="chart-grid additional-chart-grid"></div>';chartGrid.appendChild(more);additionalBody=more.querySelector(".additional-chart-grid");more.addEventListener("toggle",()=>{if(more.open)for(const chart of chartInstances.values())chart.resize();});
+    }
+    dashboardCharts(view).forEach((chartDef, index) => {
       const card = document.createElement("article");
       card.className = "chart-card" + (index === 0 && view !== "qualidade" ? " wide" : "");
       card.dataset.chart = chartDef.id;
@@ -851,12 +861,13 @@
         card.querySelector(".chart-title-block p").textContent=selected.subtitle||"";
         if(currentPayload) renderPayload(currentPayload);
       }));
-      chartGrid.appendChild(card);
+      if(index<mainChartCount) chartGrid.insertBefore(card,chartGrid.querySelector(".additional-chart-section"));
+      else additionalBody.appendChild(card);
     });
 
     const sources = [...new Set([
       ...(def.kpis || []).map(x => x.source),
-      ...(def.charts || []).map(x => x.source)
+      ...dashboardCharts(view).map(x => x.source)
     ].filter(Boolean))];
     const summary = document.getElementById("sourceSummary");
     summary.innerHTML = sources.map(src =>
@@ -868,19 +879,78 @@
     setStatus("waiting", cfg.BACKEND_URL ? "Carregando dados" : "Dados indisponíveis");
   }
 
+  let syntheticHomeGeneration=0;
+  function renderSyntheticHome() {
+    hideMainViews();
+    destroyCharts();
+    currentPayload=null;
+    document.getElementById("syntheticHomeView").hidden=false;
+    document.getElementById("pageContext").textContent="INÍCIO";
+    document.getElementById("homeSummaryGroups").innerHTML="";
+    document.getElementById("homeSummaryStatus").textContent="Carregando os resumos autorizados…";
+  }
+  function homeCardHtml(card) {
+    return '<button type="button" class="home-summary-card" data-home-panel="'+escapeHtml(card.panelView||card.view)+'" data-home-source="'+escapeHtml(card.id)+'"><span class="home-card-name">'+escapeHtml(card.label)+'</span><strong data-home-count>—</strong><span class="home-card-state" data-home-state>Consultando registros…</span><span class="home-card-action">VER PAINEL <i class="mdi mdi-chevron-right"></i></span></button>';
+  }
+  async function loadSyntheticHome() {
+    const generation=++syntheticHomeGeneration;
+    ++dashboardLoadGeneration;
+    const homeTenant=tenantId;
+    const active=()=>generation===syntheticHomeGeneration&&currentView===HOME_VIEW&&tenantId===homeTenant;
+    const status=document.getElementById("homeSummaryStatus");
+    const button=document.getElementById("refreshHomeButton");
+    button.disabled=true;
+    try {
+      const catalog=await api("/api/home");
+      if(!active()) return;
+      const groups=catalog.groups||[];
+      document.getElementById("homeSummaryGroups").innerHTML=groups.map(group=>'<section class="home-summary-group"><header><i class="mdi mdi-'+escapeHtml(group.icon)+'"></i><h2>'+escapeHtml(group.label)+'</h2><span>'+group.cards.length+' resumos</span></header><div class="home-summary-grid">'+group.cards.map(homeCardHtml).join('')+'</div></section>').join('');
+      let next=0,finished=0,unavailable=0;
+      await Promise.all(Array.from({length:Math.min(2,groups.length)},async()=>{
+        while(next<groups.length&&active()) {
+          const group=groups[next++];
+          try {
+            const result=await api("/api/home/"+encodeURIComponent(group.id),{timeoutMs:30000});
+            if(!active()) return;
+            for(const card of result.cards||[]) {
+              const el=document.querySelector('[data-home-source="'+cssEscape(card.id)+'"]');
+              if(!el) continue;
+              el.querySelector("[data-home-count]").textContent=card.count===null?"—":Number(card.count).toLocaleString("pt-BR")+(card.partial?"+":"");
+              el.querySelector("[data-home-state]").textContent=card.state==="unavailable"?"Fonte indisponível":card.partial?"Registros consultados · contagem parcial":card.state==="reported"?"Total informado pela fonte":"Total de registros";
+              if(card.state==="unavailable") unavailable++;
+            }
+          } catch(error) {
+            if(!active()) return;
+            for(const card of group.cards){const el=document.querySelector('[data-home-source="'+cssEscape(card.id)+'"]');if(el)el.querySelector("[data-home-state]").textContent="Resumo indisponível · abra o painel";unavailable++;}
+          }
+          finished++;
+          status.textContent="Resumos atualizados: "+finished+" de "+groups.length+" grupos.";
+        }
+      }));
+      if(active()) status.textContent=groups.length?"Resumos atualizados"+(unavailable?" · "+unavailable+" fonte(s) indisponível(is)":"")+". Clique em um cartão para explorar.":"Nenhuma fonte liberada para este acesso.";
+    } catch(error) {if(active())status.textContent="Não foi possível carregar os resumos: "+error.message;}
+    finally {if(active())button.disabled=false;}
+  }
+  document.getElementById("homeSummaryGroups")?.addEventListener("click",event=>{const card=event.target.closest("[data-home-panel]");if(card)navigate(card.dataset.homePanel);});
+  document.getElementById("refreshHomeButton")?.addEventListener("click",()=>loadSyntheticHome());
+
+  function dashboardCharts(view=currentView) {
+    return [...(dashboards[view]?.charts||[]),...(dashboards[view]?.additionalCharts||[])];
+  }
+
   function compatibleChartGroups(chartDef,charts) {
-    const signature=JSON.stringify([...(chartDef.measures||[])].sort());
-    return charts.filter(item=>item.source===chartDef.source&&item.drill===chartDef.drill&&JSON.stringify([...(item.measures||[])].sort())===signature);
+    const signature=JSON.stringify([[...(chartDef.measures||[])].sort(),chartDef.detailFilters||{}]);
+    return charts.filter(item=>item.source===chartDef.source&&item.drill===chartDef.drill&&JSON.stringify([[...(item.measures||[])].sort(),item.detailFilters||{}])===signature);
   }
   function displayChartDefinition(chartDef) {
     const state=chartDisplayStateByView.get(currentView)?.[chartDef.id]||{};
-    const groups=compatibleChartGroups(chartDef,dashboards[currentView]?.charts||[]);
+    const groups=compatibleChartGroups(chartDef,dashboardCharts());
     const selected=groups.find(item=>item.id===state.group)||chartDef;
     const type=["bar","pie","doughnut","line"].includes(state.type)?state.type:selected.type;
     return {...selected,type};
   }
   function chartDisplayControls(chartDef) {
-    const groups=compatibleChartGroups(chartDef,dashboards[currentView]?.charts||[]);
+    const groups=compatibleChartGroups(chartDef,dashboardCharts());
     const selected=displayChartDefinition(chartDef);
     const grouping=groups.length>1?'<label>Agrupar por<select data-chart-display="group" aria-label="Agrupamento de '+escapeHtml(chartDef.title)+'">'+groups.map(item=>'<option value="'+escapeHtml(item.id)+'" '+(item.id===selected.id?'selected':'')+'>'+escapeHtml(item.groupLabel||item.title)+'</option>').join('')+'</select></label>':'<span class="chart-group-label">'+escapeHtml(selected.groupLabel||selected.title)+'</span>';
     return grouping+'<label>Tipo de gráfico<select data-chart-display="type" aria-label="Tipo de gráfico de '+escapeHtml(chartDef.title)+'">'+[["bar","Barras"],["pie","Pizza"],["doughnut","Rosca"],["line","Linhas"]].map(([value,label])=>'<option value="'+value+'" '+(value===selected.type?'selected':'')+'>'+label+'</option>').join('')+'</select></label>';
@@ -921,6 +991,8 @@
   }
 
   function fullChartValue(value, format) {
+    if(value===null||value===undefined)return "—";
+    if(format==="percent")return Number(value).toLocaleString("pt-BR",{maximumFractionDigits:2})+"%";
     const n=Number(value || 0);
     if(format==="currency"){
       return n.toLocaleString("pt-BR",{style:"currency",currency:"BRL",minimumFractionDigits:2,maximumFractionDigits:2});
@@ -941,7 +1013,7 @@
       card.querySelector('[data-chart-display="type"]').value="bar";
     }
     card.querySelector("h2").textContent=chartDef.title;
-    card.querySelector(".chart-title-block p").textContent=chartDef.subtitle||"";
+    card.querySelector(".chart-title-block p").textContent=data.note||chartDef.subtitle||"";
     const circular=["pie","doughnut"].includes(chartDef.type);
     const horizontal=chartDef.type==="bar"&&data.labels.length>15;
     card.querySelector(".chart-canvas-wrap").style.height=horizontal?Math.max(300,data.labels.length*26)+"px":"300px";
@@ -953,7 +1025,7 @@
       chartInstances.delete(baseChartId);
     }
 
-    const bethaPalette = ["#356ae6","#168a62","#7b68c8","#d99224","#3a8f9d","#c65e72","#657184","#9671bd"];
+    const bethaPalette = ["#168a62","#356ae6","#7b68c8","#d99224","#3a8f9d","#c65e72","#657184","#9671bd"];
     const chartDatasets = data.datasets.map((dataset,index) => {
       const color=bethaPalette[index % bethaPalette.length];
       const base={...dataset};
@@ -1069,6 +1141,7 @@
           const idx = elements[0].index;
           openChartDetail(chartDef, {
             label: data.labels[idx],
+            filters:chartDef.selectionFilter&&data.selectionValues?.[idx]?{[chartDef.selectionFilter]:data.selectionValues[idx]}:{},
             datasets: data.datasets.map(d => ({label:d.label || chartDef.title, value:d.data[idx]}))
           });
         }
@@ -1196,7 +1269,7 @@
   function chartSourceState(source,payload) {
     const audits=payload?.meta?.sourceAudit||{};
     const warnings=Array.isArray(payload?.meta?.warnings)?payload.meta.warnings:[];
-    const candidates=sourceKeyCandidates(source);
+    const candidates=[String(source),...sourceKeyCandidates(source)];
     const matched=candidates.map(key=>({key,audit:audits[key]})).filter(x=>x.audit);
     const warning=warnings.find(w=>candidates.includes(String(w?.source||"")));
     if(warning) return {kind:"error",detail:warning.errorDetail||warning.error||"Falha informada pela fonte"};
@@ -1217,6 +1290,8 @@
     const empty=card?.querySelector("[data-empty-state]");
     if(!empty) return;
     const state=chartSourceState(chartDef.source,payload);
+    const data=payload?.charts?.[displayChartDefinition(chartDef).id];
+    if(chartDef.apiPanel&&data){empty.querySelector("strong").textContent=data.status==="unavailable"?"Indicador indisponível":data.status==="missing-fields"?"Campos necessários não informados":"Sem registros neste recorte";empty.querySelector("span").textContent=data.note||"Confira os filtros selecionados.";empty.hidden=false;return;}
     const title=empty.querySelector("strong");
     const detail=empty.querySelector("span");
     if(state.kind==="error"){
@@ -1246,7 +1321,7 @@
       const el = document.querySelector(`[data-kpi="${cssEscape(kpi.id)}"] [data-value]`);
       const raw = kpis[kpi.id];
       const sourceState=chartSourceState(kpi.source,payload);
-      if (el && raw !== undefined) el.textContent =
+      if (el && raw !== undefined) el.textContent = raw===null?"—":
         sourceState.kind==="error" || (sourceState.kind==="partial"&&Number(raw)===0)
           ? "—" : formatValue(raw, kpi.format);
     }
@@ -1254,10 +1329,10 @@
     renderPersonalHome();
 
     const charts = payload.charts || {};
-    for (const chartDef of def.charts || []) {
+    for (const chartDef of dashboardCharts()) {
       const chartData=charts[displayChartDefinition(chartDef).id];
       const hasData=chartData && Array.isArray(chartData.labels) && chartData.labels.length &&
-        Array.isArray(chartData.datasets) && chartData.datasets.some(ds=>Array.isArray(ds.data) && ds.data.some(v=>Number(v)!==0));
+        Array.isArray(chartData.datasets) && chartData.datasets.some(ds=>Array.isArray(ds.data) && ds.data.some(v=>v!==null&&Number(v)!==0||chartDef.apiPanel&&v!==null));
       if (hasData) renderChartData(chartDef,chartData);
       else renderChartEmptyState(chartDef,payload);
     }
@@ -2246,7 +2321,36 @@
     throw new Error("DASHBOARD_BATCH_LIMIT");
   }
 
+  function apiPanelPath(source) {return "/api/panels/"+source.split(":").map(encodeURIComponent).join("/");}
+  async function loadApiPanelDashboard(view) {
+    const generation=++dashboardLoadGeneration,activeTenant=tenantId;
+    const active=()=>generation===dashboardLoadGeneration&&currentView===view&&tenantId===activeTenant;
+    const params=new URLSearchParams({periodo:document.getElementById("periodo").value,exercicio:document.getElementById("exercicio").value,loadId:crypto.randomUUID()});
+    for(const [k,v]of Object.entries(currentDashboardFilters(view)))params.set(k,v);
+    setRefreshBusy(true);setDashboardLoading(true);setStatus("waiting","Consultando os indicadores da entidade…");
+    try {
+      let pending=0;
+      for(let batch=0;batch<600&&active();batch++){
+        let payload;
+        try {payload=await api(apiPanelPath(dashboards[view].apiSource)+"?"+params.toString(),{timeoutMs:60000});pending=0;}
+        catch(error){if(error.message!=="DASHBOARD_BATCH_PENDING"||pending++>=30)throw error;await new Promise(resolve=>setTimeout(resolve,1500));continue;}
+        if(!active())return;
+        renderPayload(payload);setLastUpdated(payload.meta?.updatedAt,"Betha");
+        const loaded=Object.values(payload.meta?.sourceRows||{}).reduce((a,b)=>a+Number(b||0),0);
+        const audits=Object.values(payload.meta?.sourceAudit||{}),complete=audits.length&&audits.every(a=>a.complete);
+        if(!payload.loading?.hasMore){setStatus(complete?"online":"waiting",complete?"Fontes consultadas · confira os avisos de cada indicador":"Consulta concluída com limitações · confira a cobertura das fontes");return;}
+        setStatus("waiting",loaded.toLocaleString("pt-BR")+" registros consultados · cálculos parciais");
+        params.set("cursor",JSON.stringify(payload.loading.cursor||{}));
+        await new Promise(resolve=>setTimeout(resolve,1200));
+      }
+      if(active())throw new Error("Limite de consulta atingido; os números exibidos são parciais.");
+    }catch(error){if(active()){setDashboardLoading(false);setStatus("error",error.message||"Consulta indisponível");showToast("Não foi possível concluir a consulta dos indicadores.");}}
+    finally{if(active())setRefreshBusy(false);}
+  }
+
   async function loadDashboardData(view, options = {}) {
+    if(view===HOME_VIEW) return loadSyntheticHome();
+    if(dashboards[view]?.apiSource) return loadApiPanelDashboard(view);
     const generation=++dashboardLoadGeneration;
     const requestedTenant=tenantId;
     const isActive=()=>generation===dashboardLoadGeneration&&view===currentView&&tenantId===requestedTenant;
@@ -2411,7 +2515,7 @@
 
   function auditForSource(source) {
     const audits=currentPayload?.meta?.sourceAudit||{};
-    for(const key of sourceKeyCandidates(source)){
+    for(const key of [String(source),...sourceKeyCandidates(source)]){
       if(audits[key]) return {key,audit:audits[key]};
     }
     return null;
@@ -2454,7 +2558,10 @@
   }
 
   function valueDisplay(value,format) {
+    if(value===null||value===undefined)return "—";
+    if(format==="percent")return Number(value).toLocaleString("pt-BR",{maximumFractionDigits:2})+"%";
     if(value===null || value===undefined || value==="") return "—";
+    if(format==="percent") return Number(value).toLocaleString("pt-BR",{maximumFractionDigits:2})+"%";
     if(format==="currency") return Number(value||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
     if(format==="percent") return Number(value||0).toLocaleString("pt-BR",{maximumFractionDigits:2})+"%";
     return Number.isFinite(Number(value)) ? Number(value).toLocaleString("pt-BR") : String(value);
@@ -2469,8 +2576,8 @@
     const grand=totals.reduce((a,b)=>a+b,0);
     const rows=data.labels.map((label,index)=>{
       const cells=datasets.map((ds,di)=>{
-        const value=Number(ds.data?.[index]||0);
-        const percent=grand>0 ? (value/grand)*100 : null;
+        const value=ds.data?.[index]??null;
+        const percent=grand>0&&!data.nonAdditive ? (value/grand)*100 : null;
         return `<td><strong>${escapeHtml(valueDisplay(value,data.format))}</strong>${percent!==null ? `<small class="detail-percent">${percent.toLocaleString("pt-BR",{maximumFractionDigits:1})}%</small>` : ""}</td>`;
       }).join("");
       return `<tr><td>${escapeHtml(String(label))}</td>${cells}</tr>`;
@@ -2484,7 +2591,7 @@
           </thead>
           <tbody>${rows}</tbody>
           <tfoot>
-            <tr><th>Total exibido</th>${datasets.map((ds,i)=>`<th>${escapeHtml(valueDisplay(totals[i],data.format))}</th>`).join("")}</tr>
+            <tr><th>Total exibido</th>${datasets.map((ds,i)=>`<th>${escapeHtml(data.nonAdditive?"—":valueDisplay(totals[i],data.format))}</th>`).join("")}</tr>
           </tfoot>
         </table>
       </div>
@@ -2822,7 +2929,7 @@
       params.set("offset",String(offset));
 
       const payload=await api(
-        "/api/detail/"+encodeURIComponent(resource)+"?"+params.toString(),
+        detailApiUrl(resource,params),
         {timeoutMs:30000}
       );
 
@@ -3086,9 +3193,19 @@
   let detailPageOffsets=[];
   function detailRequestParams(container,offset,qualityIssue) {
     const linked=Boolean(container.dataset.relationValue);
+    if(container.dataset.panelSnapshot){
+      const frozen=new URLSearchParams(container.dataset.panelSnapshot);frozen.set("offset",String(offset||0));frozen.set("limit","25");
+      for(const input of container.querySelectorAll("[data-detail-param]"))if(input.value.trim())frozen.set(input.dataset.detailParam,input.value.trim());
+      return frozen;
+    }
     const params=new URLSearchParams({periodo:linked?"todos":document.getElementById("periodo")?.value||"todos",exercicio:document.getElementById("exercicio")?.value||String(new Date().getFullYear()),limit:"25",offset:String(offset||0)});
     if(!linked) for(const [key,value] of Object.entries(currentDashboardFilters())) params.set(key,value);
     if(qualityIssue) params.set("qualityIssue",qualityIssue);
+    let chartFilters={};try {chartFilters=JSON.parse(container.dataset.chartFilters||"{}");} catch {}
+    for(const [key,value] of Object.entries(chartFilters)) {
+      if(params.has(key)&&params.get(key)!==String(value)) params.set("detailNoMatch","1");
+      else params.set(key,String(value));
+    }
     for(const input of container.querySelectorAll("[data-detail-param]")) if(input.value.trim()) params.set(input.dataset.detailParam,input.value.trim());
     if(linked) params.set(container.dataset.relationKey,container.dataset.relationValue);
     return params;
@@ -3125,7 +3242,7 @@
         if(seen.has(scanOffset)) throw new Error("A fonte não avançou na paginação.");
         seen.add(scanOffset);
         params.set("offset",String(scanOffset));
-        payload=await api("/api/detail/"+encodeURIComponent(resource)+"?"+params.toString(),{timeoutMs:30000});
+        payload=await api(detailApiUrl(resource,params),{timeoutMs:30000});
         if(!isActive()) return;
         if(!payload.pagination?.searching) break;
         scanOffset=Number(payload.pagination.nextOffset);
@@ -3141,7 +3258,7 @@
       const pageIndex=detailPageOffsets.indexOf(offset);
       const linked=Boolean(container.dataset.relationValue);
       const localSummary=[params.get("detailSearch"),params.get("detailValue"),params.get("detailFrom"),params.get("detailTo")].filter(Boolean).map(escapeHtml).join(" · ");
-      container.innerHTML=(linked?'<div class="detail-context-bar"><strong>Parcelamento '+escapeHtml(container.dataset.relationValue)+' · Todos os exercícios</strong><button type="button" class="btn-secondary-betha" data-parent-detail>VOLTAR AOS PARCELAMENTOS</button></div>':detailContextHtml())+(localSummary?'<p class="detail-filter-summary">Filtros do analítico: '+localSummary+'</p>':'')+installmentSummaryHtml(payload)+analyticFilterControls(payload,params)+detailPageTable(payload)+
+      container.innerHTML=(linked?'<div class="detail-context-bar"><strong>Parcelamento '+escapeHtml(container.dataset.relationValue)+' · Todos os exercícios</strong><button type="button" class="btn-secondary-betha" data-parent-detail>VOLTAR AOS PARCELAMENTOS</button></div>':container.dataset.panelSnapshot?'<p class="detail-filter-summary">Recorte preservado do gráfico · '+escapeHtml(new URLSearchParams(container.dataset.panelSnapshot).get('panelCategory')||'Todas as categorias')+(payload.partial?' · Carga parcial':'')+'</p>':detailContextHtml())+(payload.note?'<p class="detail-summary-note">'+escapeHtml(payload.note)+'</p>':'')+(localSummary?'<p class="detail-filter-summary">Filtros do analítico: '+localSummary+'</p>':'')+installmentSummaryHtml(payload)+analyticFilterControls(payload,params)+detailPageTable(payload)+
         '<div class="detail-pagination"><div class="detail-page-summary"><strong>Página '+(pageIndex+1)+'</strong><span>'+Number(pagination.loaded||0).toLocaleString("pt-BR")+' registro(s) exibidos</span></div><div class="detail-page-actions">'+
         (pageIndex>0?'<button class="btn-secondary-betha" type="button" data-prev-detail>ANTERIOR</button>':'')+
         (pagination.hasMore?'<button class="btn-secondary-betha" type="button" data-next-detail>PRÓXIMA</button>':'')+'</div></div>';
@@ -3197,7 +3314,25 @@
     }
   }
 
+  function openApiPanelDetail(chartDef,selected) {
+    const data=currentPayload?.charts?.[chartDef.id];
+    const snapshot=currentPayload?.meta?.snapshot;
+    if(!snapshot){showToast("Aguarde a primeira consulta para detalhar.");return;}
+    const params=new URLSearchParams({periodo:document.getElementById("periodo").value,exercicio:document.getElementById("exercicio").value,loadId:snapshot.loadId,cursor:JSON.stringify(snapshot.cursor)});
+    for(const [k,v]of Object.entries(currentDashboardFilters()))params.set(k,v);
+    if(selected?.label)params.set("panelCategory",selected.label);
+    const resource="panel~"+chartDef.apiSource+"~"+chartDef.apiPanel;
+    openDrawer(chartDef.title,'<section class="drawer-section"><p>'+escapeHtml(data?.note||"Registros que compõem o indicador, com os filtros deste painel.")+'</p>'+(selected?.label?'<p><strong>Categoria: '+escapeHtml(selected.label)+'</strong></p>':'')+chartSeriesTable(chartDef,data)+'</section><section class="drawer-section"><h3>Registros do indicador</h3><div data-detail-container data-detail-resource="'+escapeHtml(resource)+'"></div></section>');
+    const container=document.querySelector("[data-detail-container]");container.dataset.panelSnapshot=params.toString();
+    loadDetailRecords(resource,0);
+  }
+  function detailApiUrl(resource,params) {
+    if(resource.startsWith("panel~")){const [,source,panel]=resource.split("~");return apiPanelPath(source)+"/detail/"+encodeURIComponent(panel)+"?"+params.toString();}
+    return "/api/detail/"+encodeURIComponent(resource)+"?"+params.toString();
+  }
+
   function openChartDetail(chartDef, selected) {
+    if(chartDef.apiPanel){openApiPanelDetail(chartDef,selected);return;}
     const data=currentPayload?.charts?.[chartDef.id];
     let selectedHtml="";
     if(selected){
@@ -3241,6 +3376,8 @@
       ${drillProgressHtml(chartDef.source,chartDef.drill)}
     `);
 
+    const container=document.querySelector("[data-detail-container]");
+    if(container) container.dataset.chartFilters=JSON.stringify({...chartDef.detailFilters,...selected?.filters});
     const detailResource=detailResourceFor(chartDef.source,chartDef.drill);
     if(detailResource){
       loadDetailRecords(detailResource,0);
@@ -3425,6 +3562,7 @@
   }
 
   function hideMainViews() {
+    document.getElementById("syntheticHomeView").hidden=true;
     document.getElementById("dashboardView").hidden = true;
     document.getElementById("usersAdminView").hidden = true;
     document.getElementById("configAdminView").hidden = true;

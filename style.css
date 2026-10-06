@@ -3079,3 +3079,25 @@ html,body{
 @media(max-width:600px){.chart-display-controls{padding:0 14px 12px;}.chart-display-controls label{flex-basis:120px;}}
 
 .chart-card.chart-highlight {outline:2px solid #078a61; outline-offset:3px;}
+
+.home-summary-context,#homeSummaryStatus {font-size:13px; color:#66766e;}
+.home-summary-group {margin:28px 0;}
+.home-summary-group>header {display:flex; align-items:center; gap:10px; margin-bottom:14px; color:#244b3a;}
+.home-summary-group h2 {font-size:18px; margin:0;}
+.home-summary-group>header>span {font-size:12px; color:#7e8c84; margin-left:auto;}
+.home-summary-grid {display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px;}
+.home-summary-card {position:relative; min-height:152px; display:flex; flex-direction:column; align-items:flex-start; gap:10px; text-align:left; padding:20px; border:1px solid #dfe8e3; border-top:3px solid #a3d8bd; border-radius:16px; background:linear-gradient(145deg,#fff,#f5f8f6); color:#17273b; cursor:pointer; transition:box-shadow .18s,transform .18s;}
+.home-summary-card:hover {box-shadow:0 8px 24px #173d2520; transform:translateY(-2px);}
+.home-summary-card:focus-visible {outline:2px solid #078a61; outline-offset:3px;}
+.home-card-name {font-size:13px; color:#587164;}
+.home-summary-card>strong {font-size:27px; line-height:1.2;}
+.home-card-state {font-size:11px; color:#77877e;}
+.home-card-action {font-size:11px; font-weight:700; color:#078a61; margin-top:auto; align-self:flex-end;}
+@media(max-width:1100px){.home-summary-grid{grid-template-columns:repeat(3,minmax(0,1fr));}}
+@media(max-width:800px){.home-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:500px){.home-summary-grid{grid-template-columns:1fr;}.home-summary-card{min-height:135px;}}
+
+.additional-chart-section {grid-column:1/-1; margin:16px 0;}
+.additional-chart-section>summary {cursor:pointer; color:#426755; font-size:14px; font-weight:600; padding:16px; border:1px solid #e2ebe5; border-radius:8px;}
+.additional-chart-grid {display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin-top:18px;}
+@media(max-width:700px){.additional-chart-grid{grid-template-columns:1fr;}}

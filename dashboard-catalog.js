@@ -217,8 +217,14 @@ window.BI_DASHBOARDS = {
       {id:"transferencias",label:"Transferências",format:"number",source:"bi:transferencias-imoveis",field:"id"}
     ],
     charts: [
-      {id:"bairro-imoveis",groupLabel:"Bairro",title:"Imóveis por bairro",subtitle:"Distribuição territorial do cadastro.",type:"bar",source:"bi:imoveis",dimension:"nomeBairro",measures:["count"],drill:"imoveis"},
+      {id:"imoveis-geral",title:"Imóveis — geral",groupLabel:"Geral",subtitle:"Quantidade de imóveis urbanos e rurais no recorte selecionado.",type:"doughnut",source:"bi:imoveis",dimension:"zona",measures:["count"],drill:"imoveis"},
+      {id:"bairro-imoveis",title:"Imóveis por bairro",groupLabel:"Bairro",subtitle:"Todos os bairros do recorte selecionado.",type:"bar",source:"bi:imoveis",dimension:"nomeBairro",measures:["count"],drill:"imoveis"},
       {id:"logradouro-imoveis",title:"Imóveis por rua",groupLabel:"Rua / logradouro",subtitle:"Todos os logradouros do recorte selecionado.",type:"bar",source:"bi:imoveis",dimension:"nomeLogradouro",measures:["count"],drill:"imoveis"},
+      {id:"imoveis-urbanos",title:"Imóveis urbanos",groupLabel:"Urbanos por bairro",subtitle:"Imóveis urbanos por bairro, respeitando os filtros da tela.",type:"bar",source:"bi:imoveis",dimension:"nomeBairro",measures:["count"],drill:"imoveis",detailFilters:{zona:"urbana"}},
+      {id:"imoveis-rurais",title:"Imóveis rurais",groupLabel:"Rurais por bairro",subtitle:"Imóveis rurais por bairro, respeitando os filtros da tela.",type:"bar",source:"bi:imoveis",dimension:"nomeBairro",measures:["count"],drill:"imoveis",detailFilters:{zona:"rural"}},
+      {id:"imoveis-contribuinte",title:"Imóveis por contribuinte",subtitle:"Imóveis distintos por responsável cadastrado. Um imóvel pode ter mais de um responsável.",type:"bar",source:"bi:imoveis|bi:imoveis-responsaveis",dimension:"responsavel.nome",measures:["countDistinctImoveis"],drill:"imoveis",selectionFilter:"contribuinteId"}
+    ],
+    additionalCharts: [
       {id:"setor-imoveis",groupLabel:"Setor",title:"Imóveis por setor",subtitle:"Distribuição por setor cadastral.",type:"bar",source:"bi:imoveis",dimension:"setor",measures:["count"],drill:"imoveis"},
       {id:"rural-urbano",groupLabel:"Zona rural / urbana",title:"Rural × urbano",subtitle:"Composição da base imobiliária.",type:"doughnut",source:"bi:imoveis",dimension:"rural",measures:["count"],drill:"imoveis"},
       {id:"ativos-inativos-imoveis",groupLabel:"Situação cadastral",title:"Ativos × desativados",subtitle:"Situação dos registros imobiliários.",type:"doughnut",source:"bi:imoveis",dimension:"desativado",measures:["count"],drill:"imoveis"},
@@ -489,6 +495,7 @@ Object.assign(window.BI_DASHBOARDS, {
 });
 
 window.BI_MENU = [
+  {id:"inicio",descricao:"Início",icone:"home-outline",rota:"inicio",possuiPermissao:true},
   { id:"grupo-executivo", descricao:"Executivo", icone:"view-dashboard-outline", possuiPermissao:true, submenus:[
     {id:"visao-geral",descricao:"Visão geral",icone:"view-dashboard-outline",rota:"visao-geral",possuiPermissao:true},
     {id:"encerramento",descricao:"Encerramento mensal",icone:"calendar-month-outline",rota:"encerramento",possuiPermissao:true},

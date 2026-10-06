@@ -13,7 +13,7 @@ function frontend() {
  let config;
  context.Chart=class {constructor(canvas,input){config=input;}destroy(){}};
  const src=fs.readFileSync('app.js','utf8');
- vm.runInContext(src.slice(src.indexOf('  function compatibleChartGroups('),src.indexOf('  function renderOverviewAttention(')),context);
+ vm.runInContext(src.slice(src.indexOf('  function dashboardCharts('),src.indexOf('  function renderOverviewAttention(')),context);
  return {context,nodes,config:()=>config};
 }
 test('compatible groupings preserve source and indicator, and reject unrelated measures',()=>{
@@ -22,7 +22,7 @@ test('compatible groupings preserve source and indicator, and reject unrelated m
  const base=charts.find(x=>x.id==='bairro-imoveis');
  const choices=c.compatibleChartGroups(base,charts);
  assert.ok(choices.some(x=>x.id==='logradouro-imoveis'));
- assert.ok(choices.some(x=>x.id==='rural-urbano'));
+ assert.ok(choices.some(x=>x.id==='imoveis-geral'));
  assert.ok(!choices.some(x=>x.id==='iptu-pagamentos'||x.id==='planta-valores'));
  for(const dashboard of Object.values(c.dashboards))for(const chart of dashboard.charts||[]){const choices=c.compatibleChartGroups(chart,dashboard.charts);assert.ok(choices.some(x=>x.id===chart.id));for(const choice of choices)assert.equal(choice.source,chart.source);}
 });
@@ -36,7 +36,7 @@ test('switching from bairros to streets uses street data, renders pizza and keep
  assert.equal(c.displayChartDefinition(base).drill,'imoveis');
 });
 test('long street distributions keep every category and use scrollable horizontal bars; negative values stay in bars',()=>{
- const {context:c,config,nodes}=frontend();const base=c.dashboards.imobiliario.charts[0];
+ const {context:c,config,nodes}=frontend();const base=c.dashboards.imobiliario.charts.find(x=>x.id==='bairro-imoveis');
  c.currentPayload={charts:{}};
  const labels=Array.from({length:30},(_,i)=>'Rua '+i);
  c.renderChartData(base,{labels,format:'number',datasets:[{data:labels.map(()=>1)}]});
