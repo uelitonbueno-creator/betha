@@ -8,6 +8,10 @@
     {
       "binding": "BI_SESSIONS",
       "id": "32b40317f22445b1aef3c32dd437da02"
+    },
+    {
+      "binding": "AUTH_SESSIONS",
+      "id": "926d603855554893b5041221659ab669"
     }
   ],
   "previews": {
@@ -15,6 +19,10 @@
       {
         "binding": "BI_SESSIONS",
         "id": "f14fdf3d19514516896c9a0bc38d5c5d"
+      },
+      {
+        "binding": "AUTH_SESSIONS",
+        "id": "44991535129f478db5a5728f3877b685"
       }
     ]
   }
