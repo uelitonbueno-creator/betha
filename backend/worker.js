@@ -1960,25 +1960,60 @@ function matchingAccesses(accesses, context) {
   });
 }
 
+function accessUserAccess(access) {
+  if (!access || typeof access!=="object") return "";
+  const direct=[
+    access.userAccess,
+    access.user_access,
+    access["user-access"],
+    access.authorization && access.authorization.userAccess,
+    access.authorization && access.authorization.user_access,
+    access.credentials && access.credentials.userAccess
+  ];
+  for (const value of direct) {
+    if (typeof value==="string" && value.trim()) return value.trim();
+  }
+
+  // Betha clients expose the context credential as userAccess. Keep the
+  // lookup conservative, accepting only fields whose normalized name is
+  // exactly "useraccess" and never generic token/access fields.
+  const containers=[access,access.authorization,access.credentials,access.contextData];
+  for (const obj of containers) {
+    if (!obj || typeof obj!=="object" || Array.isArray(obj)) continue;
+    for (const [key,value] of Object.entries(obj)) {
+      if (String(key).replace(/[-_]/g,"").toLowerCase()!=="useraccess") continue;
+      if (typeof value==="string" && value.trim()) return value.trim();
+    }
+  }
+  return "";
+}
+
 function matchAccess(accesses, context) {
   const matches=matchingAccesses(accesses,context);
   if (!matches.length) return null;
 
-  // O endpoint @me/access já representa acessos vinculados ao usuário atual.
-  // Havendo mais de um registro para o mesmo contexto, prefere um registro
-  // ainda válido e com aceite explícito quando disponível, mas não bloqueia
-  // todo o contexto somente porque um registro legado veio accepted=false.
   const now=Date.now();
   const usable=matches.filter(access=>{
     if (access.expiresIn && new Date(access.expiresIn).getTime() < now) return false;
     return true;
   });
-
   if (!usable.length) return null;
 
-  return usable.find(access=>access.accepted===true) ||
-    usable.find(access=>access.accepted===undefined || access.accepted===null) ||
-    usable[0];
+  // A mesma entidade pode retornar vários acessos (sistemas/licenças). Para
+  // operações de gerenciamento, um acesso administrador não técnico deve ter
+  // precedência sobre um acesso técnico ou somente de leitura. Mantemos o
+  // aceite explícito como o sinal mais forte.
+  const ranked=usable.map((access,index)=>{
+    let score=0;
+    if (access.accepted===true) score+=100;
+    else if (access.accepted===undefined || access.accepted===null) score+=50;
+    if (access.admin===true) score+=20;
+    if (access.technical!==true) score+=5;
+    if (accessUserAccess(access)) score+=2;
+    return {access,index,score};
+  }).sort((a,b)=>b.score-a.score||a.index-b.index);
+
+  return ranked[0].access;
 }
 
 async function authorizeTenant(request, env, tenant) {
@@ -1991,7 +2026,12 @@ async function authorizeTenant(request, env, tenant) {
   const access=matchAccess(accesses,context);
   if (!access) throw new Error("TENANT_ACCESS_DENIED");
   if (access.expiresIn && new Date(access.expiresIn).getTime() < Date.now()) throw new Error("TENANT_ACCESS_EXPIRED");
-  return {userToken,access,context};
+
+  // Management APIs must receive the User-Access that belongs to the logged
+  // user's OAuth token. The tenant credential is a service User-Access used by
+  // BI/data APIs and can be rejected with 403 when paired with a user token.
+  const userAccess=accessUserAccess(access) || tenant.userAccess;
+  return {userToken,userAccess,access,context};
 }
 
 function buildForwardedQuery(url) {
@@ -5100,7 +5140,7 @@ async function publishPageMapping(tenant) {
   };
 }
 
-async function listContextUsers(userToken, tenant, url) {
+async function listContextUsers(userToken, userAccess, url) {
   const params=new URLSearchParams();
   params.set("limit",url.searchParams.get("limit") || "100");
   params.set("offset",url.searchParams.get("offset") || "0");
@@ -5108,7 +5148,7 @@ async function listContextUsers(userToken, tenant, url) {
   return platformRequest(target,{headers:{
     "Accept":"application/json",
     "Authorization":"Bearer "+userToken,
-    "User-Access":tenant.userAccess
+    "User-Access":userAccess
   }});
 }
 
@@ -5125,26 +5165,26 @@ async function searchCentralUser(userToken, user) {
   }});
 }
 
-async function createContextUser(userToken, tenant, body) {
+async function createContextUser(userToken, userAccess, body) {
   return platformRequest(AUTH_BASE+"/user-accounts/v0.1/api/management/access",{
     method:"POST",
     headers:{
       "Accept":"application/json",
       "Content-Type":"application/json",
       "Authorization":"Bearer "+userToken,
-      "User-Access":tenant.userAccess
+      "User-Access":userAccess
     },
     body:JSON.stringify(body)
   });
 }
 
-async function deleteContextUser(userToken, tenant, accessId) {
+async function deleteContextUser(userToken, userAccess, accessId) {
   return platformRequest(AUTH_BASE+"/user-accounts/v0.1/api/management/access/"+encodeURIComponent(accessId),{
     method:"DELETE",
     headers:{
       "Accept":"application/json",
       "Authorization":"Bearer "+userToken,
-      "User-Access":tenant.userAccess
+      "User-Access":userAccess
     }
   });
 }
@@ -6876,7 +6916,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-06-sync-round-robin-v75",
+        buildVersion:"2026-10-06-user-access-context-v76",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
@@ -7672,7 +7712,7 @@ export default {
         const tenant=await resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
         requireConstraintPermission(auth,"BIUsuariosPage");
-        const body=await listContextUsers(auth.userToken,tenant,url);
+        const body=await listContextUsers(auth.userToken,auth.userAccess,url);
         return json(request,env,200,body);
       } catch(error) {
         return errorResponse(request,env,error);
@@ -7710,7 +7750,7 @@ export default {
           expiresIn:body && body.expiresIn ? String(body.expiresIn) : null
         };
 
-        const created=await createContextUser(auth.userToken,tenant,payload);
+        const created=await createContextUser(auth.userToken,auth.userAccess,payload);
         await writeAuditEvent(env,{
           tenantId:tenant.id,
           actor:auditActorLabel(auth.access),
@@ -7732,7 +7772,7 @@ export default {
         const tenant=await resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
         if (!auth.access || (!auth.access.admin && !auth.access.technical)) throw new Error("ADMIN_REQUIRED");
-        const body=await deleteContextUser(auth.userToken,tenant,deleteUserMatch[1]);
+        const body=await deleteContextUser(auth.userToken,auth.userAccess,deleteUserMatch[1]);
         await writeAuditEvent(env,{
           tenantId:tenant.id,
           actor:auditActorLabel(auth.access),
