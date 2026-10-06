@@ -1040,14 +1040,161 @@ async function readPanelSnapshot(env,key,sourceKey,pages) {
 // Background source snapshots are scoped to the saved credentials and entity.
 const SYNC_TTL=7*24*3600;
 const SYNC_INTERVALS=[0,15,30,60,180,360,720,1440];
+const SYNC_SOURCES_PER_TICK=8;
+const SYNC_CONCURRENCY=4;
+const SYNC_MAX_RETRIES=4;
+const SYNC_PAGE_SIZES=[250,100,50];
+const SYNC_TIMEOUT_BY_PAGE={250:10000,100:14000,50:18000};
+
 async function syncScope(tenant){return 'bi-sync:v1:'+await sha256Hex(JSON.stringify([tenant.id,tenant.entityId,tenant.databaseId,tenant.userAccess,tenant.accessToken]));}
 async function syncConfig(env,tenant){return await env.BI_SESSIONS.get(await syncScope(tenant)+':config','json')||{enabled:false,intervalMinutes:60};}
 async function syncJob(env,tenant,id){if(!/^[a-f0-9-]{36}$/i.test(id||''))throw new Error('DASHBOARD_CURSOR_INVALID');return env.BI_SESSIONS.get(await syncScope(tenant)+':job:'+id,'json');}
 function publicSyncJob(job){if(!job)return null;const {id,state,startedAt,finishedAt,completed,total,rows,failures}=job;return {id,state,startedAt,finishedAt,completed,total,rows,failures};}
+
+function syncErrorCode(error){
+ return String(error&&error.message||'SOURCE_UNAVAILABLE');
+}
+function syncIsTransientCode(code){
+ return code==='The operation was aborted'||code==='AbortError'||code==='REQUEST_TIMEOUT'||
+   /^BETHA_HTTP_(408|409|425|429|5\d\d)$/.test(String(code||''));
+}
+function syncNextPageSize(size){
+ const n=Number(size)||250;
+ if(n>100)return 100;
+ return 50;
+}
+function normalizeSyncEntry(raw={}){
+ const complete=raw.complete===true,error=raw.error||null;
+ const loaded=Math.max(0,Number(raw.loaded)||0);
+ const candidateOffset=Number(raw.nextOffset);
+ return {
+  ...raw,
+  pages:Math.max(0,Number(raw.pages)||0),
+  loaded,
+  complete,
+  error,
+  nextOffset:Number.isFinite(candidateOffset)&&candidateOffset>=0?candidateOffset:(complete||error?null:loaded),
+  pageSize:SYNC_PAGE_SIZES.includes(Number(raw.pageSize))?Number(raw.pageSize):250,
+  retryCount:Math.max(0,Number(raw.retryCount)||0),
+  stablePages:Math.max(0,Number(raw.stablePages)||0),
+  lastError:raw.lastError||null,
+  lastErrorAt:raw.lastErrorAt||null
+ };
+}
+function setSyncFailure(job,source,entry){
+ job.failures=(job.failures||[]).filter(item=>item&&item.source!==source);
+ if(entry.error){
+  const failure={source,error:entry.error};
+  if(entry.errorDetail)failure.detail=entry.errorDetail;
+  job.failures.push(failure);
+ }
+}
+function normalizeRunningSyncJob(job,cards){
+ job.sources=job.sources&&typeof job.sources==='object'?job.sources:{};
+ job.failures=Array.isArray(job.failures)?job.failures:[];
+ for(const card of cards){
+  if(!job.sources[card.id])continue;
+  const entry=normalizeSyncEntry(job.sources[card.id]);
+  // Jobs created by older versions marked timeouts as permanent. Reopen only
+  // transient failures so an in-flight initial load can recover after deploy.
+  if(entry.error&&syncIsTransientCode(entry.error)){
+   entry.lastError=entry.error;
+   entry.lastErrorAt=entry.lastErrorAt||new Date().toISOString();
+   entry.error=null;
+   entry.complete=false;
+   entry.retryCount=Math.max(1,entry.retryCount);
+   entry.pageSize=syncNextPageSize(entry.pageSize);
+   entry.nextOffset=entry.loaded;
+  }
+  job.sources[card.id]=entry;
+  setSyncFailure(job,card.id,entry);
+ }
+ job.completed=cards.reduce((count,card)=>{
+  const entry=job.sources[card.id];
+  return count+(entry&&(entry.complete||entry.error)?1:0);
+ },0);
+ job.total=cards.length;
+ job.sourceIndex=((Number(job.sourceIndex)||0)%Math.max(1,cards.length)+Math.max(1,cards.length))%Math.max(1,cards.length);
+ delete job.offset;
+ return job;
+}
+function pendingSyncIndexes(job,cards,limit=SYNC_SOURCES_PER_TICK){
+ const out=[];
+ if(!cards.length)return out;
+ const start=job.sourceIndex%cards.length;
+ let scanned=0;
+ while(scanned<cards.length&&out.length<limit){
+  const index=(start+scanned)%cards.length;
+  const entry=job.sources[cards[index].id];
+  if(!entry||(!entry.complete&&!entry.error))out.push(index);
+  scanned++;
+ }
+ job.sourceIndex=(start+scanned)%cards.length;
+ return out;
+}
+async function advanceSyncSource(env,tenant,scope,job,card){
+ const entry=normalizeSyncEntry(job.sources[card.id]||{});
+ try{
+  if(entry.pages>=500)throw new Error('SOURCE_PAGE_LIMIT');
+  const pageSize=entry.pageSize||250;
+  const timeout=SYNC_TIMEOUT_BY_PAGE[pageSize]||14000;
+  const result=await fetchBethaRows({...env,BI_SOURCE_TIMEOUT_MS:timeout},tenant,card.source,card.resource,{
+   limit:pageSize,
+   maxPages:1,
+   startOffset:entry.nextOffset||0
+  });
+  const fingerprint=JSON.stringify(result.rows.slice(0,10).map(r=>r.id??r.codigo??r));
+  if(entry.fingerprint&&entry.fingerprint===fingerprint&&result.loaded)throw new Error('SOURCE_PAGINATION_REPEATED');
+  await env.BI_SESSIONS.put(scope+':rows:'+job.id+':'+card.id+':'+entry.pages,JSON.stringify(result.rows),{expirationTtl:SYNC_TTL});
+  entry.pages++;
+  entry.loaded+=result.loaded;
+  entry.fingerprint=fingerprint;
+  entry.complete=result.complete===true;
+  entry.nextOffset=entry.complete?null:result.nextOffset;
+  entry.error=null;
+  delete entry.errorDetail;
+  entry.lastError=null;
+  entry.lastErrorAt=null;
+  entry.retryCount=0;
+  entry.stablePages=(entry.stablePages||0)+1;
+  // Once a reduced page size has been stable for several pages, cautiously
+  // restore throughput. Any new timeout immediately backs it down again.
+  if(!entry.complete&&entry.stablePages>=8&&entry.pageSize<250){
+   entry.pageSize=entry.pageSize===50?100:250;
+   entry.stablePages=0;
+  }
+  return {entry,added:result.loaded};
+ }catch(error){
+  const code=syncErrorCode(error);
+  entry.lastError=code;
+  entry.lastErrorAt=new Date().toISOString();
+  entry.stablePages=0;
+  if(syncIsTransientCode(code)&&entry.retryCount<SYNC_MAX_RETRIES){
+   entry.retryCount++;
+   entry.pageSize=syncNextPageSize(entry.pageSize);
+   entry.error=null;
+   entry.complete=false;
+   // Keep the same committed offset: failed pages are retried, never skipped.
+   if(entry.nextOffset==null)entry.nextOffset=entry.loaded;
+  }else{
+   entry.error=code;
+   entry.complete=false;
+   const detail=error&&error.remoteBody
+    ? (typeof error.remoteBody==='string'?error.remoteBody:JSON.stringify(error.remoteBody)).slice(0,240)
+    : null;
+   if(detail)entry.errorDetail=detail;
+   if(card.id==='bi:imoveis-campos-adicionais'&&code==='BETHA_HTTP_422'&&!entry.errorDetail){
+    entry.errorDetail='A API Betha recusou a fonte de campos adicionais mesmo com cpaFields=true; a carga das demais fontes continua normalmente.';
+   }
+  }
+  return {entry,added:0};
+ }
+}
 async function beginSync(env,tenant,config){
  const scope=await syncScope(tenant);const previous=config.activeJob?await syncJob(env,tenant,config.activeJob):null;
  if(previous?.state==='running')return previous;
- const job={id:crypto.randomUUID(),state:'running',startedAt:new Date().toISOString(),sourceIndex:0,offset:0,completed:0,total:API_PANEL_CATALOG.groups.flatMap(g=>g.cards).length,rows:0,failures:[],sources:{}};
+ const cards=API_PANEL_CATALOG.groups.flatMap(g=>g.cards);
+ const job={id:crypto.randomUUID(),state:'running',startedAt:new Date().toISOString(),sourceIndex:0,completed:0,total:cards.length,rows:0,failures:[],sources:{}};
  await env.BI_SESSIONS.put(scope+':job:'+job.id,JSON.stringify(job),{expirationTtl:SYNC_TTL});
  await env.BI_SESSIONS.put(scope+':config',JSON.stringify({...config,enabled:true,activeJob:job.id}));return job;
 }
@@ -1058,21 +1205,27 @@ async function advanceSync(env,tenant,config){
   job=await beginSync(env,tenant,config);
  }
  const cards=API_PANEL_CATALOG.groups.flatMap(g=>g.cards);
- // Persist one immutable page at a time; resumes safely in the next cron tick.
- for(let step=0;step<8&&job.sourceIndex<cards.length;step++){
-  const card=cards[job.sourceIndex],entry=job.sources[card.id]||{pages:0,loaded:0,complete:false,error:null};
-  try{
-   const result=await fetchBethaRows({...env,BI_SOURCE_TIMEOUT_MS:10000},tenant,card.source,card.resource,{limit:250,maxPages:1,startOffset:job.offset});
-   const fingerprint=JSON.stringify(result.rows.slice(0,10).map(r=>r.id??r.codigo??r));
-   if(entry.fingerprint&&entry.fingerprint===fingerprint&&result.loaded)throw new Error('SOURCE_PAGINATION_REPEATED');
-   if(entry.pages>=500)throw new Error('SOURCE_PAGE_LIMIT');
-   await env.BI_SESSIONS.put(scope+':rows:'+job.id+':'+card.id+':'+entry.pages,JSON.stringify(result.rows),{expirationTtl:SYNC_TTL});
-   entry.pages++;entry.loaded+=result.loaded;entry.fingerprint=fingerprint;entry.complete=result.complete;job.offset=result.nextOffset;job.rows+=result.loaded;
-  }catch(error){entry.error=String(error.message||'SOURCE_UNAVAILABLE');job.failures.push({source:card.id,error:entry.error});}
-  job.sources[card.id]=entry;
-  if(entry.complete||entry.error){job.sourceIndex++;job.completed++;job.offset=0;}
+ normalizeRunningSyncJob(job,cards);
+ const indexes=pendingSyncIndexes(job,cards);
+ let next=0;
+ await Promise.all(Array.from({length:Math.min(SYNC_CONCURRENCY,indexes.length)},async()=>{
+  while(next<indexes.length){
+   const index=indexes[next++],card=cards[index];
+   const result=await advanceSyncSource(env,tenant,scope,job,card);
+   job.sources[card.id]=result.entry;
+   job.rows=(Number(job.rows)||0)+result.added;
+   setSyncFailure(job,card.id,result.entry);
+  }
+ }));
+ job.completed=cards.reduce((count,card)=>{
+  const entry=job.sources[card.id];
+  return count+(entry&&(entry.complete||entry.error)?1:0);
+ },0);
+ if(job.completed===cards.length){
+  job.state=job.failures.length?'completed-with-warnings':'completed';
+  job.finishedAt=new Date().toISOString();
+  config={...config,latestJob:job.id,nextRunAt:config.intervalMinutes?new Date(Date.now()+config.intervalMinutes*60000).toISOString():null};
  }
- if(job.sourceIndex===cards.length){job.state=job.failures.length?'completed-with-warnings':'completed';job.finishedAt=new Date().toISOString();config={...config,latestJob:job.id,nextRunAt:config.intervalMinutes?new Date(Date.now()+config.intervalMinutes*60000).toISOString():null};}
  await env.BI_SESSIONS.put(scope+':job:'+job.id,JSON.stringify(job),{expirationTtl:SYNC_TTL});
  await env.BI_SESSIONS.put(scope+':config',JSON.stringify({...config,activeJob:job.id}));
 }
@@ -1977,7 +2130,10 @@ async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=nu
 
   for (let page=0;page<safetyMaxPages;page++) {
     const requestOffset=offset;
-    const body=await bethaGet(env,tenant,source,resource,"limit="+limit+"&offset="+requestOffset);
+    const requestQuery=new URLSearchParams({limit:String(limit),offset:String(requestOffset)});
+    // Betha requires cpaFields=true when additional/custom fields are requested.
+    if(resource==="imoveis-campos-adicionais") requestQuery.set("cpaFields","true");
+    const body=await bethaGet(env,tenant,source,resource,requestQuery.toString());
     pages++;
 
     const pageRows=payloadRows(body);
@@ -6707,7 +6863,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-06-chart-ready-v72",
+        buildVersion:"2026-10-06-sync-round-robin-v73",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
