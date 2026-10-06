@@ -1100,7 +1100,7 @@ function normalizeRunningSyncJob(job,cards){
   // transient failures and retry the additional-fields 422 once because newer
   // builds now send Betha's required cpaFields=true parameter.
   const retryAdditionalFields=card.id==='bi:imoveis-campos-adicionais'&&
-   entry.error==='BETHA_HTTP_422'&&entry.cpaFieldsRetry!==true;
+   entry.error==='BETHA_HTTP_422'&&entry.additionalFieldsCriterionRetry!==true;
   if(entry.error&&(syncIsTransientCode(entry.error)||retryAdditionalFields)){
    entry.lastError=entry.error;
    entry.lastErrorAt=entry.lastErrorAt||new Date().toISOString();
@@ -1109,7 +1109,10 @@ function normalizeRunningSyncJob(job,cards){
    entry.retryCount=retryAdditionalFields?0:Math.max(1,entry.retryCount);
    entry.pageSize=retryAdditionalFields?100:syncNextPageSize(entry.pageSize);
    entry.nextOffset=entry.loaded;
-   if(retryAdditionalFields)entry.cpaFieldsRetry=true;
+   if(retryAdditionalFields){
+    entry.cpaFieldsRetry=true;
+    entry.additionalFieldsCriterionRetry=true;
+   }
   }
   job.sources[card.id]=entry;
   setSyncFailure(job,card.id,entry);
@@ -1189,7 +1192,7 @@ async function advanceSyncSource(env,tenant,scope,job,card){
     : null;
    if(detail)entry.errorDetail=detail;
    if(card.id==='bi:imoveis-campos-adicionais'&&code==='BETHA_HTTP_422'&&!entry.errorDetail){
-    entry.errorDetail='A API Betha recusou a fonte de campos adicionais mesmo com cpaFields=true; a carga das demais fontes continua normalmente.';
+    entry.errorDetail='A API Betha recusou a fonte de campos adicionais mesmo com cpaFields=true e filtro id > 0; a carga das demais fontes continua normalmente.';
    }
   }
   return {entry,added:0};
@@ -2136,8 +2139,13 @@ async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=nu
   for (let page=0;page<safetyMaxPages;page++) {
     const requestOffset=offset;
     const requestQuery=new URLSearchParams({limit:String(limit),offset:String(requestOffset)});
-    // Betha requires cpaFields=true when additional/custom fields are requested.
-    if(resource==="imoveis-campos-adicionais") requestQuery.set("cpaFields","true");
+    // The additional-fields source refuses an unbounded request. Betha's BI
+    // guidance uses an id criterion for initial loads, so keep the request broad
+    // but explicit and ask the platform to include custom fields.
+    if(resource==="imoveis-campos-adicionais"){
+      requestQuery.set("cpaFields","true");
+      requestQuery.set("filter","id > 0");
+    }
     const body=await bethaGet(env,tenant,source,resource,requestQuery.toString());
     pages++;
 
@@ -6868,7 +6876,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-06-sync-round-robin-v74",
+        buildVersion:"2026-10-06-sync-round-robin-v75",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
