@@ -800,6 +800,10 @@
     document.getElementById("overviewAttention")?.remove();
     document.getElementById("overviewKpiHeading")?.remove();
     document.getElementById("overviewSecondaryHeading")?.remove();
+    document.getElementById("revenueKpiHeading")?.remove();
+    document.getElementById("revenueExecutive")?.remove();
+    document.getElementById("revenueTrendHeading")?.remove();
+    document.getElementById("revenueSecondaryHeading")?.remove();
     restoreViewPreferencesOnce(view);
     renderDashboardFilters(def);
 
@@ -855,6 +859,14 @@
       kpiHeading.id="overviewKpiHeading";
       kpiHeading.className="overview-section-heading overview-kpi-heading";
       kpiHeading.innerHTML='<div><span>RESUMO DO PERÍODO</span><h2>Indicadores principais</h2></div><p>Uma leitura rápida da arrecadação, carteira e base cadastral.</p>';
+      kpiGrid.insertAdjacentElement("beforebegin",kpiHeading);
+    }
+
+    if(view==="arrecadacao"){
+      const kpiHeading=document.createElement("div");
+      kpiHeading.id="revenueKpiHeading";
+      kpiHeading.className="revenue-section-heading revenue-kpi-heading";
+      kpiHeading.innerHTML='<div><span>RECEITA DO PERÍODO</span><h2>Arrecadação efetivamente recebida</h2></div><p>Separe o principal arrecadado dos acréscimos, multas, correções e descontos.</p>';
       kpiGrid.insertAdjacentElement("beforebegin",kpiHeading);
     }
 
@@ -942,6 +954,37 @@
         if(personalHome) personalHome.insertAdjacentElement("afterend",coverage);
         else chartGrid.insertAdjacentElement("afterend",coverage);
       }
+    }
+
+    if(view==="arrecadacao"){
+      const executive=document.createElement("section");
+      executive.id="revenueExecutive";
+      executive.className="revenue-executive";
+      const trendHeading=document.createElement("div");
+      trendHeading.id="revenueTrendHeading";
+      trendHeading.className="revenue-section-heading revenue-trend-heading";
+      trendHeading.innerHTML='<div><span>EVOLUÇÃO E COMPOSIÇÃO</span><h2>Como a receita entrou</h2></div><p>Compare a evolução mensal com a composição entre tributo, correção, juros e multa.</p>';
+      chartGrid.insertAdjacentElement("beforebegin",trendHeading);
+      trendHeading.insertAdjacentElement("afterend",executive);
+
+      const monthly=document.querySelector('#chartGrid [data-chart="arrecadacao-mes"]');
+      const composition=document.querySelector('#chartGrid [data-chart="composicao-pagamento"]');
+      if(monthly){
+        monthly.classList.add("revenue-executive-main");
+        executive.appendChild(monthly);
+      }
+      if(composition){
+        composition.classList.add("revenue-executive-side");
+        executive.appendChild(composition);
+      }
+
+      const secondaryHeading=document.createElement("div");
+      secondaryHeading.id="revenueSecondaryHeading";
+      secondaryHeading.className="revenue-section-heading revenue-secondary-heading";
+      secondaryHeading.innerHTML='<div><span>DETALHAMENTO DA RECEITA</span><h2>Origem, modalidade e comportamento</h2></div><p>Explore recebimentos diários, créditos, receitas, baixas, estornos, benefícios e acréscimos.</p>';
+      chartGrid.insertAdjacentElement("beforebegin",secondaryHeading);
+
+      if(coverage) chartGrid.insertAdjacentElement("afterend",coverage);
     }
 
     const sources = [...new Set([
