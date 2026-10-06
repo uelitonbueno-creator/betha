@@ -1066,7 +1066,8 @@ function syncNextPageSize(size){
 function normalizeSyncEntry(raw={}){
  const complete=raw.complete===true,error=raw.error||null;
  const loaded=Math.max(0,Number(raw.loaded)||0);
- const candidateOffset=Number(raw.nextOffset);
+ const hasOffset=raw.nextOffset!==null&&raw.nextOffset!==undefined&&raw.nextOffset!=='';
+ const candidateOffset=hasOffset?Number(raw.nextOffset):NaN;
  return {
   ...raw,
   pages:Math.max(0,Number(raw.pages)||0),
@@ -1095,16 +1096,20 @@ function normalizeRunningSyncJob(job,cards){
  for(const card of cards){
   if(!job.sources[card.id])continue;
   const entry=normalizeSyncEntry(job.sources[card.id]);
-  // Jobs created by older versions marked timeouts as permanent. Reopen only
-  // transient failures so an in-flight initial load can recover after deploy.
-  if(entry.error&&syncIsTransientCode(entry.error)){
+  // Jobs created by older versions marked timeouts as permanent. Reopen
+  // transient failures and retry the additional-fields 422 once because newer
+  // builds now send Betha's required cpaFields=true parameter.
+  const retryAdditionalFields=card.id==='bi:imoveis-campos-adicionais'&&
+   entry.error==='BETHA_HTTP_422'&&entry.cpaFieldsRetry!==true;
+  if(entry.error&&(syncIsTransientCode(entry.error)||retryAdditionalFields)){
    entry.lastError=entry.error;
    entry.lastErrorAt=entry.lastErrorAt||new Date().toISOString();
    entry.error=null;
    entry.complete=false;
-   entry.retryCount=Math.max(1,entry.retryCount);
-   entry.pageSize=syncNextPageSize(entry.pageSize);
+   entry.retryCount=retryAdditionalFields?0:Math.max(1,entry.retryCount);
+   entry.pageSize=retryAdditionalFields?100:syncNextPageSize(entry.pageSize);
    entry.nextOffset=entry.loaded;
+   if(retryAdditionalFields)entry.cpaFieldsRetry=true;
   }
   job.sources[card.id]=entry;
   setSyncFailure(job,card.id,entry);
@@ -6863,7 +6868,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-06-sync-round-robin-v73",
+        buildVersion:"2026-10-06-sync-round-robin-v74",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
