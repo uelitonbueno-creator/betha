@@ -4137,10 +4137,10 @@
       PAGE_MAPPING_SCOPE_REQUIRED:"A credencial de serviço precisa do escopo autorizacoes.plataforma.betha.cloud/parceiro.leitura.",
       PAGE_MAPPING_WRITE_SCOPE_REQUIRED:"Para publicar, ative o escopo autorizacoes.plataforma.betha.cloud/parceiro.escrita na credencial de serviço e renove o token.",
       PAGE_MAPPING_TOKEN_INVALID:"O token de serviço não foi aceito pela API de Autorizações Dados.",
-      ADMIN_REQUIRED:"Seu usuário não possui perfil de administrador para alterar esta configuração.",
-      USER_ACCESS_MANAGEMENT_FORBIDDEN:"A Betha recusou a alteração deste acesso. Entre com um administrador da entidade que não esteja usando Acesso técnico.",
-      USER_ACCESS_TECHNICAL_READ_ONLY:"Acesso técnico é somente leitura no Gerenciador de Acessos da Betha. Entre com um administrador da entidade para conceder ou alterar usuários.",
-      PLATFORM_HTTP_403:"A Betha recusou esta operação para o usuário ou contexto atual."
+      ADMIN_REQUIRED:"Seu usuário não possui perfil administrativo/técnico no BI para alterar esta configuração.",
+      BI_USER_NOT_AUTHORIZED:"Seu usuário foi validado na Betha, mas ainda não possui autorização cadastrada neste BI.",
+      USER_NOT_FOUND:"O usuário não foi encontrado na Central Betha.",
+      PLATFORM_HTTP_403:"A Betha recusou a validação do usuário ou da entidade atual."
     };
     return map[code] || code;
   }
@@ -4477,8 +4477,6 @@
     document.getElementById("accessExpires").value = "";
     document.getElementById("accessAdmin").checked = false;
     document.getElementById("accessTechnical").checked = false;
-    const technicalRow=document.getElementById("accessTechnicalRow");
-    if(technicalRow) technicalRow.hidden=true;
     const defaultProfile=document.querySelector('input[name="biGroup"][value="consulta"]');
     if(defaultProfile) defaultProfile.checked=true;
     setWizardStep(1);
@@ -4523,18 +4521,6 @@
     return document.querySelector('input[name="biGroup"]:checked')?.value || "consulta";
   }
 
-  function centralUserTechnicalEligible(user) {
-    if(!user || typeof user!=="object") return false;
-    const flags=[user.technical,user.tecnico,user.isTechnical,user.usuarioTecnico,user.technicalUser];
-    if(flags.some(value=>value===true || String(value).toLowerCase()==="true")) return true;
-    const labels=[
-      user.tipoUsuario,user.userType,user.profile,user.perfil,user.category,
-      ...(Array.isArray(user.roles)?user.roles:[]),
-      ...(Array.isArray(user.perfis)?user.perfis:[])
-    ].filter(Boolean).map(value=>typeof value==="object" ? (value.nome||value.descricao||value.id||"") : value);
-    return labels.some(value=>/t[eé]cnic/i.test(String(value)));
-  }
-
   function applyPermissionPreset() {
     const profile=selectedProfile();
     const inputs=[...document.querySelectorAll('#permissionsList input[type="checkbox"]')];
@@ -4556,31 +4542,23 @@
     const save=document.getElementById("wizardSave");
     if(!save) return;
 
-    const profile=selectedProfile();
-    const admin=document.getElementById("accessAdmin").checked || profile==="administrador";
     const tenant=currentTenantInfo();
-    const actorCanManage=Boolean(tenant && tenant.admin===true && tenant.technical!==true);
-    const canSave=Boolean(selectedCentralUser) && actorCanManage && (admin || pageMappingReady);
+    const actorCanManage=Boolean(tenant && (tenant.admin===true || tenant.technical===true));
+    const canSave=Boolean(selectedCentralUser) && actorCanManage;
 
     save.disabled=!canSave;
 
     if(!selectedCentralUser) {
       save.title="Localize um usuário válido antes de salvar.";
     } else if(!actorCanManage) {
-      save.title=tenant&&tenant.technical===true
-        ? "A Betha mantém acessos técnicos em modo somente leitura no Gerenciador de Acessos."
-        : "É necessário entrar com um administrador da entidade para conceder acessos.";
-    } else if(!admin && !pageMappingReady) {
-      save.title="Publique a matriz de permissões em Configurações → Sistema e permissões antes de criar acesso limitado.";
+      save.title="É necessário possuir perfil administrativo ou técnico no BI para conceder acessos.";
     } else {
-      save.title="Conceder o acesso selecionado para esta prefeitura.";
+      save.title="Salvar as permissões deste usuário no BI.";
     }
 
     const help=document.getElementById("permissionMappingHelp");
     if(help){
-      help.textContent=pageMappingReady
-        ? "Selecione os módulos que este usuário poderá consultar. A matriz de permissões está disponível na Betha."
-        : "Acesso limitado exige que a matriz de permissões seja publicada. Acesso de Administrador pode ser concedido diretamente.";
+      help.textContent="As permissões são gravadas no BI. No login, a identidade e a entidade continuam sendo validadas pela Central Betha.";
     }
   }
 
@@ -4600,30 +4578,13 @@
     const userId=selectedCentralUser.id || selectedCentralUser.user || selectedCentralUser.login;
     const profile=selectedProfile();
     const admin=document.getElementById("accessAdmin").checked || profile==="administrador";
-    const technicalRequested=document.getElementById("accessTechnical").checked;
-    const technical=technicalRequested && centralUserTechnicalEligible(selectedCentralUser);
+    const technical=document.getElementById("accessTechnical").checked;
     const expiresIn=document.getElementById("accessExpires").value || null;
     const tenant=currentTenantInfo();
 
-    if(tenant&&tenant.technical===true){
+    if(!tenant || (!tenant.admin && !tenant.technical)){
       setWizardStep(4);
-      if(result) result.textContent="A Betha permite consulta com acesso técnico, mas bloqueia concessão ou alteração de acessos. Entre com um administrador da entidade que não seja acesso técnico.";
-      return;
-    }
-    if(!tenant||tenant.admin!==true){
-      setWizardStep(4);
-      if(result) result.textContent="É necessário entrar com um administrador da entidade para conceder acessos.";
-      return;
-    }
-    if(technicalRequested&&!technical){
-      setWizardStep(4);
-      if(result) result.textContent="Acesso técnico só pode ser concedido a usuários previamente cadastrados como técnicos na Betha.";
-      return;
-    }
-
-    if(!admin && !pageMappingReady){
-      setWizardStep(2);
-      if(result) result.textContent="Publique a matriz de permissões antes de criar um acesso limitado.";
+      if(result) result.textContent="É necessário possuir perfil administrativo ou técnico no BI para conceder acessos.";
       return;
     }
 
@@ -4636,7 +4597,7 @@
     };
 
     const feedback=document.getElementById("userSaveFeedback");
-    if(feedback){feedback.hidden=false;feedback.textContent="Salvando o acesso na Betha…";feedback.classList.remove("is-error");}
+    if(feedback){feedback.hidden=false;feedback.textContent="Salvando as permissões no BI…";feedback.classList.remove("is-error");}
     userAccessSaving=true;
     save.disabled=true;
     save.textContent="SALVANDO…";
