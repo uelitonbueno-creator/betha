@@ -812,6 +812,10 @@
     document.getElementById("activeDebtExecutive")?.remove();
     document.getElementById("activeDebtTrendHeading")?.remove();
     document.getElementById("activeDebtSecondaryHeading")?.remove();
+    document.getElementById("installmentKpiHeading")?.remove();
+    document.getElementById("installmentExecutive")?.remove();
+    document.getElementById("installmentTrendHeading")?.remove();
+    document.getElementById("installmentSecondaryHeading")?.remove();
     restoreViewPreferencesOnce(view);
     renderDashboardFilters(def);
 
@@ -891,6 +895,14 @@
       kpiHeading.id="activeDebtKpiHeading";
       kpiHeading.className="active-debt-section-heading active-debt-kpi-heading";
       kpiHeading.innerHTML='<div><span>ESTOQUE DA DÍVIDA ATIVA</span><h2>Saldo, inscrições e cobrança</h2></div><p>Veja primeiro o saldo atual e o valor inscrito; depois acompanhe execução, protesto e emissão de CDA.</p>';
+      kpiGrid.insertAdjacentElement("beforebegin",kpiHeading);
+    }
+
+    if(view==="parcelamentos"){
+      const kpiHeading=document.createElement("div");
+      kpiHeading.id="installmentKpiHeading";
+      kpiHeading.className="installment-section-heading installment-kpi-heading";
+      kpiHeading.innerHTML='<div><span>ACORDOS E PARCELAS</span><h2>Saúde dos parcelamentos</h2></div><p>Priorize acordos ativos e parcelas vencidas, depois acompanhe entradas, quantidade de parcelas e cancelamentos.</p>';
       kpiGrid.insertAdjacentElement("beforebegin",kpiHeading);
     }
 
@@ -1070,6 +1082,38 @@
       secondaryHeading.id="activeDebtSecondaryHeading";
       secondaryHeading.className="active-debt-section-heading active-debt-secondary-heading";
       secondaryHeading.innerHTML='<div><span>COBRANÇA E COMPOSIÇÃO</span><h2>Inscrições, ações e maiores devedores</h2></div><p>Analise novas inscrições, composição do saldo, situação, idade, crédito, execução, protesto, penhora e ranking de devedores.</p>';
+      chartGrid.insertAdjacentElement("beforebegin",secondaryHeading);
+
+      if(coverage) chartGrid.insertAdjacentElement("afterend",coverage);
+    }
+
+    if(view==="parcelamentos"){
+      const executive=document.createElement("section");
+      executive.id="installmentExecutive";
+      executive.className="installment-executive";
+
+      const trendHeading=document.createElement("div");
+      trendHeading.id="installmentTrendHeading";
+      trendHeading.className="installment-section-heading installment-trend-heading";
+      trendHeading.innerHTML='<div><span>INADIMPLÊNCIA E RECEBIMENTO</span><h2>Risco dos acordos versus entrada de recursos</h2></div><p>Compare a concentração de parcelas vencidas com os pagamentos efetivamente vinculados aos parcelamentos.</p>';
+      chartGrid.insertAdjacentElement("beforebegin",trendHeading);
+      trendHeading.insertAdjacentElement("afterend",executive);
+
+      const delinquency=document.querySelector('#chartGrid [data-chart="vencidas-parcelamento"]');
+      const receipts=document.querySelector('#chartGrid [data-chart="pagamentos-parcelas"]');
+      if(delinquency){
+        delinquency.classList.add("installment-executive-main");
+        executive.appendChild(delinquency);
+      }
+      if(receipts){
+        receipts.classList.add("installment-executive-side");
+        executive.appendChild(receipts);
+      }
+
+      const secondaryHeading=document.createElement("div");
+      secondaryHeading.id="installmentSecondaryHeading";
+      secondaryHeading.className="installment-section-heading installment-secondary-heading";
+      secondaryHeading.innerHTML='<div><span>COMPOSIÇÃO DOS ACORDOS</span><h2>Novos parcelamentos, situação e cobrança</h2></div><p>Explore evolução dos acordos, situação, faixa de parcelas, entradas, execução/protesto, origem e cancelamentos.</p>';
       chartGrid.insertAdjacentElement("beforebegin",secondaryHeading);
 
       if(coverage) chartGrid.insertAdjacentElement("afterend",coverage);
