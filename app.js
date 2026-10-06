@@ -124,6 +124,7 @@
   function applyNavigationPermissions(tenant) {
     const menu=menuForTenant(tenant);
     bethaApp.opcoes=menu;
+    if(typeof closeGroupNavigation==="function")closeGroupNavigation();
 
     if(!isViewAllowed(currentView)){
       const fallback=firstAllowedView();
@@ -138,8 +139,54 @@
   bethaApp.opcoes = window.BI_MENU || [];
   if (typeof bethaApp.setMenuAtivo === "function") bethaApp.setMenuAtivo(currentView);
 
+  const groupNavigationMenu=document.createElement('nav');
+  groupNavigationMenu.className='group-navigation-menu';
+  groupNavigationMenu.hidden=true;
+  groupNavigationMenu.setAttribute('aria-label','Opções do grupo');
+  document.body.appendChild(groupNavigationMenu);
+  let groupNavigationTrigger=null;
+  function closeGroupNavigation(restoreFocus=false) {
+    groupNavigationMenu.hidden=true;
+    groupNavigationMenu.dataset.group='';
+    if(restoreFocus)groupNavigationTrigger?.focus();
+  }
+  function openGroupNavigation(group) {
+    const items=(group.submenus||[]).filter(item=>isViewAllowed(item.rota||item.id));
+    if(!items.length)return;
+    if(!groupNavigationMenu.hidden&&groupNavigationMenu.dataset.group===String(group.id)){closeGroupNavigation(true);return;}
+    groupNavigationMenu.replaceChildren();
+    for(const item of items){
+      const button=document.createElement('button');button.type='button';button.textContent=item.descricao;
+      button.addEventListener('click',()=>{closeGroupNavigation();navigate(item.rota||item.id);});
+      groupNavigationMenu.appendChild(button);
+    }
+    const host=[...(bethaApp.shadowRoot?.querySelectorAll('bth-menu-horizontal-item')||[])].find(item=>item.identificador===group.id);
+    groupNavigationTrigger=host?.shadowRoot?.querySelector('a')||null;
+    const rect=host?.getBoundingClientRect()||bethaApp.getBoundingClientRect();
+    groupNavigationMenu.style.left=Math.max(8,Math.min(rect.left,window.innerWidth-272))+'px';
+    groupNavigationMenu.style.top=Math.max(8,Math.min(rect.bottom+4,window.innerHeight-items.length*44-20))+'px';
+    groupNavigationMenu.dataset.group=String(group.id);
+    groupNavigationMenu.hidden=false;
+    groupNavigationMenu.querySelector('button')?.focus();
+  }
+  document.addEventListener('pointerdown',event=>{
+    if(!groupNavigationMenu.hidden&&!event.composedPath().includes(groupNavigationMenu)&&!event.composedPath().includes(groupNavigationTrigger))closeGroupNavigation();
+  });
+  groupNavigationMenu.addEventListener('keydown',event=>{
+    if(event.key==='Escape'){event.preventDefault();closeGroupNavigation(true);}
+    if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){
+      event.preventDefault();const buttons=[...groupNavigationMenu.querySelectorAll('button')];const index=buttons.indexOf(document.activeElement);
+      const next=event.key==='Home'?0:event.key==='End'?buttons.length-1:(index+(event.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length;
+      buttons[next]?.focus();
+    }
+  });
+  window.addEventListener('resize',()=>closeGroupNavigation());
+
   bethaApp.addEventListener("opcaoMenuSelecionada", (event) => {
     const detail = event.detail || {};
+    const group=(bethaApp.opcoes||[]).find(item=>item.id===detail.id&&item.submenus?.length);
+    if(group){openGroupNavigation(group);return;}
+    closeGroupNavigation();
     const view = detail.rota || detail.id;
     if (!isViewAllowed(view)) return;
     if (detail.id && typeof bethaApp.setMenuAtivo === "function") bethaApp.setMenuAtivo(detail.id);
