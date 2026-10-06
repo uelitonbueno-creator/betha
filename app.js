@@ -2401,7 +2401,7 @@
       for(let batch=0;batch<600&&active();batch++){
         let payload;
         try {payload=await api(apiPanelPath(dashboards[view].apiSource)+"?"+params.toString(),{timeoutMs:60000});pending=0;}
-        catch(error){const transient=error.message==="DASHBOARD_BATCH_PENDING"||[429,502,503,504].includes(error.status)||error.message==="REQUEST_TIMEOUT";if(!transient||pending++>=6)throw error;setStatus("waiting","Consulta interrompida temporariamente · tentando novamente…");await new Promise(resolve=>setTimeout(resolve,Math.min(10000,1500*pending)));batch--;continue;}
+        catch(error){const transient=["DASHBOARD_BATCH_PENDING","INITIAL_LOAD_IN_PROGRESS"].includes(error.message)||[429,502,503,504].includes(error.status)||error.message==="REQUEST_TIMEOUT";if(!transient||pending++>=6)throw error;setStatus("waiting","Consulta interrompida temporariamente · tentando novamente…");await new Promise(resolve=>setTimeout(resolve,Math.min(10000,1500*pending)));batch--;continue;}
         if(!active())return;
         renderPayload(payload);setLastUpdated(payload.meta?.updatedAt,"Betha");
         const loaded=Object.values(payload.meta?.sourceRows||{}).reduce((a,b)=>a+Number(b||0),0);
@@ -2409,10 +2409,10 @@
         if(!payload.loading?.hasMore){setStatus(complete?"online":"waiting",complete?"Fontes consultadas · confira os avisos de cada indicador":"Consulta concluída com limitações · confira a cobertura das fontes");return;}
         setStatus("waiting",loaded.toLocaleString("pt-BR")+" registros consultados · cálculos parciais");
         params.set("cursor",JSON.stringify(payload.loading.cursor||{}));
-        await new Promise(resolve=>setTimeout(resolve,1200));
+        await new Promise(resolve=>setTimeout(resolve,payload.loading?.background?15000:1200));
       }
       if(active())throw new Error("Limite de consulta atingido; os números exibidos são parciais.");
-    }catch(error){if(active()){setDashboardLoading(false);setStatus("error",error.message||"Consulta indisponível");showToast("Não foi possível concluir a consulta dos indicadores.");}}
+    }catch(error){if(active()){setDashboardLoading(false);setStatus("error",error.message||"Consulta indisponível");document.querySelectorAll("#chartGrid .chart-empty").forEach(el=>{el.querySelector("strong").textContent="Não foi possível carregar este gráfico";el.querySelector("span").textContent=error.message==="INITIAL_LOAD_REQUIRED"?"Execute a carga inicial em Administração → Configurações.":error.message||"Tente atualizar o painel.";});showToast("Não foi possível concluir a consulta dos indicadores.");}}
     finally{if(active())setRefreshBusy(false);}
   }
 
@@ -3388,6 +3388,7 @@
     if(!snapshot){showToast("Aguarde a primeira consulta para detalhar.");return;}
     const params=new URLSearchParams({periodo:document.getElementById("periodo").value,exercicio:document.getElementById("exercicio").value,loadId:snapshot.loadId,cursor:JSON.stringify(snapshot.cursor)});
     if(snapshot.cacheJob)params.set("cacheJob",snapshot.cacheJob);
+    if(snapshot.cachePages)params.set("cachePages",JSON.stringify(snapshot.cachePages));
     for(const [k,v]of Object.entries(currentDashboardFilters()))params.set(k,v);
     if(selected?.label)params.set("panelCategory",selected.label);
     const resource="panel~"+chartDef.apiSource+"~"+chartDef.apiPanel;
