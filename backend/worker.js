@@ -965,14 +965,26 @@ function panelDateInPeriod(r,p,url) {
  if(period==='12m'){const from=new Date();from.setMonth(from.getMonth()-11,1);from.setHours(0,0,0,0);return d>=from&&d<=new Date();}
  return true;
 }
-function evaluateApiPanel(p,sources,url) {
+function evaluateApiPanel(p,sources,url,scopeKey=p.input) {
  const unavailable=panelDependencies(p).filter(k=>!sources[k]||sources[k].error);
  if(unavailable.length)return {status:'unavailable',note:'Fonte indisponível ou sem permissão: '+unavailable.join(', '),labels:[],datasets:[],records:[]};
  const data={};for(const key of panelDependencies(p))data[key]=sources[key].normalized||sources[key].rows.map((r,i)=>normalizePanelRow(r,key,i));
  let transformed;try{transformed=panelTransform(p,data);}catch(e){return {status:'unavailable',note:e.message,labels:[],datasets:[],records:[]};}
  let rows=transformed.rows.filter(r=>!(/pagamentos/.test(p.input)&&r._reversed));
  const panelFilters=[...url.searchParams].filter(([k,v])=>k.startsWith('panel_')&&v);
- for(const [key,v]of panelFilters)rows=rows.filter(r=>String(r[key.slice(6)]??'')===v);
+ if(panelFilters.length&&(p.input!==scopeKey||p.transform==='compareTotals')){
+  if(!sources[scopeKey]||sources[scopeKey].error)return {status:'unavailable',note:'Não foi possível verificar os filtros na fonte principal.',labels:[],datasets:[],records:[]};
+  const primary=sources[scopeKey].normalized||sources[scopeKey].rows.map((r,i)=>normalizePanelRow(r,scopeKey,i));
+  const selected=primary.filter(r=>panelFilters.every(([key,v])=>String(r[key.slice(6)]??'')===v));
+  const identities={imoveis:'imovelId',contribuintes:'pessoaId',economicos:'economicoId',receitas:'receitaId',parcelamentos:'parcelamentoId',bairros:'bairroId',distritos:'distritoId',logradouros:'ruaId',loteamentos:'loteamentoId',obras:'obraId',indexadores:'indexadorId',pagamentos:'pagamentoId'};
+  const resource=scopeKey.split(':')[1];const joined=(p.joins||[]).find(j=>j.source===scopeKey);
+  const linked=joined?.left||identities[resource];
+  if(!linked)return {status:'unavailable',note:'Este cruzamento não informou uma chave para aplicar os filtros da fonte principal.',labels:[],datasets:[],records:[]};
+  const selectedIds=new Set(selected.map(r=>r.id).filter(v=>v!=null).map(String));
+  const linkRows=rows.length?rows:data[p.input]||[];
+  if(selected.length&&!selectedIds.size||linkRows.length&&!linkRows.some(r=>r[linked]!=null))return {status:'missing-fields',note:'A fonte relacionada não informou a chave '+linked+' necessária para manter o recorte selecionado.',labels:[],datasets:[],records:[]};
+  rows=rows.filter(r=>r[linked]!=null&&selectedIds.has(String(r[linked])));
+ }else for(const [key,v]of panelFilters)rows=rows.filter(r=>String(r[key.slice(6)]??'')===v);
  if(p.where&&rows.length&&!rows.some(r=>r[p.where[0]]!=null&&r[p.where[0]]!==undefined))return {status:'missing-fields',note:'A fonte não informou o campo necessário para o recorte: '+p.where[0]+'.',labels:[],datasets:[],records:[],partial:panelDependencies(p).some(k=>!sources[k].complete)};
  if(p.where)rows=rows.filter(r=>r[p.where[0]]===p.where[1]);
  if(p.whereRegex)rows=rows.filter(r=>new RegExp(p.whereRegex[1],'i').test(String(r[p.whereRegex[0]]||'')));
@@ -1033,11 +1045,11 @@ async function buildApiPanels(env,tenant,auth,key,url,detailId=null) {
  const dependencies=[...new Set(card.panels.flatMap(panelDependencies))];
  if(!expected||typeof expected!=='object'||Array.isArray(expected)||Object.entries(expected).some(([k,v])=>!dependencies.includes(k)||!Number.isInteger(v)||v<0||v>500))throw new Error('DASHBOARD_CURSOR_INVALID');
  const panels=detailId?card.panels.filter(p=>p.id===detailId):card.panels;if(!panels.length)throw new Error('DASHBOARD_CURSOR_INVALID');
- const keys=detailId?[...new Set(panels.flatMap(panelDependencies))]:dependencies;
+ const keys=detailId?[...new Set([key,...panels.flatMap(panelDependencies)])]:dependencies;
  const load={prefix,expected,cursors:{},hasMore:false,pending:new Map()},sources={};let next=0;
  await Promise.all(Array.from({length:Math.min(3,keys.length)},async()=>{while(next<keys.length){const sourceKey=keys[next++];try{panelReadAuthorized(auth,sourceKey);}catch{sources[sourceKey]={rows:[],loaded:0,error:'Sem permissão para esta fonte',complete:false};continue;}const [source,resource]=sourceKey.split(':');if(detailId){if(!Number.isInteger(expected[sourceKey])||expected[sourceKey]<1)throw new Error('DASHBOARD_BATCH_PENDING');sources[sourceKey]=await readPanelSnapshot(env,prefix,sourceKey,expected[sourceKey]);}else sources[sourceKey]=await safeBethaRows({...env,BI_DASHBOARD_LOAD:load},tenant,source,resource);}}));
  for(const [source,entry]of Object.entries(sources))entry.normalized=entry.rows.map((row,i)=>normalizePanelRow(row,source,i));
- const charts={};for(const p of panels){const result=evaluateApiPanel(p,sources,url);if(!detailId){delete result.records;if(result.labels.length>100){const total=result.labels.length;const start=/^(month|year):/.test(p.dim)?total-100:0;result.labels=result.labels.slice(start,start+100);result.selectionValues=result.labels;for(const ds of result.datasets)ds.data=ds.data.slice(start,start+100);result.note=(result.note?result.note+' ':'')+'Exibindo 100 de '+total+' categorias; o detalhamento inclui todas.';}}charts[p.id]=result;}
+ const charts={};for(const p of panels){const result=evaluateApiPanel(p,sources,url,key);if(!detailId){delete result.records;if(result.labels.length>100){const total=result.labels.length;const start=/^(month|year):/.test(p.dim)?total-100:0;result.labels=result.labels.slice(start,start+100);result.selectionValues=result.labels;for(const ds of result.datasets)ds.data=ds.data.slice(start,start+100);result.note=(result.note?result.note+' ':'')+'Exibindo 100 de '+total+' categorias; o detalhamento inclui todas.';}}charts[p.id]=result;}
  if(detailId)return panelDetailPayload(charts[detailId],panels[0],url);
  const filterOptions={};for(const [key]of [...url.searchParams].filter(([k])=>k.startsWith('panel_')))filterOptions[key]=[];
  for(const f of ['situacao','bairro','rua','zona','nome','receita','tipo','ano'])filterOptions['panel_'+f]=[...new Set((sources[key]?.normalized||[]).map(r=>r[f]).filter(v=>v!=null))].sort().map(v=>({value:String(v),label:String(v)}));
@@ -6625,7 +6637,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-06-api-panels-v67",
+        buildVersion:"2026-10-06-api-panels-v68",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
