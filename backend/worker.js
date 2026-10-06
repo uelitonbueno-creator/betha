@@ -5145,11 +5145,16 @@ async function listContextUsers(userToken, userAccess, url) {
   params.set("limit",url.searchParams.get("limit") || "100");
   params.set("offset",url.searchParams.get("offset") || "0");
   const target=AUTH_BASE+"/user-accounts/v0.1/api/management/access?"+params.toString();
-  return platformRequest(target,{headers:{
-    "Accept":"application/json",
-    "Authorization":"Bearer "+userToken,
-    "User-Access":userAccess
-  }});
+  try {
+    return await platformRequest(target,{headers:{
+      "Accept":"application/json",
+      "Authorization":"Bearer "+userToken,
+      "User-Access":userAccess
+    }});
+  } catch(error) {
+    if(error && error.message==="PLATFORM_HTTP_403") throw new Error("USER_ACCESS_MANAGEMENT_FORBIDDEN");
+    throw error;
+  }
 }
 
 function escapeFilterValue(value) {
@@ -5166,27 +5171,37 @@ async function searchCentralUser(userToken, user) {
 }
 
 async function createContextUser(userToken, userAccess, body) {
-  return platformRequest(AUTH_BASE+"/user-accounts/v0.1/api/management/access",{
-    method:"POST",
-    headers:{
-      "Accept":"application/json",
-      "Content-Type":"application/json",
-      "Authorization":"Bearer "+userToken,
-      "User-Access":userAccess
-    },
-    body:JSON.stringify(body)
-  });
+  try {
+    return await platformRequest(AUTH_BASE+"/user-accounts/v0.1/api/management/access",{
+      method:"POST",
+      headers:{
+        "Accept":"application/json",
+        "Content-Type":"application/json",
+        "Authorization":"Bearer "+userToken,
+        "User-Access":userAccess
+      },
+      body:JSON.stringify(body)
+    });
+  } catch(error) {
+    if(error && error.message==="PLATFORM_HTTP_403") throw new Error("USER_ACCESS_MANAGEMENT_FORBIDDEN");
+    throw error;
+  }
 }
 
 async function deleteContextUser(userToken, userAccess, accessId) {
-  return platformRequest(AUTH_BASE+"/user-accounts/v0.1/api/management/access/"+encodeURIComponent(accessId),{
-    method:"DELETE",
-    headers:{
-      "Accept":"application/json",
-      "Authorization":"Bearer "+userToken,
-      "User-Access":userAccess
-    }
-  });
+  try {
+    return await platformRequest(AUTH_BASE+"/user-accounts/v0.1/api/management/access/"+encodeURIComponent(accessId),{
+      method:"DELETE",
+      headers:{
+        "Accept":"application/json",
+        "Authorization":"Bearer "+userToken,
+        "User-Access":userAccess
+      }
+    });
+  } catch(error) {
+    if(error && error.message==="PLATFORM_HTTP_403") throw new Error("USER_ACCESS_MANAGEMENT_FORBIDDEN");
+    throw error;
+  }
 }
 
 
@@ -6858,6 +6873,7 @@ function errorResponse(request,env,error) {
     TENANT_USER_ACCESS_NOT_CONFIGURED:503,
     USER_TOKEN_REQUIRED:401,
     ADMIN_REQUIRED:403,
+    USER_ACCESS_MANAGEMENT_FORBIDDEN:403,
     PAGE_PERMISSION_DENIED:403,
     DATA_RESOURCE_PERMISSION_DENIED:403,
     PAGE_MAPPING_SCOPE_REQUIRED:503,
@@ -6916,7 +6932,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-06-user-access-context-v76",
+        buildVersion:"2026-10-06-user-access-context-v77",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
