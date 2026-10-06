@@ -1396,18 +1396,70 @@ async function decodeTenantConfig(env,id,value) {
 }
 async function tenantRegistry(env) {
   const registry=parseJsonObject(env.BETHA_TENANTS_JSON,{});
-  if(!env.BI_SESSIONS) return registry;
-  let cursor;
-  do {
-    const page=await env.BI_SESSIONS.list({prefix:TENANT_CONFIG_PREFIX,...(cursor?{cursor}: {})});
-    for(const entry of page.keys||[]) {
-      const id=entry.name.slice(TENANT_CONFIG_PREFIX.length);
-      const stored=await env.BI_SESSIONS.get(entry.name);
-      if(stored) registry[id]=await decodeTenantConfig(env,id,stored);
-    }
-    cursor=page.list_complete===false?page.cursor:null;
-  } while(cursor);
+
+  // Legacy KV remains read-only fallback for configurations already saved there.
+  if(env.BI_SESSIONS) {
+    try {
+      let cursor;
+      do {
+        const page=await env.BI_SESSIONS.list({prefix:TENANT_CONFIG_PREFIX,...(cursor?{cursor}: {})});
+        for(const entry of page.keys||[]) {
+          const id=entry.name.slice(TENANT_CONFIG_PREFIX.length);
+          const stored=await env.BI_SESSIONS.get(entry.name);
+          if(!stored) continue;
+          try { registry[id]=await decodeTenantConfig(env,id,stored); } catch {}
+        }
+        cursor=page.list_complete===false?page.cursor:null;
+      } while(cursor);
+    } catch {}
+  }
+
+  // D1 is the primary persistent store for new/updated tenant configurations.
+  if(env.AUTH_DB) {
+    try {
+      const rows=await env.AUTH_DB.prepare(
+        "SELECT id,payload FROM bi_tenant_configs ORDER BY id"
+      ).all();
+      for(const row of rows.results||[]) {
+        try { registry[String(row.id)]=await decodeTenantConfig(env,String(row.id),row.payload); } catch {}
+      }
+    } catch {}
+  }
+
   return registry;
+}
+
+async function storedTenantConfig(env,tenantId) {
+  if(env.AUTH_DB) {
+    try {
+      const row=await env.AUTH_DB.prepare(
+        "SELECT payload FROM bi_tenant_configs WHERE id=?1 LIMIT 1"
+      ).bind(String(tenantId)).first();
+      if(row&&row.payload) return decodeTenantConfig(env,String(tenantId),row.payload);
+    } catch {}
+  }
+  if(env.BI_SESSIONS) {
+    try {
+      const stored=await env.BI_SESSIONS.get(TENANT_CONFIG_PREFIX+tenantId);
+      if(stored) return decodeTenantConfig(env,String(tenantId),stored);
+    } catch {}
+  }
+  return null;
+}
+
+async function persistTenantConfig(env,id,config) {
+  const encoded=await encodeTenantConfig(env,id,config);
+  if(env.AUTH_DB) {
+    await env.AUTH_DB.prepare(
+      "INSERT INTO bi_tenant_configs (id,payload,updated_at) VALUES (?1,?2,?3) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at"
+    ).bind(String(id),encoded,String(config.updatedAt||new Date().toISOString())).run();
+    return;
+  }
+  if(env.BI_SESSIONS) {
+    await env.BI_SESSIONS.put(TENANT_CONFIG_PREFIX+id,encoded);
+    return;
+  }
+  throw new Error("SESSION_STORE_NOT_CONFIGURED");
 }
 function publicTenantConfig(id,config,env) {
   return {id,name:config.name||id,entityId:String(config.entityId||""),databaseId:String(config.databaseId||""),enabled:config.enabled!==false,userAccessConfigured:Boolean(config.userAccess),accessTokenConfigured:Boolean(config.accessToken||env.BETHA_ACCESS_TOKEN),usesSharedToken:!config.accessToken,updatedAt:config.updatedAt||null};
@@ -1434,8 +1486,8 @@ function requireTenantConfigAdmin(auth) {
 async function resolveTenant(env, tenantId) {
   if (!tenantId) throw new Error("TENANT_REQUIRED");
   const tenants=parseJsonObject(env.BETHA_TENANTS_JSON,{});
-  const stored=env.BI_SESSIONS?await env.BI_SESSIONS.get(TENANT_CONFIG_PREFIX+tenantId):null;
-  const tenant=stored?await decodeTenantConfig(env,tenantId,stored):tenants[tenantId];
+  const stored=await storedTenantConfig(env,tenantId);
+  const tenant=stored||tenants[tenantId];
   if (!tenant || tenant.enabled===false) throw new Error("TENANT_NOT_FOUND");
   if (!tenant.userAccess) throw new Error("TENANT_USER_ACCESS_NOT_CONFIGURED");
   return {
@@ -7088,7 +7140,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-06-bi-local-users-v84",
+        buildVersion:"2026-10-06-tenant-config-d1-v85",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
@@ -7450,7 +7502,7 @@ export default {
         const current=await resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,current);
         requireTenantConfigAdmin(auth);
-        if(!env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
+        if(!env.AUTH_DB&&!env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
         const registry=await tenantRegistry(env);
         const accesses=await getUserAccesses(auth.userToken);
         const canManage=config=>{
@@ -7471,15 +7523,15 @@ export default {
         if(text.length>20000) throw new Error("TENANT_CONFIG_INVALID");
         let input; try {input=JSON.parse(text);} catch {throw new Error("TENANT_CONFIG_INVALID");}
         const previous=Object.hasOwn(registry,String(input.id||""))?registry[String(input.id)]:{};
-        if(Object.keys(previous).length&&!canManage(previous)&&String(input.id)!==current.id) throw new Error("TENANT_CONFIG_FORBIDDEN");
+        const isExisting=Object.keys(previous).length>0;
+        if(isExisting&&!canManage(previous)&&String(input.id)!==current.id) throw new Error("TENANT_CONFIG_FORBIDDEN");
         const {id,config}=validateTenantConfig(input,previous);
-        if(!canManage(config)) throw new Error("TENANT_CONFIG_FORBIDDEN");
         const candidate={id,...config,accessToken:config.accessToken||env.BETHA_ACCESS_TOKEN||""};
         // Test before persistence: invalid credentials never replace a working configuration.
         await bethaGet(env,candidate,"bi","contribuintes","limit=1&fields=id");
         if(url.pathname.endsWith("/test")) return json(request,env,200,{ok:true,message:"Conexão Betha validada."});
         config.updatedAt=new Date().toISOString();
-        await env.BI_SESSIONS.put(TENANT_CONFIG_PREFIX+id,await encodeTenantConfig(env,id,config));
+        await persistTenantConfig(env,id,config);
         await writeAuditEvent(env,{tenantId:current.id,actor:auditActorLabel(auth.access),category:"configuration",action:"entity.save",subject:id,meta:{enabled:config.enabled,entityId:config.entityId,databaseId:config.databaseId}});
         return json(request,env,200,{ok:true,entity:publicTenantConfig(id,config,env)});
       } catch(error) {
