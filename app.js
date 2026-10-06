@@ -824,6 +824,10 @@
     document.getElementById("propertyExecutive")?.remove();
     document.getElementById("propertyTrendHeading")?.remove();
     document.getElementById("propertySecondaryHeading")?.remove();
+    document.getElementById("itbiKpiHeading")?.remove();
+    document.getElementById("itbiExecutive")?.remove();
+    document.getElementById("itbiTrendHeading")?.remove();
+    document.getElementById("itbiSecondaryHeading")?.remove();
     restoreViewPreferencesOnce(view);
     renderDashboardFilters(def);
 
@@ -927,6 +931,14 @@
       kpiHeading.id="propertyKpiHeading";
       kpiHeading.className="property-section-heading property-kpi-heading";
       kpiHeading.innerHTML='<div><span>CADASTRO IMOBILIÁRIO E IPTU</span><h2>Estoque, ocupação e movimentação</h2></div><p>Priorize o total de imóveis e a base ativa; depois acompanhe rurais, responsáveis e transferências.</p>';
+      kpiGrid.insertAdjacentElement("beforebegin",kpiHeading);
+    }
+
+    if(view==="itbi"){
+      const kpiHeading=document.createElement("div");
+      kpiHeading.id="itbiKpiHeading";
+      kpiHeading.className="itbi-section-heading itbi-kpi-heading";
+      kpiHeading.innerHTML='<div><span>TRANSFERÊNCIAS E ITBI</span><h2>Operações, valores e imposto apurado</h2></div><p>Priorize o ITBI apurado e o valor declarado; depois acompanhe solicitações, transferências e financiamento.</p>';
       kpiGrid.insertAdjacentElement("beforebegin",kpiHeading);
     }
 
@@ -1202,6 +1214,38 @@
       secondaryHeading.id="propertySecondaryHeading";
       secondaryHeading.className="property-section-heading property-secondary-heading";
       secondaryHeading.innerHTML='<div><span>TERRITÓRIO E RESPONSABILIDADE</span><h2>Bairros, ruas, proprietários e movimentações</h2></div><p>Explore a distribuição territorial, imóveis urbanos e rurais, responsáveis, setores, condomínios, loteamentos e transferências.</p>';
+      chartGrid.insertAdjacentElement("beforebegin",secondaryHeading);
+
+      if(coverage) chartGrid.insertAdjacentElement("afterend",coverage);
+    }
+
+    if(view==="itbi"){
+      const executive=document.createElement("section");
+      executive.id="itbiExecutive";
+      executive.className="itbi-executive";
+
+      const trendHeading=document.createElement("div");
+      trendHeading.id="itbiTrendHeading";
+      trendHeading.className="itbi-section-heading itbi-trend-heading";
+      trendHeading.innerHTML='<div><span>FLUXO E APURAÇÃO</span><h2>Transferências concluídas versus ITBI calculado</h2></div><p>Acompanhe o volume de transferências ao lado da comparação entre o ITBI original e o valor ajustado.</p>';
+      chartGrid.insertAdjacentElement("beforebegin",trendHeading);
+      trendHeading.insertAdjacentElement("afterend",executive);
+
+      const transfers=document.querySelector('#chartGrid [data-chart="transferencias-mes"]');
+      const taxComparison=document.querySelector('#chartGrid [data-chart="itbi-ajustado"]');
+      if(transfers){
+        transfers.classList.add("itbi-executive-main");
+        executive.appendChild(transfers);
+      }
+      if(taxComparison){
+        taxComparison.classList.add("itbi-executive-side");
+        executive.appendChild(taxComparison);
+      }
+
+      const secondaryHeading=document.createElement("div");
+      secondaryHeading.id="itbiSecondaryHeading";
+      secondaryHeading.className="itbi-section-heading itbi-secondary-heading";
+      secondaryHeading.innerHTML='<div><span>PROCESSO E COMPOSIÇÃO</span><h2>Solicitações, certidões, financiamento e tramitação</h2></div><p>Explore o fluxo das solicitações, situações, certidão de ITBI, valores declarados, financiamento, cobrança e compradores.</p>';
       chartGrid.insertAdjacentElement("beforebegin",secondaryHeading);
 
       if(coverage) chartGrid.insertAdjacentElement("afterend",coverage);
