@@ -967,6 +967,7 @@
             const result=await api("/api/home/"+encodeURIComponent(group.id),{timeoutMs:30000});
             if(!active()) return;
             if(result.sync?.state==="running")backgroundJob=result.sync;
+            if(!backgroundJob&&(result.cards||[]).some(card=>card.state==="loading"))backgroundJob={completed:0,total:groups.reduce((n,g)=>n+g.cards.length,0)};
             for(const card of result.cards||[]) {
               const el=document.querySelector('[data-home-source="'+cssEscape(card.id)+'"]');
               if(!el) continue;
