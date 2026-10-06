@@ -959,13 +959,14 @@
       if(!active()) return;
       const groups=catalog.groups||[];
       document.getElementById("homeSummaryGroups").innerHTML=groups.map(group=>'<section class="home-summary-group"><header><i class="mdi mdi-'+escapeHtml(group.icon)+'"></i><h2>'+escapeHtml(group.label)+'</h2><span>'+group.cards.length+' resumos</span></header><div class="home-summary-grid">'+group.cards.map(homeCardHtml).join('')+'</div></section>').join('');
-      let next=0,finished=0,unavailable=0;
+      let next=0,finished=0,unavailable=0,backgroundJob=null;
       await Promise.all(Array.from({length:Math.min(2,groups.length)},async()=>{
         while(next<groups.length&&active()) {
           const group=groups[next++];
           try {
             const result=await api("/api/home/"+encodeURIComponent(group.id),{timeoutMs:30000});
             if(!active()) return;
+            if(result.sync?.state==="running")backgroundJob=result.sync;
             for(const card of result.cards||[]) {
               const el=document.querySelector('[data-home-source="'+cssEscape(card.id)+'"]');
               if(!el) continue;
@@ -982,6 +983,8 @@
         }
       }));
       if(active()) status.textContent=groups.length?"Resumos atualizados"+(unavailable?" · "+unavailable+" fonte(s) indisponível(is)":"")+". Clique em um cartão para explorar.":"Nenhuma fonte liberada para este acesso.";
+      if(active()&&backgroundJob){status.textContent='Carga completa em segundo plano: '+backgroundJob.completed+' de '+backgroundJob.total+' fontes concluídas. Os totais são atualizados automaticamente.';setTimeout(()=>{if(active())loadSyntheticHome();},15000);}
+
     } catch(error) {if(active())status.textContent="Não foi possível carregar os resumos: "+error.message;}
     finally {if(active())button.disabled=false;}
   }

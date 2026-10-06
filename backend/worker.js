@@ -1129,7 +1129,7 @@ async function buildHomeGroupSummary(env,tenant,auth,groupId) {
   const group=homeCatalog(auth).find(group=>group.id===groupId);
   if(!group) throw new Error("DATA_RESOURCE_PERMISSION_DENIED");
   const config=await syncConfig(env,tenant);
-  if(config.latestJob){const job=await syncJob(env,tenant,config.latestJob);if(job)return {group:group.id,cards:group.cards.map(card=>{const source=job.sources[card.id];return {id:card.id,count:source?.loaded??null,partial:source?!source.complete:false,state:!source||source.error?'unavailable':source.complete?'complete':'partial'};})};}
+  if(config.latestJob||config.activeJob){const job=await syncJob(env,tenant,config.latestJob||config.activeJob);if(job)return {group:group.id,sync:publicSyncJob(job),cards:group.cards.map(card=>{const source=job.sources[card.id];return {id:card.id,count:source?.error?null:source?.loaded??null,partial:source?!source.complete:false,state:source?.error?'unavailable':!source?job.state==='running'?'loading':'unavailable':source.complete?'complete':'partial'};})};}
   if(config.enabled)return {group:group.id,cards:group.cards.map(card=>({id:card.id,count:null,partial:false,state:'loading'}))};
   const cards=new Array(group.cards.length);
   let next=0;
@@ -6700,7 +6700,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-06-background-v70",
+        buildVersion:"2026-10-06-totals-v71",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
