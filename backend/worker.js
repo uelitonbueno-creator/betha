@@ -3536,6 +3536,7 @@ async function buildRealEstateDashboard(env,tenant,url) {
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
   const filters={
     bairro:dashboardFilterValue(url,"bairro"),
+    logradouro:dashboardFilterValue(url,"logradouro"),
     setor:dashboardFilterValue(url,"setor"),
     zona:dashboardFilterValue(url,"zona"),
     cadastro:dashboardFilterValue(url,"cadastro")
@@ -3555,6 +3556,7 @@ async function buildRealEstateDashboard(env,tenant,url) {
   const isInactive=row=>truthyValue(row,["desativado"])||/inativ|desativ|cancel/i.test(stringValue(row,["situacao","status"],""));
   const imoRows=allImoRows.filter(row=>{
     if(filters.bairro&&!matchesDashboardFilter(row,filters.bairro,["nomeBairro","bairro.nome","bairro"])) return false;
+    if(filters.logradouro&&!matchesDashboardFilter(row,filters.logradouro,["nomeLogradouro","logradouro.nome"])) return false;
     if(filters.setor&&!matchesDashboardFilter(row,filters.setor,["setor","setor.codigo","nomeSetor"])) return false;
     if(filters.zona==="rural"&&!isRural(row)) return false;
     if(filters.zona==="urbana"&&isRural(row)) return false;
@@ -3573,8 +3575,9 @@ async function buildRealEstateDashboard(env,tenant,url) {
   const transRows=trans.rows.filter(row=>linkedToProperty(row,["idImovel","imovel.id","imovelId"]));
   const iptuRows=pagdet.rows.filter(row=>linkedToProperty(row,["idImovel","imovel.id","referente.idImovel"]));
 
-  const bairros=groupCount(imoRows,["nomeBairro","bairro.nome","bairro"],15);
-  const setores=groupCount(imoRows,["setor","setor.codigo","nomeSetor"],15);
+  const bairros=groupCount(imoRows,["nomeBairro","bairro.nome","bairro"],Infinity);
+  const ruas=groupCount(imoRows,["nomeLogradouro","logradouro.nome"],Infinity);
+  const setores=groupCount(imoRows,["setor","setor.codigo","nomeSetor"],Infinity);
   const rural=groupCount(imoRows,["rural","tipoZona","zona"],6);
   const ativo=groupCount(imoRows,["desativado","situacao","status"],8);
   const condo=groupCount(imoRows,["nomeCondominio","condominio.nome","condominio"],12);
@@ -3608,6 +3611,7 @@ async function buildRealEstateDashboard(env,tenant,url) {
     },
     charts:{
       "bairro-imoveis":chartGroups(bairros,"Imóveis","number"),
+      "logradouro-imoveis":chartGroups(ruas,"Imóveis","number"),
       "setor-imoveis":chartGroups(setores,"Imóveis","number"),
       "rural-urbano":chartGroups(rural,"Imóveis","number"),
       "ativos-inativos-imoveis":chartGroups(ativo,"Imóveis","number"),
@@ -3620,6 +3624,7 @@ async function buildRealEstateDashboard(env,tenant,url) {
       "corresponsaveis-tipo":chartGroups(tiposCorresponsaveis,"Corresponsáveis","number")
     },
     meta:dashboardMeta([["imoveis",imo],["responsaveis",resp],["corresponsaveis",corresp],["transferencias",trans],["baseImoveis",baseImo],["plantaValores",planta],["pagamentosDetalhados",pagdet]],{
+      filterOptions:{bairro:filterOptionsFromRows(allImoRows,["nomeBairro","bairro.nome","bairro"],10000),logradouro:filterOptionsFromRows(allImoRows,["nomeLogradouro","logradouro.nome"],10000),setor:filterOptionsFromRows(allImoRows,["setor","setor.codigo","nomeSetor"],10000)},
       filteredRows:{imoveis:imoRows.length,responsaveis:respRows.length,corresponsaveis:correspRows.length,transferencias:transRows.length,pagamentosDetalhados:iptuRows.length}
     })
   };
@@ -4708,11 +4713,11 @@ function detailFilterRows(resource,rows,url,context={}) {
   const selectedColumn=def.columns?.find(column=>column[0]===field);
   const situationColumn=def.columns?.find(column=>column[0]==="situacao");
   const mainPaths={
-    bairro:["nomeBairro","bairro.nome","bairro"],setor:["setor.codigo","setor","nomeSetor"],cidade:["nomeCidade","cidade.nome"],
+    logradouro:["nomeLogradouro","logradouro.nome"],bairro:["nomeBairro","bairro.nome","bairro"],setor:["setor.codigo","setor","nomeSetor"],cidade:["nomeCidade","cidade.nome"],
     tipoPessoa:["tipoPessoa.descricao","tipoPessoa"],credito:["creditoTributario.descricao","credito.descricao","idCreditosTributarios"],origem:["tipoReferente","origem"],
     classificacaoReceita:["classificacao"],tipoCredito:["tipoCadastro.descricao"],tipoLogradouro:["tipoLogradouroDescricao"],zonaFiscal:["zonaFiscal"],indexador:["moeda.nome","moeda.sigla"]
   };
-  const mainKeys={contribuintes:["tipoPessoa","cidade"],imoveis:["bairro","setor"],economicos:["bairro"],debitos:["credito","origem"],dividas:["credito"],receitas:["classificacaoReceita"],"creditos-tributarios":["tipoCredito"],logradouros:["tipoLogradouro","zonaFiscal"],"indexadores-valores":["indexador"]};
+  const mainKeys={contribuintes:["tipoPessoa","cidade"],imoveis:["bairro","logradouro","setor"],economicos:["bairro"],debitos:["credito","origem"],dividas:["credito"],receitas:["classificacaoReceita"],"creditos-tributarios":["tipoCredito"],logradouros:["tipoLogradouro","zonaFiscal"],"indexadores-valores":["indexador"]};
   out=out.filter(row=>{
     for(const key of mainKeys[resource]||[]) if(!matchesDashboardFilter(row,dashboardFilterValue(url,key),mainPaths[key])) return false;
     if(search&&!normalizeGlobalSearch((def.columns||[]).map(column=>stringValue(row,column[2],"")).join(" ")).includes(search)) return false;
@@ -4836,10 +4841,11 @@ async function buildDetailPage(env,tenant,resource,url) {
   }
   if(["imoveis-responsaveis","imoveis-corresponsaveis"].includes(resource)){
     const bairro=dashboardFilterValue(url,"bairro");
+    const logradouro=dashboardFilterValue(url,"logradouro");
     const setor=dashboardFilterValue(url,"setor");
     const zona=dashboardFilterValue(url,"zona");
     const cadastro=dashboardFilterValue(url,"cadastro");
-    if(bairro||setor||zona||cadastro){
+    if(bairro||logradouro||setor||zona||cadastro){
       const imoveis=await safeBethaRows(env,tenant,"bi","imoveis");
       if(imoveis.error){
         const error=new Error(imoveis.error);
@@ -4850,6 +4856,7 @@ async function buildDetailPage(env,tenant,resource,url) {
       const isInactive=row=>truthyValue(row,["desativado"])||/inativ|desativ|cancel/i.test(stringValue(row,["situacao","status"],""));
       const propertyRows=imoveis.rows.filter(row=>{
         if(bairro&&!matchesDashboardFilter(row,bairro,["nomeBairro","bairro.nome","bairro"])) return false;
+        if(logradouro&&!matchesDashboardFilter(row,logradouro,["nomeLogradouro","logradouro.nome"])) return false;
         if(setor&&!matchesDashboardFilter(row,setor,["setor","setor.codigo","nomeSetor"])) return false;
         if(zona==="rural"&&!isRural(row)) return false;
         if(zona==="urbana"&&isRural(row)) return false;
@@ -6271,7 +6278,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-06-entities-filters-v64",
+        buildVersion:"2026-10-06-chart-exploration-v65",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",

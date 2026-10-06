@@ -198,6 +198,7 @@ window.BI_DASHBOARDS = {
     level: "macro-micro",
     filters: [
       {id:"bairro",label:"Bairro",type:"select"},
+      {id:"logradouro",label:"Rua / logradouro",type:"select"},
       {id:"setor",label:"Setor",type:"select"},
       {id:"zona",label:"Zona",type:"select",options:[
         {value:"rural",label:"Rural"},
@@ -216,12 +217,13 @@ window.BI_DASHBOARDS = {
       {id:"transferencias",label:"Transferências",format:"number",source:"bi:transferencias-imoveis",field:"id"}
     ],
     charts: [
-      {id:"bairro-imoveis",title:"Imóveis por bairro",subtitle:"Distribuição territorial do cadastro.",type:"bar",source:"bi:imoveis",dimension:"nomeBairro",measures:["count"],drill:"imoveis"},
-      {id:"setor-imoveis",title:"Imóveis por setor",subtitle:"Distribuição por setor cadastral.",type:"bar",source:"bi:imoveis",dimension:"setor",measures:["count"],drill:"imoveis"},
-      {id:"rural-urbano",title:"Rural × urbano",subtitle:"Composição da base imobiliária.",type:"doughnut",source:"bi:imoveis",dimension:"rural",measures:["count"],drill:"imoveis"},
-      {id:"ativos-inativos-imoveis",title:"Ativos × desativados",subtitle:"Situação dos registros imobiliários.",type:"doughnut",source:"bi:imoveis",dimension:"desativado",measures:["count"],drill:"imoveis"},
-      {id:"condominios",title:"Imóveis por condomínio",subtitle:"Maiores concentrações condominiais.",type:"bar",source:"bi:imoveis",dimension:"nomeCondominio",measures:["count"],drill:"imoveis"},
-      {id:"loteamentos",title:"Imóveis por loteamento",subtitle:"Distribuição por loteamento.",type:"bar",source:"bi:imoveis",dimension:"nomeLoteamento",measures:["count"],drill:"imoveis"},
+      {id:"bairro-imoveis",groupLabel:"Bairro",title:"Imóveis por bairro",subtitle:"Distribuição territorial do cadastro.",type:"bar",source:"bi:imoveis",dimension:"nomeBairro",measures:["count"],drill:"imoveis"},
+      {id:"logradouro-imoveis",title:"Imóveis por rua",groupLabel:"Rua / logradouro",subtitle:"Todos os logradouros do recorte selecionado.",type:"bar",source:"bi:imoveis",dimension:"nomeLogradouro",measures:["count"],drill:"imoveis"},
+      {id:"setor-imoveis",groupLabel:"Setor",title:"Imóveis por setor",subtitle:"Distribuição por setor cadastral.",type:"bar",source:"bi:imoveis",dimension:"setor",measures:["count"],drill:"imoveis"},
+      {id:"rural-urbano",groupLabel:"Zona rural / urbana",title:"Rural × urbano",subtitle:"Composição da base imobiliária.",type:"doughnut",source:"bi:imoveis",dimension:"rural",measures:["count"],drill:"imoveis"},
+      {id:"ativos-inativos-imoveis",groupLabel:"Situação cadastral",title:"Ativos × desativados",subtitle:"Situação dos registros imobiliários.",type:"doughnut",source:"bi:imoveis",dimension:"desativado",measures:["count"],drill:"imoveis"},
+      {id:"condominios",groupLabel:"Condomínio",title:"Imóveis por condomínio",subtitle:"Maiores concentrações condominiais.",type:"bar",source:"bi:imoveis",dimension:"nomeCondominio",measures:["count"],drill:"imoveis"},
+      {id:"loteamentos",groupLabel:"Loteamento",title:"Imóveis por loteamento",subtitle:"Distribuição por loteamento.",type:"bar",source:"bi:imoveis",dimension:"nomeLoteamento",measures:["count"],drill:"imoveis"},
       {id:"tipo-imovel",title:"Tipo de imóvel",subtitle:"Classificação detalhada disponível na fonte base.",type:"bar",source:"base:imoveis",dimension:"tipoImovel",measures:["count"],drill:"imoveis"},
       {id:"planta-valores",title:"Valor do m² por região",subtitle:"Planta de valores por bairro/logradouro.",type:"bar",source:"base:planta-valores",dimension:"bairro/logradouro",measures:["vlMetroQuadrado"],drill:"planta-valores"},
       {id:"iptu-pagamentos",title:"Arrecadação imobiliária",subtitle:"Pagamentos vinculados a imóveis por mês.",type:"line",source:"bi:pagamentos-detalhados",dimension:"pagamento.dataPagamento:mês",filter:"idImovel",measures:["valorPagoLancado"],drill:"pagamentos-detalhados"},

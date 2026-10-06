@@ -53,6 +53,7 @@
   const query = Object.fromEntries(new URLSearchParams(location.search).entries());
   const chartInstances = new Map();
   const filterStateByView = new Map();
+  const chartDisplayStateByView = new Map();
   const restoredPreferenceScopes = new Set();
   let toastTimer = null;
   let currentView = ADMIN_VIEWS.has(query.view) ? query.view :
@@ -258,6 +259,7 @@
       exercicio:document.getElementById("exercicio")?.value||String(currentYear),
       fonte:document.getElementById("fontePreferencial")?.value||"auto",
       filters:persistableDashboardFilters(currentView),
+      chartDisplay:chartDisplayStateByView.get(currentView)||{},
       savedAt:new Date().toISOString()
     };
     try{
@@ -305,6 +307,7 @@
     setSelectValueIfAvailable("exercicio",saved.exercicio,String(currentYear));
     setSelectValueIfAvailable("fontePreferencial",saved.fonte,"auto");
     filterStateByView.set(view,{...(saved.filters||{})});
+    chartDisplayStateByView.set(view,{...(saved.chartDisplay||{})});
   }
 
   function clearStoredViewPreference(view=currentView) {
@@ -559,6 +562,7 @@
     setSelectValueIfAvailable("exercicio",String(currentYear),String(currentYear));
     setSelectValueIfAvailable("fontePreferencial","auto","auto");
     filterStateByView.set(currentView,{});
+    chartDisplayStateByView.delete(currentView);
     clearStoredViewPreference(currentView);
     const def=dashboards[currentView];
     if(def) renderDashboardFilters(def);
@@ -677,7 +681,8 @@
       if(definition?.type!=="search") saveViewPreferences({silent:true});
 
       const loaded=loadDashboardFromCache(currentView);
-      if(!loaded) setStatus("waiting","Filtros alterados · clique em ATUALIZAR");
+      if(!loaded) setStatus("waiting","Atualizando o gráfico para os filtros selecionados…");
+      loadDashboardData(currentView,{force:true});
     };
 
     container.querySelectorAll("select[data-dashboard-filter]").forEach(select=>{
@@ -695,7 +700,6 @@
           event.preventDefault();
           clearTimeout(timer);
           applyControlValue(input);
-          loadDashboardData(currentView,{force:true});
         }
       });
     });
@@ -707,7 +711,7 @@
     const filters=Array.isArray(def?.filters)?def.filters:[];
     if(!filters.length) return;
 
-    const serverOptions=payload?.meta?.filterOptions||{};
+    const serverOptions=payload?.meta?.filterOptions||payload?.filterOptions||{};
     const state=currentFilterState(currentView);
 
     for(const filter of filters){
@@ -777,7 +781,17 @@
         event.stopPropagation();
         toggleKpiFavorite(view,kpi);
       });
-      el.addEventListener("click", () => openKpiDetail(kpi));
+      el.addEventListener("click", () => {
+        const candidates=(def.charts||[]).filter(chart=>chart.source===kpi.source);
+        const target=candidates.find(chart=>chart.dimension===kpi.field)||candidates.find(chart=>(chart.measures||[]).includes(kpi.field))||candidates.find(chart=>(chart.measures||[]).includes("count"));
+        if(!target){openKpiDetail(kpi);return;}
+        const state=chartDisplayStateByView.get(view)||{};
+        state[target.id]={group:target.id,type:state[target.id]?.type||target.type};
+        chartDisplayStateByView.set(view,state);
+        const card=document.querySelector('[data-chart="'+cssEscape(target.id)+'"]');
+        if(card){const select=card.querySelector('[data-chart-display="group"]');if(select)select.value=target.id;card.scrollIntoView({behavior:"smooth",block:"center"});card.classList.add("chart-highlight");setTimeout(()=>card.classList.remove("chart-highlight"),1600);}
+        if(currentPayload) renderPayload(currentPayload);
+      });
       kpiGrid.appendChild(el);
     }
     updateKpiFavoriteButtons();
@@ -813,11 +827,12 @@
           </div>
           <div class="chart-meta">
             <span class="source-badge ${sourceClass(chartDef.source)}">${sourceLabel(chartDef.source)}</span>
-            <button type="button" class="detail-button">DETALHAR</button>
+            <button type="button" class="detail-button">VER DETALHES</button>
           </div>
         </div>
+        <div class="chart-display-controls">${chartDisplayControls(chartDef)}</div>
         <div class="chart-body">
-          <canvas></canvas>
+          <div class="chart-canvas-wrap"><canvas></canvas></div>
           <div class="chart-empty" data-empty-state>
             <i class="mdi mdi-chart-box-outline"></i>
             <strong>Carregando dados...</strong>
@@ -825,7 +840,17 @@
           </div>
         </div>
       `;
-      card.querySelector(".detail-button").addEventListener("click", () => openChartDetail(chartDef));
+      card.querySelector(".detail-button").addEventListener("click", () => openChartDetail(displayChartDefinition(chartDef)));
+      card.querySelectorAll("[data-chart-display]").forEach(select=>select.addEventListener("change",()=>{
+        const state=chartDisplayStateByView.get(view)||{};
+        state[chartDef.id]={group:card.querySelector('[data-chart-display="group"]')?.value||chartDef.id,type:card.querySelector('[data-chart-display="type"]')?.value||chartDef.type};
+        chartDisplayStateByView.set(view,state);
+        saveViewPreferences({silent:true});
+        const selected=displayChartDefinition(chartDef);
+        card.querySelector("h2").textContent=selected.title;
+        card.querySelector(".chart-title-block p").textContent=selected.subtitle||"";
+        if(currentPayload) renderPayload(currentPayload);
+      }));
       chartGrid.appendChild(card);
     });
 
@@ -843,8 +868,27 @@
     setStatus("waiting", cfg.BACKEND_URL ? "Carregando dados" : "Dados indisponíveis");
   }
 
+  function compatibleChartGroups(chartDef,charts) {
+    const signature=JSON.stringify([...(chartDef.measures||[])].sort());
+    return charts.filter(item=>item.source===chartDef.source&&item.drill===chartDef.drill&&JSON.stringify([...(item.measures||[])].sort())===signature);
+  }
+  function displayChartDefinition(chartDef) {
+    const state=chartDisplayStateByView.get(currentView)?.[chartDef.id]||{};
+    const groups=compatibleChartGroups(chartDef,dashboards[currentView]?.charts||[]);
+    const selected=groups.find(item=>item.id===state.group)||chartDef;
+    const type=["bar","pie","doughnut","line"].includes(state.type)?state.type:selected.type;
+    return {...selected,type};
+  }
+  function chartDisplayControls(chartDef) {
+    const groups=compatibleChartGroups(chartDef,dashboards[currentView]?.charts||[]);
+    const selected=displayChartDefinition(chartDef);
+    const grouping=groups.length>1?'<label>Agrupar por<select data-chart-display="group" aria-label="Agrupamento de '+escapeHtml(chartDef.title)+'">'+groups.map(item=>'<option value="'+escapeHtml(item.id)+'" '+(item.id===selected.id?'selected':'')+'>'+escapeHtml(item.groupLabel||item.title)+'</option>').join('')+'</select></label>':'<span class="chart-group-label">'+escapeHtml(selected.groupLabel||selected.title)+'</span>';
+    return grouping+'<label>Tipo de gráfico<select data-chart-display="type" aria-label="Tipo de gráfico de '+escapeHtml(chartDef.title)+'">'+[["bar","Barras"],["pie","Pizza"],["doughnut","Rosca"],["line","Linhas"]].map(([value,label])=>'<option value="'+value+'" '+(value===selected.type?'selected':'')+'>'+label+'</option>').join('')+'</select></label>';
+  }
+
   function chartType(type) {
     if (type === "doughnut") return "doughnut";
+    if (type === "pie") return "pie";
     if (type === "line") return "line";
     return "bar";
   }
@@ -888,12 +932,25 @@
     const card = document.querySelector(`[data-chart="${cssEscape(chartDef.id)}"]`);
     if (!card || !data || !Array.isArray(data.labels) || !Array.isArray(data.datasets)) return;
 
+    const baseChartId=chartDef.id;
+    chartDef=displayChartDefinition(chartDef);
+    data=currentPayload?.charts?.[chartDef.id]||data;
+    const signed=data.datasets.some(dataset=>(dataset.data||[]).some(value=>Number(value)<0));
+    if(signed&&["pie","doughnut"].includes(chartDef.type)) {
+      chartDef={...chartDef,type:"bar"};
+      card.querySelector('[data-chart-display="type"]').value="bar";
+    }
+    card.querySelector("h2").textContent=chartDef.title;
+    card.querySelector(".chart-title-block p").textContent=chartDef.subtitle||"";
+    const circular=["pie","doughnut"].includes(chartDef.type);
+    const horizontal=chartDef.type==="bar"&&data.labels.length>15;
+    card.querySelector(".chart-canvas-wrap").style.height=horizontal?Math.max(300,data.labels.length*26)+"px":"300px";
     card.querySelector(".chart-empty").hidden = true;
     const canvas = card.querySelector("canvas");
 
-    if (chartInstances.has(chartDef.id)) {
-      chartInstances.get(chartDef.id).destroy();
-      chartInstances.delete(chartDef.id);
+    if (chartInstances.has(baseChartId)) {
+      chartInstances.get(baseChartId).destroy();
+      chartInstances.delete(baseChartId);
     }
 
     const bethaPalette = ["#356ae6","#168a62","#7b68c8","#d99224","#3a8f9d","#c65e72","#657184","#9671bd"];
@@ -901,7 +958,7 @@
       const color=bethaPalette[index % bethaPalette.length];
       const base={...dataset};
 
-      if(chartDef.type==="doughnut"){
+      if(circular){
         return {
           ...base,
           backgroundColor:(dataset.data||[]).map((_,i)=>bethaPalette[i % bethaPalette.length]),
@@ -946,6 +1003,7 @@
         datasets: chartDatasets
       },
       options: {
+        indexAxis:horizontal?"y":"x",
         responsive: true,
         maintainAspectRatio: false,
         interaction: {mode:"index", intersect:false},
@@ -953,7 +1011,7 @@
         layout:{padding:{top:4,right:4,bottom:0,left:2}},
         plugins: {
           legend: {
-            display: data.datasets.length > 1 || chartDef.type === "doughnut",
+            display: data.datasets.length > 1 || circular,
             position: "bottom",
             labels: {
               boxWidth:8,
@@ -973,7 +1031,7 @@
             borderWidth:1,
             cornerRadius:10,
             padding:11,
-            displayColors:data.datasets.length>1 || chartDef.type==="doughnut",
+            displayColors:data.datasets.length>1 || circular,
             boxPadding:4,
             titleFont:{size:11,weight:"600"},
             bodyFont:{size:11,weight:"500"},
@@ -985,9 +1043,10 @@
             }
           }
         },
-        scales: chartDef.type === "doughnut" ? undefined : {
+        scales: circular ? undefined : {
           x: {
-            ticks:{font:{size:9,weight:"500"},color:"#7a8495",maxRotation:30,minRotation:0,padding:6},
+            beginAtZero:horizontal,
+            ticks:{font:{size:9,weight:"500"},color:"#7a8495",maxRotation:horizontal?0:30,minRotation:0,padding:6,callback:horizontal?(value=>compactChartValue(value,data.format)):undefined},
             grid:{display:false},
             border:{display:false}
           },
@@ -997,8 +1056,9 @@
               font:{size:9,weight:"500"},
               color:"#8a94a4",
               padding:10,
-              maxTicksLimit:6,
-              callback(value){ return compactChartValue(value,data.format); }
+              maxTicksLimit:horizontal?undefined:6,
+              autoSkip:!horizontal,
+              callback:horizontal?undefined:(value=>compactChartValue(value,data.format))
             },
             grid:{color:"rgba(107,116,133,.075)",drawTicks:false},
             border:{display:false}
@@ -1014,7 +1074,7 @@
         }
       }
     });
-    chartInstances.set(chartDef.id, instance);
+    chartInstances.set(baseChartId, instance);
   }
 
   function renderOverviewAttention(payload) {
@@ -1195,7 +1255,7 @@
 
     const charts = payload.charts || {};
     for (const chartDef of def.charts || []) {
-      const chartData=charts[chartDef.id];
+      const chartData=charts[displayChartDefinition(chartDef).id];
       const hasData=chartData && Array.isArray(chartData.labels) && chartData.labels.length &&
         Array.isArray(chartData.datasets) && chartData.datasets.some(ds=>Array.isArray(ds.data) && ds.data.some(v=>Number(v)!==0));
       if (hasData) renderChartData(chartDef,chartData);
@@ -4477,6 +4537,7 @@
   function applyTenantInPlace(tenant, resumeView = false) {
     if (!tenant || !tenant.id) return false;
 
+    if(tenantId!==tenant.id){chartDisplayStateByView.clear();filterStateByView.clear();restoredPreferenceScopes.clear();}
     tenantId = tenant.id;
     entityLabel = tenant.name || tenant.id;
 
