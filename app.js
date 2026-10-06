@@ -804,6 +804,10 @@
     document.getElementById("revenueExecutive")?.remove();
     document.getElementById("revenueTrendHeading")?.remove();
     document.getElementById("revenueSecondaryHeading")?.remove();
+    document.getElementById("debtKpiHeading")?.remove();
+    document.getElementById("debtExecutive")?.remove();
+    document.getElementById("debtTrendHeading")?.remove();
+    document.getElementById("debtSecondaryHeading")?.remove();
     restoreViewPreferencesOnce(view);
     renderDashboardFilters(def);
 
@@ -867,6 +871,14 @@
       kpiHeading.id="revenueKpiHeading";
       kpiHeading.className="revenue-section-heading revenue-kpi-heading";
       kpiHeading.innerHTML='<div><span>RECEITA DO PERÍODO</span><h2>Arrecadação efetivamente recebida</h2></div><p>Separe o principal arrecadado dos acréscimos, multas, correções e descontos.</p>';
+      kpiGrid.insertAdjacentElement("beforebegin",kpiHeading);
+    }
+
+    if(view==="debitos"){
+      const kpiHeading=document.createElement("div");
+      kpiHeading.id="debtKpiHeading";
+      kpiHeading.className="debt-section-heading debt-kpi-heading";
+      kpiHeading.innerHTML='<div><span>CARTEIRA DO PERÍODO</span><h2>Lançamentos e situação dos débitos</h2></div><p>Priorize o valor lançado e os vencidos em aberto antes de aprofundar a composição da carteira.</p>';
       kpiGrid.insertAdjacentElement("beforebegin",kpiHeading);
     }
 
@@ -982,6 +994,38 @@
       secondaryHeading.id="revenueSecondaryHeading";
       secondaryHeading.className="revenue-section-heading revenue-secondary-heading";
       secondaryHeading.innerHTML='<div><span>DETALHAMENTO DA RECEITA</span><h2>Origem, modalidade e comportamento</h2></div><p>Explore recebimentos diários, créditos, receitas, baixas, estornos, benefícios e acréscimos.</p>';
+      chartGrid.insertAdjacentElement("beforebegin",secondaryHeading);
+
+      if(coverage) chartGrid.insertAdjacentElement("afterend",coverage);
+    }
+
+    if(view==="debitos"){
+      const executive=document.createElement("section");
+      executive.id="debtExecutive";
+      executive.className="debt-executive";
+
+      const trendHeading=document.createElement("div");
+      trendHeading.id="debtTrendHeading";
+      trendHeading.className="debt-section-heading debt-trend-heading";
+      trendHeading.innerHTML='<div><span>EVOLUÇÃO E RISCO</span><h2>Formação e envelhecimento da carteira</h2></div><p>Acompanhe novos lançamentos e concentre a análise nas faixas de atraso dos débitos ainda em aberto.</p>';
+      chartGrid.insertAdjacentElement("beforebegin",trendHeading);
+      trendHeading.insertAdjacentElement("afterend",executive);
+
+      const monthly=document.querySelector('#chartGrid [data-chart="lancamentos-mensais"]');
+      const aging=document.querySelector('#chartGrid [data-chart="aging-debitos"]');
+      if(monthly){
+        monthly.classList.add("debt-executive-main");
+        executive.appendChild(monthly);
+      }
+      if(aging){
+        aging.classList.add("debt-executive-side");
+        executive.appendChild(aging);
+      }
+
+      const secondaryHeading=document.createElement("div");
+      secondaryHeading.id="debtSecondaryHeading";
+      secondaryHeading.className="debt-section-heading debt-secondary-heading";
+      secondaryHeading.innerHTML='<div><span>COMPOSIÇÃO DA CARTEIRA</span><h2>Situação, crédito e origem</h2></div><p>Analise status, crédito tributário, exercício, origem cadastral, descontos e receitas vinculadas.</p>';
       chartGrid.insertAdjacentElement("beforebegin",secondaryHeading);
 
       if(coverage) chartGrid.insertAdjacentElement("afterend",coverage);
