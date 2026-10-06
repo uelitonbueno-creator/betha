@@ -4257,3 +4257,303 @@ button{touch-action:manipulation}
     padding:13px;
   }
 }
+
+
+/* Arrecadação · layout analítico executivo v1 · 2026-10-06 */
+#dashboardView[data-dashboard="arrecadacao"]{
+  --revenue-accent:#078a61;
+  --revenue-accent-soft:#edf8f3;
+}
+#dashboardView[data-dashboard="arrecadacao"] .page-heading{
+  margin-bottom:18px;
+}
+#dashboardView[data-dashboard="arrecadacao"] .page-heading h1{
+  font-size:clamp(28px,2.35vw,35px);
+  letter-spacing:-.042em;
+}
+#dashboardView[data-dashboard="arrecadacao"] .page-heading p{
+  max-width:760px;
+  color:#587066;
+  font-size:12.5px;
+}
+#dashboardView[data-dashboard="arrecadacao"]>.filter-row:not(.advanced-filter-row){
+  margin-bottom:16px;
+  border-color:#dbe7e1;
+  border-radius:16px;
+  background:linear-gradient(180deg,#fff,#fbfdfc);
+  box-shadow:0 7px 24px rgba(18,67,48,.04);
+}
+#dashboardView[data-dashboard="arrecadacao"] .advanced-filter-row{
+  border-color:#dbe7e1;
+  border-radius:16px;
+  background:#fbfdfc;
+}
+#dashboardView[data-dashboard="arrecadacao"] .active-filter-chip{
+  border-color:#d3e8dd;
+  background:#f2faf6;
+}
+
+.revenue-section-heading{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:18px;
+  margin:4px 2px 10px;
+}
+.revenue-section-heading>div{min-width:0}
+.revenue-section-heading span{
+  display:block;
+  margin-bottom:3px;
+  color:#16805e;
+  font-size:8px;
+  font-weight:800;
+  letter-spacing:.095em;
+}
+.revenue-section-heading h2{
+  margin:0;
+  color:#173328;
+  font-size:16px;
+  line-height:1.2;
+  font-weight:760;
+  letter-spacing:-.018em;
+}
+.revenue-section-heading p{
+  max-width:480px;
+  margin:0;
+  color:#78887f;
+  font-size:9.5px;
+  line-height:1.45;
+  text-align:right;
+}
+
+/* Revenue KPIs: total and principal tax are the hero numbers. */
+#dashboardView[data-dashboard="arrecadacao"] .kpi-grid{
+  display:grid;
+  grid-template-columns:repeat(12,minmax(0,1fr));
+  gap:12px;
+  margin-bottom:20px;
+}
+#dashboardView[data-dashboard="arrecadacao"] .kpi-card{
+  grid-column:span 3;
+  min-height:108px;
+  padding:15px 16px;
+  border:1px solid #dce8e2;
+  border-top:2px solid rgba(7,138,97,.25);
+  border-radius:17px;
+  background:#fff;
+  box-shadow:0 4px 16px rgba(18,67,48,.035);
+}
+#dashboardView[data-dashboard="arrecadacao"] .kpi-card:nth-child(1){
+  grid-column:span 7;
+}
+#dashboardView[data-dashboard="arrecadacao"] .kpi-card:nth-child(2){
+  grid-column:span 5;
+}
+#dashboardView[data-dashboard="arrecadacao"] .kpi-card:nth-child(-n+2){
+  min-height:142px;
+  padding:20px;
+  border-top:3px solid rgba(7,138,97,.54);
+  background:
+    radial-gradient(circle at 100% 0,rgba(7,138,97,.09),transparent 35%),
+    linear-gradient(180deg,#fff,#fbfdfc);
+}
+#dashboardView[data-dashboard="arrecadacao"] .kpi-card:nth-child(-n+2) small{
+  margin-bottom:9px;
+  color:#557065;
+  font-size:11px;
+}
+#dashboardView[data-dashboard="arrecadacao"] .kpi-card:nth-child(-n+2) strong{
+  margin-bottom:8px;
+  color:#123f2e;
+  font-size:clamp(28px,2.45vw,37px);
+  line-height:1.08;
+}
+#dashboardView[data-dashboard="arrecadacao"] .kpi-card:nth-child(n+3) strong{
+  margin-bottom:4px;
+  font-size:20px;
+}
+#dashboardView[data-dashboard="arrecadacao"] .kpi-card:nth-child(6){
+  border-top-color:rgba(174,112,14,.35);
+  background:linear-gradient(180deg,#fff,#fffaf2);
+}
+#dashboardView[data-dashboard="arrecadacao"] .kpi-card:nth-child(6) .kpi-kind-icon{
+  color:#a66b00;
+}
+#dashboardView[data-dashboard="arrecadacao"] .kpi-card .kpi-kind-icon{
+  color:#078a61;
+  opacity:.085;
+}
+#dashboardView[data-dashboard="arrecadacao"] .kpi-card span{
+  font-size:8px;
+}
+
+/* Monthly trend + composition: one decision row. */
+.revenue-executive{
+  display:grid;
+  grid-template-columns:minmax(0,1.7fr) minmax(300px,.78fr);
+  gap:16px;
+  align-items:stretch;
+  margin-bottom:20px;
+}
+.revenue-executive>.chart-card{
+  min-width:0;
+  margin:0;
+  border:1px solid #dce8e2;
+  border-radius:18px;
+  background:#fff;
+  box-shadow:0 6px 22px rgba(18,67,48,.04);
+}
+.revenue-executive .chart-card-header{
+  min-height:64px!important;
+  padding:17px 17px 10px!important;
+}
+.revenue-executive .chart-title-block h2{
+  font-size:14.5px!important;
+}
+.revenue-executive .chart-body{
+  height:310px!important;
+  padding:6px 15px 15px!important;
+}
+.revenue-executive .chart-display-controls{
+  grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
+  padding:0 15px 10px;
+}
+.revenue-executive-side .chart-body{
+  height:310px!important;
+}
+.revenue-executive-side .chart-display-controls{
+  grid-template-columns:1fr;
+}
+
+/* Detailed charts: daily trend full-width, remaining analyses in pairs. */
+#dashboardView[data-dashboard="arrecadacao"] #chartGrid{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:16px;
+  margin-bottom:18px;
+}
+#dashboardView[data-dashboard="arrecadacao"] #chartGrid>.chart-card{
+  grid-column:auto;
+  border-color:#dfe8e3;
+  border-radius:16px;
+  box-shadow:0 3px 14px rgba(18,67,48,.03);
+}
+#dashboardView[data-dashboard="arrecadacao"] #chartGrid>.chart-card:first-child{
+  grid-column:1/-1;
+  border-color:#d6e6dd;
+  box-shadow:0 5px 18px rgba(18,67,48,.035);
+}
+#dashboardView[data-dashboard="arrecadacao"] #chartGrid>.chart-card:first-child .chart-body{
+  height:320px;
+}
+#dashboardView[data-dashboard="arrecadacao"] #chartGrid>.chart-card:nth-child(n+2) .chart-body{
+  height:260px;
+}
+#dashboardView[data-dashboard="arrecadacao"] #chartGrid .chart-card-header{
+  min-height:60px;
+  padding:14px 14px 9px;
+}
+#dashboardView[data-dashboard="arrecadacao"] #chartGrid .chart-title-block h2{
+  font-size:12.5px;
+}
+#dashboardView[data-dashboard="arrecadacao"] #chartGrid .chart-title-block p{
+  font-size:9px;
+}
+#dashboardView[data-dashboard="arrecadacao"] #chartGrid .chart-display-controls{
+  padding:0 13px 10px;
+}
+#dashboardView[data-dashboard="arrecadacao"] .integration-coverage{
+  margin:0 0 12px;
+  border-style:dashed;
+  background:#fbfdfc;
+  box-shadow:none;
+}
+
+/* Tablet */
+@media(max-width:1180px){
+  #dashboardView[data-dashboard="arrecadacao"] .kpi-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  #dashboardView[data-dashboard="arrecadacao"] .kpi-card,
+  #dashboardView[data-dashboard="arrecadacao"] .kpi-card:nth-child(1),
+  #dashboardView[data-dashboard="arrecadacao"] .kpi-card:nth-child(2){
+    grid-column:auto;
+  }
+  #dashboardView[data-dashboard="arrecadacao"] .kpi-card:nth-child(-n+2){
+    min-height:120px;
+  }
+  .revenue-executive{
+    grid-template-columns:1fr;
+  }
+  .revenue-executive-side .chart-body{
+    height:280px!important;
+  }
+}
+
+/* Mobile */
+@media(max-width:820px){
+  #dashboardView[data-dashboard="arrecadacao"] .page-heading h1{
+    font-size:27px;
+  }
+  .revenue-section-heading{
+    align-items:flex-start;
+    flex-direction:column;
+    gap:3px;
+    margin-bottom:9px;
+  }
+  .revenue-section-heading p{
+    max-width:none;
+    text-align:left;
+  }
+  #dashboardView[data-dashboard="arrecadacao"] .kpi-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:9px;
+  }
+  #dashboardView[data-dashboard="arrecadacao"] .kpi-card:nth-child(-n+2){
+    grid-column:1/-1;
+    min-height:116px;
+  }
+  #dashboardView[data-dashboard="arrecadacao"] .kpi-card:nth-child(-n+2) strong{
+    font-size:27px;
+  }
+  .revenue-executive{
+    grid-template-columns:1fr;
+    gap:12px;
+  }
+  .revenue-executive .chart-body,
+  .revenue-executive-side .chart-body{
+    height:260px!important;
+  }
+  #dashboardView[data-dashboard="arrecadacao"] #chartGrid{
+    grid-template-columns:1fr;
+    gap:12px;
+  }
+  #dashboardView[data-dashboard="arrecadacao"] #chartGrid>.chart-card:first-child{
+    grid-column:auto;
+  }
+  #dashboardView[data-dashboard="arrecadacao"] #chartGrid>.chart-card:first-child .chart-body,
+  #dashboardView[data-dashboard="arrecadacao"] #chartGrid>.chart-card:nth-child(n+2) .chart-body{
+    height:250px;
+  }
+}
+
+/* Small phones */
+@media(max-width:480px){
+  #dashboardView[data-dashboard="arrecadacao"] .kpi-grid{
+    grid-template-columns:1fr;
+  }
+  #dashboardView[data-dashboard="arrecadacao"] .kpi-card,
+  #dashboardView[data-dashboard="arrecadacao"] .kpi-card:nth-child(-n+2){
+    grid-column:auto;
+    min-height:106px;
+    padding:13px 14px;
+  }
+  #dashboardView[data-dashboard="arrecadacao"] .kpi-card:nth-child(-n+2) strong{
+    font-size:24px;
+  }
+  .revenue-executive .chart-body,
+  .revenue-executive-side .chart-body,
+  #dashboardView[data-dashboard="arrecadacao"] #chartGrid>.chart-card:first-child .chart-body,
+  #dashboardView[data-dashboard="arrecadacao"] #chartGrid>.chart-card:nth-child(n+2) .chart-body{
+    height:240px!important;
+  }
+}
