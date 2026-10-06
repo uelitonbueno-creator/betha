@@ -4137,10 +4137,7 @@
       PAGE_MAPPING_SCOPE_REQUIRED:"A credencial de serviço precisa do escopo autorizacoes.plataforma.betha.cloud/parceiro.leitura.",
       PAGE_MAPPING_WRITE_SCOPE_REQUIRED:"Para publicar, ative o escopo autorizacoes.plataforma.betha.cloud/parceiro.escrita na credencial de serviço e renove o token.",
       PAGE_MAPPING_TOKEN_INVALID:"O token de serviço não foi aceito pela API de Autorizações Dados.",
-      ADMIN_REQUIRED:"Seu usuário não possui perfil administrativo/técnico no BI para alterar esta configuração.",
-      BI_USER_NOT_AUTHORIZED:"Seu usuário foi validado na Betha, mas ainda não possui autorização cadastrada neste BI.",
-      USER_NOT_FOUND:"O usuário não foi encontrado na Central Betha.",
-      PLATFORM_HTTP_403:"A Betha recusou a validação do usuário ou da entidade atual."
+      ADMIN_REQUIRED:"Seu usuário não possui perfil de administrador para alterar esta configuração."
     };
     return map[code] || code;
   }
@@ -4542,23 +4539,25 @@
     const save=document.getElementById("wizardSave");
     if(!save) return;
 
-    const tenant=currentTenantInfo();
-    const actorCanManage=Boolean(tenant && (tenant.admin===true || tenant.technical===true));
-    const canSave=Boolean(selectedCentralUser) && actorCanManage;
+    const profile=selectedProfile();
+    const admin=document.getElementById("accessAdmin").checked || profile==="administrador";
+    const canSave=Boolean(selectedCentralUser) && (admin || pageMappingReady);
 
     save.disabled=!canSave;
 
     if(!selectedCentralUser) {
       save.title="Localize um usuário válido antes de salvar.";
-    } else if(!actorCanManage) {
-      save.title="É necessário possuir perfil administrativo ou técnico no BI para conceder acessos.";
+    } else if(!admin && !pageMappingReady) {
+      save.title="Publique a matriz de permissões em Configurações → Sistema e permissões antes de criar acesso limitado.";
     } else {
-      save.title="Salvar as permissões deste usuário no BI.";
+      save.title="Conceder o acesso selecionado para esta prefeitura.";
     }
 
     const help=document.getElementById("permissionMappingHelp");
     if(help){
-      help.textContent="As permissões são gravadas no BI. No login, a identidade e a entidade continuam sendo validadas pela Central Betha.";
+      help.textContent=pageMappingReady
+        ? "Selecione os módulos que este usuário poderá consultar. A matriz de permissões está disponível na Betha."
+        : "Acesso limitado exige que a matriz de permissões seja publicada. Acesso de Administrador pode ser concedido diretamente.";
     }
   }
 
@@ -4580,11 +4579,10 @@
     const admin=document.getElementById("accessAdmin").checked || profile==="administrador";
     const technical=document.getElementById("accessTechnical").checked;
     const expiresIn=document.getElementById("accessExpires").value || null;
-    const tenant=currentTenantInfo();
 
-    if(!tenant || (!tenant.admin && !tenant.technical)){
-      setWizardStep(4);
-      if(result) result.textContent="É necessário possuir perfil administrativo ou técnico no BI para conceder acessos.";
+    if(!admin && !pageMappingReady){
+      setWizardStep(2);
+      if(result) result.textContent="Publique a matriz de permissões antes de criar um acesso limitado.";
       return;
     }
 
@@ -4597,7 +4595,7 @@
     };
 
     const feedback=document.getElementById("userSaveFeedback");
-    if(feedback){feedback.hidden=false;feedback.textContent="Salvando as permissões no BI…";feedback.classList.remove("is-error");}
+    if(feedback){feedback.hidden=false;feedback.textContent="Salvando o acesso na Betha…";feedback.classList.remove("is-error");}
     userAccessSaving=true;
     save.disabled=true;
     save.textContent="SALVANDO…";
@@ -4656,11 +4654,6 @@
         return;
       }
       selectedCentralUser = user;
-      const technicalEligible=centralUserTechnicalEligible(user);
-      const technicalRow=document.getElementById("accessTechnicalRow");
-      const technicalInput=document.getElementById("accessTechnical");
-      if(technicalRow) technicalRow.hidden=!technicalEligible;
-      if(technicalInput && !technicalEligible) technicalInput.checked=false;
       updateWizardSaveState();
       const id = user.id || user.user || user.login;
       const name = user.name || user.nome || user.fullName || user.userName || id;
