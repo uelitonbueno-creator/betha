@@ -15,6 +15,7 @@ const USERS_BASE = "https://plataforma-usuarios.betha.cloud";
 const LICENSES_BASE = "https://plataforma-licencas.betha.cloud";
 const OAUTH_AUTHORIZE_URL = "https://plataforma-oauth.betha.cloud/auth/oauth2/authorize";
 const OAUTH_TOKEN_URL = "https://plataforma-oauth.betha.cloud/auth/oauth2/token";
+const OAUTH_TOKENINFO_URL = "https://oauth.cloud.betha.com.br/auth/oauth2/tokeninfo";
 const LOGIN_REDIRECT_DEFAULT = "https://betha-bi-api.ueliton-bueno.workers.dev/api/auth/callback";
 const FRONT_URL_DEFAULT = "https://uelitonbueno-creator.github.io/betha/";
 const FRONT_SOURCE_BASE = "https://uelitonbueno-creator.github.io/betha";
@@ -2018,14 +2019,24 @@ function matchAccess(accesses, context) {
 async function authorizeTenant(request, env, tenant) {
   const userToken=await getUserToken(request,env);
   if (!userToken) throw new Error("USER_TOKEN_REQUIRED");
-  const [accesses,context]=await Promise.all([
+  const [accesses,context,userId]=await Promise.all([
     getUserAccesses(userToken),
-    getTenantContext(userToken,tenant)
+    getTenantContext(userToken,tenant),
+    currentOAuthUserId(userToken)
   ]);
-  const access=matchAccess(accesses,context);
-  if (!access) throw new Error("TENANT_ACCESS_DENIED");
-  if (access.expiresIn && new Date(access.expiresIn).getTime() < Date.now()) throw new Error("TENANT_ACCESS_EXPIRED");
-  return {userToken,access,context};
+  const bethaAccess=matchAccess(accesses,context);
+  if (!bethaAccess) throw new Error("TENANT_ACCESS_DENIED");
+  if (bethaAccess.expiresIn && new Date(bethaAccess.expiresIn).getTime() < Date.now()) throw new Error("TENANT_ACCESS_EXPIRED");
+
+  const grant=userId?await getBiUserGrant(env,tenant.id,userId):null;
+  // Betha remains authoritative for identity/entity. Local BI grants only
+  // refine panels/profile. Existing Betha admin/technical users are bootstrap
+  // administrators so the BI cannot lock its own maintainers out.
+  if(!grant && bethaAccess.admin!==true && bethaAccess.technical!==true) {
+    throw new Error("BI_USER_NOT_AUTHORIZED");
+  }
+  const access=applyBiGrantToAccess(bethaAccess,grant);
+  return {userToken,userId,access,bethaAccess,grant,context};
 }
 
 function buildForwardedQuery(url) {
@@ -5159,6 +5170,171 @@ async function searchCentralUser(userToken, user) {
   }});
 }
 
+function centralUserRows(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.content)) return payload.content;
+  if (payload && payload.data && Array.isArray(payload.data.content)) return payload.data.content;
+  if (payload && payload.data && Array.isArray(payload.data)) return payload.data;
+  return payload && typeof payload==="object" ? [payload] : [];
+}
+
+function centralUserId(user) {
+  if (!user || typeof user!=="object") return "";
+  return String(user.id ?? user.user ?? user.login ?? user.username ?? user.idUsuario ?? "").trim();
+}
+
+function centralUserName(user) {
+  if (!user || typeof user!=="object") return "";
+  return String(user.nomeCompleto ?? user.fullName ?? user.nome ?? user.name ?? user.userName ?? centralUserId(user)).trim();
+}
+
+function centralUserEmail(user) {
+  if (!user || typeof user!=="object") return "";
+  return String(user.email ?? user.mail ?? "").trim();
+}
+
+function tokenInfoUserId(payload) {
+  const candidates=[
+    payload&&payload.user,
+    payload&&payload.username,
+    payload&&payload.user_name,
+    payload&&payload.userName,
+    payload&&payload.usuario,
+    payload&&payload.idUsuario,
+    payload&&payload.sub
+  ];
+  for(const value of candidates){
+    if(value&&typeof value==="object"){
+      const nested=centralUserId(value);
+      if(nested) return nested;
+    } else if(value!==undefined&&value!==null&&String(value).trim()){
+      return String(value).trim();
+    }
+  }
+  return "";
+}
+
+async function currentOAuthUserId(userToken) {
+  if(!userToken) throw new Error("USER_TOKEN_REQUIRED");
+  try{
+    const response=await fetch(OAUTH_TOKENINFO_URL+"?access_token="+encodeURIComponent(userToken),{
+      headers:{"Accept":"application/json"}
+    });
+    const parsed=await readJsonResponse(response);
+    if(response.ok){
+      const userId=tokenInfoUserId(parsed.body);
+      if(userId) return userId;
+    }
+  }catch{}
+  return "";
+}
+
+function parseGrantPermissions(value) {
+  if(Array.isArray(value)) return value;
+  if(!value) return [];
+  try{
+    const parsed=JSON.parse(String(value));
+    return Array.isArray(parsed)?parsed:[];
+  }catch{return [];}
+}
+
+function biGrantActive(grant) {
+  if(!grant) return false;
+  if(grant.expiresIn && new Date(grant.expiresIn).getTime()<Date.now()) return false;
+  return true;
+}
+
+async function getBiUserGrant(env,tenantId,userId) {
+  if(!env.AUTH_DB || !tenantId || !userId) return null;
+  const row=await env.AUTH_DB.prepare(
+    "SELECT tenant_id,user_id,user_name,email,admin,technical,permissions,expires_in,created_at,updated_at,created_by FROM bi_user_grants WHERE tenant_id=?1 AND lower(user_id)=lower(?2) LIMIT 1"
+  ).bind(String(tenantId),String(userId)).first();
+  if(!row) return null;
+  const grant={
+    id:String(row.user_id),
+    accessId:String(row.user_id),
+    tenantId:String(row.tenant_id),
+    user:String(row.user_id),
+    userName:String(row.user_name||row.user_id),
+    email:String(row.email||""),
+    admin:Number(row.admin)===1,
+    technical:Number(row.technical)===1,
+    permissions:parseGrantPermissions(row.permissions),
+    expiresIn:row.expires_in?String(row.expires_in):null,
+    createAt:String(row.created_at||""),
+    updatedAt:String(row.updated_at||""),
+    createdBy:String(row.created_by||""),
+    source:"bi-local"
+  };
+  return biGrantActive(grant)?grant:null;
+}
+
+function applyBiGrantToAccess(access,grant) {
+  if(!grant) return access;
+  return {
+    ...access,
+    user:grant.user,
+    userName:grant.userName,
+    admin:grant.admin===true,
+    technical:grant.technical===true,
+    permissions:Array.isArray(grant.permissions)?grant.permissions:[],
+    expiresIn:grant.expiresIn||null,
+    biManaged:true,
+    biGrantId:grant.accessId
+  };
+}
+
+async function saveBiUserGrant(env,tenantId,centralUser,payload,actor) {
+  if(!env.AUTH_DB) throw new Error("SESSION_STORE_NOT_CONFIGURED");
+  const userId=centralUserId(centralUser)||String(payload.user||"").trim();
+  if(!userId) throw new Error("USER_REQUIRED");
+  const now=new Date().toISOString();
+  const permissions=JSON.stringify(Array.isArray(payload.permissions)?payload.permissions:[]);
+  await env.AUTH_DB.prepare(
+    "INSERT INTO bi_user_grants (tenant_id,user_id,user_name,email,admin,technical,permissions,expires_in,created_at,updated_at,created_by) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11) ON CONFLICT(tenant_id,user_id) DO UPDATE SET user_name=excluded.user_name,email=excluded.email,admin=excluded.admin,technical=excluded.technical,permissions=excluded.permissions,expires_in=excluded.expires_in,updated_at=excluded.updated_at,created_by=excluded.created_by"
+  ).bind(
+    String(tenantId),userId,centralUserName(centralUser),centralUserEmail(centralUser),
+    payload.admin?1:0,payload.technical?1:0,permissions,payload.expiresIn||null,
+    now,now,String(actor||"authenticated-user")
+  ).run();
+  return getBiUserGrant(env,tenantId,userId);
+}
+
+async function listBiUserGrants(env,tenantId,{limit=100,offset=0}={}) {
+  if(!env.AUTH_DB) throw new Error("SESSION_STORE_NOT_CONFIGURED");
+  const safeLimit=Math.max(1,Math.min(Number(limit)||100,500));
+  const safeOffset=Math.max(0,Number(offset)||0);
+  const rows=await env.AUTH_DB.prepare(
+    "SELECT tenant_id,user_id,user_name,email,admin,technical,permissions,expires_in,created_at,updated_at,created_by FROM bi_user_grants WHERE tenant_id=?1 ORDER BY lower(user_name),lower(user_id) LIMIT ?2 OFFSET ?3"
+  ).bind(String(tenantId),safeLimit,safeOffset).all();
+  const content=(rows.results||[]).map(row=>({
+    id:String(row.user_id),
+    accessId:String(row.user_id),
+    user:String(row.user_id),
+    userName:String(row.user_name||row.user_id),
+    email:String(row.email||""),
+    admin:Number(row.admin)===1,
+    technical:Number(row.technical)===1,
+    permissions:parseGrantPermissions(row.permissions),
+    expiresIn:row.expires_in?String(row.expires_in):null,
+    createAt:String(row.created_at||""),
+    updatedAt:String(row.updated_at||""),
+    totalRestrictions:0,
+    connected:false,
+    blocked:false,
+    source:"bi-local"
+  }));
+  return {content};
+}
+
+async function deleteBiUserGrant(env,tenantId,userId) {
+  if(!env.AUTH_DB) throw new Error("SESSION_STORE_NOT_CONFIGURED");
+  const result=await env.AUTH_DB.prepare(
+    "DELETE FROM bi_user_grants WHERE tenant_id=?1 AND lower(user_id)=lower(?2)"
+  ).bind(String(tenantId),String(userId)).run();
+  return {ok:true,removed:Number(result.meta&&result.meta.changes||0)>0};
+}
+
 async function createContextUser(userToken, tenant, body) {
   return platformRequest(AUTH_BASE+"/user-accounts/v0.1/api/management/access",{
     method:"POST",
@@ -6879,6 +7055,8 @@ function errorResponse(request,env,error) {
     TENANT_ACCESS_DENIED:403,
     TENANT_ACCESS_NOT_ACCEPTED:403,
     TENANT_ACCESS_EXPIRED:403,
+    BI_USER_NOT_AUTHORIZED:403,
+    USER_NOT_FOUND:404,
     BI_RESOURCE_NOT_ALLOWED:404,
     BASE_RESOURCE_NOT_CONFIGURED:501,
     BETHA_ACCESS_TOKEN_NOT_CONFIGURED:503,
@@ -6910,7 +7088,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-06-auth-d1-v83",
+        buildVersion:"2026-10-06-bi-local-users-v84",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
@@ -7498,6 +7676,7 @@ export default {
         // Consulta os acessos Betha uma única vez e cruza no backend com cada
         // tenant configurado. O front nunca decide database/entity sozinho.
         const accesses=await getUserAccesses(userToken);
+        const userId=await currentOAuthUserId(userToken);
         await authTrace(env,"TENANTS_ACCESSES_OK",{count:Array.isArray(accesses)?accesses.length:0});
 
         const registry=await tenantRegistry(env);
@@ -7521,17 +7700,23 @@ export default {
               continue;
             }
 
+            const grant=userId?await getBiUserGrant(env,tenant.id,userId):null;
+            if(!grant && access.admin!==true && access.technical!==true){
+              await authTrace(env,"TENANT_BI_GRANT_MISSING",{tenant:id});
+              continue;
+            }
+            const effective=applyBiGrantToAccess(access,grant);
             tenants.push({
               id:tenant.id,
               name:tenant.name,
               entityId:context.entity,
               databaseId:context.database,
-              admin:Boolean(access.admin),
-              technical:Boolean(access.technical),
-              allowedViews:permissionViewsForAccess(access),
-              allowedAdminViews:adminViewsForAccess(access)
+              admin:Boolean(effective.admin),
+              technical:Boolean(effective.technical),
+              allowedViews:permissionViewsForAccess(effective),
+              allowedAdminViews:adminViewsForAccess(effective)
             });
-            await authTrace(env,"TENANT_AUTHORIZED",{tenant:id});
+            await authTrace(env,"TENANT_AUTHORIZED",{tenant:id,biManaged:Boolean(grant)});
           } catch(error) {
             await authTrace(env,"TENANT_VALIDATION_ERROR",{
               tenant:id,
@@ -7706,7 +7891,10 @@ export default {
         const tenant=await resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
         requireConstraintPermission(auth,"BIUsuariosPage");
-        const body=await listContextUsers(auth.userToken,tenant,url);
+        const body=await listBiUserGrants(env,tenant.id,{
+          limit:url.searchParams.get("limit")||100,
+          offset:url.searchParams.get("offset")||0
+        });
         return json(request,env,200,body);
       } catch(error) {
         return errorResponse(request,env,error);
@@ -7744,7 +7932,11 @@ export default {
           expiresIn:body && body.expiresIn ? String(body.expiresIn) : null
         };
 
-        const created=await createContextUser(auth.userToken,tenant,payload);
+        const centralPayload=await searchCentralUser(auth.userToken,user);
+        const centralRows=centralUserRows(centralPayload);
+        const selected=centralRows.find(item=>centralUserId(item).toLocaleLowerCase("pt-BR")===user.toLocaleLowerCase("pt-BR"))||centralRows[0];
+        if(!selected) throw new Error("USER_NOT_FOUND");
+        const created=await saveBiUserGrant(env,tenant.id,selected,payload,auditActorLabel(auth.access));
         await writeAuditEvent(env,{
           tenantId:tenant.id,
           actor:auditActorLabel(auth.access),
@@ -7766,7 +7958,7 @@ export default {
         const tenant=await resolveTenant(env,getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
         if (!auth.access || (!auth.access.admin && !auth.access.technical)) throw new Error("ADMIN_REQUIRED");
-        const body=await deleteContextUser(auth.userToken,tenant,deleteUserMatch[1]);
+        const body=await deleteBiUserGrant(env,tenant.id,deleteUserMatch[1]);
         await writeAuditEvent(env,{
           tenantId:tenant.id,
           actor:auditActorLabel(auth.access),
