@@ -1653,61 +1653,80 @@ function authSessionStores(env) {
 }
 
 async function createStoredSession(env,accessToken,ttlSeconds) {
-  const store=env.AUTH_SESSIONS || env.BI_SESSIONS;
-  if (!store) throw new Error("SESSION_STORE_NOT_CONFIGURED");
+  if (!env.AUTH_DB && !env.AUTH_SESSIONS && !env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
   if (!accessToken) throw new Error("USER_TOKEN_REQUIRED");
 
   const ttl=Math.max(60,Math.min(Number(ttlSeconds)||8*60*60,8*60*60));
   const sid=createSessionId();
   const exp=Date.now()+ttl*1000;
+  const payload=JSON.stringify({kind:"user-session",accessToken,exp});
 
-  await store.put(
-    "session:"+sid,
-    JSON.stringify({kind:"user-session",accessToken,exp}),
-    {expirationTtl:ttl}
-  );
+  if (env.AUTH_DB) {
+    await env.AUTH_DB.prepare(
+      "INSERT OR REPLACE INTO sessions (sid,payload,exp) VALUES (?1,?2,?3)"
+    ).bind(sid,payload,exp).run();
+    return {sid,exp,ttl};
+  }
 
+  const store=env.AUTH_SESSIONS || env.BI_SESSIONS;
+  await store.put("session:"+sid,payload,{expirationTtl:ttl});
   return {sid,exp,ttl};
 }
 
 async function readStoredSession(request,env) {
-  const stores=authSessionStores(env);
-  if (!stores.length) throw new Error("SESSION_STORE_NOT_CONFIGURED");
+  if (!env.AUTH_DB && !env.AUTH_SESSIONS && !env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
 
   const sid=readCookie(request,SESSION_COOKIE);
   if (!sid) return null;
 
-  let raw=null;
-  let sourceStore=null;
-  for (const store of stores) {
-    raw=await store.get("session:"+sid);
-    if (raw) {
-      sourceStore=store;
-      break;
+  if (env.AUTH_DB) {
+    const row=await env.AUTH_DB.prepare(
+      "SELECT payload,exp FROM sessions WHERE sid=?1 LIMIT 1"
+    ).bind(sid).first();
+    if (row && row.payload) {
+      try {
+        const payload=JSON.parse(String(row.payload));
+        const exp=Number(row.exp||payload.exp||0);
+        if (!payload.accessToken || (exp && Date.now()>=exp)) {
+          await env.AUTH_DB.prepare("DELETE FROM sessions WHERE sid=?1").bind(sid).run().catch(()=>{});
+          return null;
+        }
+        return {sid,...payload};
+      } catch {
+        await env.AUTH_DB.prepare("DELETE FROM sessions WHERE sid=?1").bind(sid).run().catch(()=>{});
+        return null;
+      }
     }
   }
-  if (!raw) return null;
 
-  try {
-    const payload=JSON.parse(raw);
-    if (!payload || !payload.accessToken) {
-      if(sourceStore) await sourceStore.delete("session:"+sid).catch(()=>{});
+  for (const store of authSessionStores(env)) {
+    const raw=await store.get("session:"+sid);
+    if (!raw) continue;
+    try {
+      const payload=JSON.parse(raw);
+      if (!payload || !payload.accessToken) {
+        await store.delete("session:"+sid).catch(()=>{});
+        return null;
+      }
+      if (payload.exp && Date.now()>=Number(payload.exp)) {
+        await store.delete("session:"+sid).catch(()=>{});
+        return null;
+      }
+      return {sid,...payload};
+    } catch {
+      await store.delete("session:"+sid).catch(()=>{});
       return null;
     }
-    if (payload.exp && Date.now()>=Number(payload.exp)) {
-      if(sourceStore) await sourceStore.delete("session:"+sid).catch(()=>{});
-      return null;
-    }
-    return {sid,...payload};
-  } catch {
-    if(sourceStore) await sourceStore.delete("session:"+sid).catch(()=>{});
-    return null;
   }
+  return null;
 }
 
 async function destroyStoredSession(request,env) {
   const sid=readCookie(request,SESSION_COOKIE);
   if (!sid) return;
+  if (env.AUTH_DB) {
+    await env.AUTH_DB.prepare("DELETE FROM sessions WHERE sid=?1").bind(sid).run().catch(()=>{});
+  }
   for (const store of authSessionStores(env)) {
     await store.delete("session:"+sid).catch(()=>{});
   }
@@ -6891,7 +6910,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-06-auth-kv-isolation-v82",
+        buildVersion:"2026-10-06-auth-d1-v83",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
@@ -6912,7 +6931,7 @@ export default {
         loginRedirectUri:env.BETHA_LOGIN_REDIRECT_URI || LOGIN_REDIRECT_DEFAULT,
         frontUrl:env.BETHA_FRONT_URL || FRONT_URL_DEFAULT,
         sameOriginApp:true,
-        sessionStoreConfigured:Boolean(env.BI_SESSIONS),
+        sessionStoreConfigured:Boolean(env.AUTH_DB||env.AUTH_SESSIONS||env.BI_SESSIONS),
         supabaseCacheConfigured:Boolean(env.SUPABASE_CACHE_KEY),
         devLoginConfigured:Boolean(env.BI_DEV_LOGIN_USER && env.BI_DEV_LOGIN_PASSWORD),
         mcpEnabled:true,
