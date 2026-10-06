@@ -808,6 +808,10 @@
     document.getElementById("debtExecutive")?.remove();
     document.getElementById("debtTrendHeading")?.remove();
     document.getElementById("debtSecondaryHeading")?.remove();
+    document.getElementById("activeDebtKpiHeading")?.remove();
+    document.getElementById("activeDebtExecutive")?.remove();
+    document.getElementById("activeDebtTrendHeading")?.remove();
+    document.getElementById("activeDebtSecondaryHeading")?.remove();
     restoreViewPreferencesOnce(view);
     renderDashboardFilters(def);
 
@@ -879,6 +883,14 @@
       kpiHeading.id="debtKpiHeading";
       kpiHeading.className="debt-section-heading debt-kpi-heading";
       kpiHeading.innerHTML='<div><span>CARTEIRA DO PERÍODO</span><h2>Lançamentos e situação dos débitos</h2></div><p>Priorize o valor lançado e os vencidos em aberto antes de aprofundar a composição da carteira.</p>';
+      kpiGrid.insertAdjacentElement("beforebegin",kpiHeading);
+    }
+
+    if(view==="divida"){
+      const kpiHeading=document.createElement("div");
+      kpiHeading.id="activeDebtKpiHeading";
+      kpiHeading.className="active-debt-section-heading active-debt-kpi-heading";
+      kpiHeading.innerHTML='<div><span>ESTOQUE DA DÍVIDA ATIVA</span><h2>Saldo, inscrições e cobrança</h2></div><p>Veja primeiro o saldo atual e o valor inscrito; depois acompanhe execução, protesto e emissão de CDA.</p>';
       kpiGrid.insertAdjacentElement("beforebegin",kpiHeading);
     }
 
@@ -1026,6 +1038,38 @@
       secondaryHeading.id="debtSecondaryHeading";
       secondaryHeading.className="debt-section-heading debt-secondary-heading";
       secondaryHeading.innerHTML='<div><span>COMPOSIÇÃO DA CARTEIRA</span><h2>Situação, crédito e origem</h2></div><p>Analise status, crédito tributário, exercício, origem cadastral, descontos e receitas vinculadas.</p>';
+      chartGrid.insertAdjacentElement("beforebegin",secondaryHeading);
+
+      if(coverage) chartGrid.insertAdjacentElement("afterend",coverage);
+    }
+
+    if(view==="divida"){
+      const executive=document.createElement("section");
+      executive.id="activeDebtExecutive";
+      executive.className="active-debt-executive";
+
+      const trendHeading=document.createElement("div");
+      trendHeading.id="activeDebtTrendHeading";
+      trendHeading.className="active-debt-section-heading active-debt-trend-heading";
+      trendHeading.innerHTML='<div><span>EVOLUÇÃO E RECUPERAÇÃO</span><h2>Estoque versus recuperação</h2></div><p>Compare a evolução do saldo da dívida ativa com os recebimentos vinculados à recuperação da carteira.</p>';
+      chartGrid.insertAdjacentElement("beforebegin",trendHeading);
+      trendHeading.insertAdjacentElement("afterend",executive);
+
+      const stock=document.querySelector('#chartGrid [data-chart="estoque-divida"]');
+      const recovery=document.querySelector('#chartGrid [data-chart="recuperacao"]');
+      if(stock){
+        stock.classList.add("active-debt-executive-main");
+        executive.appendChild(stock);
+      }
+      if(recovery){
+        recovery.classList.add("active-debt-executive-side");
+        executive.appendChild(recovery);
+      }
+
+      const secondaryHeading=document.createElement("div");
+      secondaryHeading.id="activeDebtSecondaryHeading";
+      secondaryHeading.className="active-debt-section-heading active-debt-secondary-heading";
+      secondaryHeading.innerHTML='<div><span>COBRANÇA E COMPOSIÇÃO</span><h2>Inscrições, ações e maiores devedores</h2></div><p>Analise novas inscrições, composição do saldo, situação, idade, crédito, execução, protesto, penhora e ranking de devedores.</p>';
       chartGrid.insertAdjacentElement("beforebegin",secondaryHeading);
 
       if(coverage) chartGrid.insertAdjacentElement("afterend",coverage);
