@@ -820,6 +820,10 @@
     document.getElementById("economicExecutive")?.remove();
     document.getElementById("economicTrendHeading")?.remove();
     document.getElementById("economicSecondaryHeading")?.remove();
+    document.getElementById("propertyKpiHeading")?.remove();
+    document.getElementById("propertyExecutive")?.remove();
+    document.getElementById("propertyTrendHeading")?.remove();
+    document.getElementById("propertySecondaryHeading")?.remove();
     restoreViewPreferencesOnce(view);
     renderDashboardFilters(def);
 
@@ -915,6 +919,14 @@
       kpiHeading.id="economicKpiHeading";
       kpiHeading.className="economic-section-heading economic-kpi-heading";
       kpiHeading.innerHTML='<div><span>ATIVIDADE ECONÔMICA E ISS</span><h2>Empresas, movimentação e base ativa</h2></div><p>Destaque os cadastros ativos e novas aberturas; depois acompanhe encerramentos, atividades e arrecadação vinculada.</p>';
+      kpiGrid.insertAdjacentElement("beforebegin",kpiHeading);
+    }
+
+    if(view==="imobiliario"){
+      const kpiHeading=document.createElement("div");
+      kpiHeading.id="propertyKpiHeading";
+      kpiHeading.className="property-section-heading property-kpi-heading";
+      kpiHeading.innerHTML='<div><span>CADASTRO IMOBILIÁRIO E IPTU</span><h2>Estoque, ocupação e movimentação</h2></div><p>Priorize o total de imóveis e a base ativa; depois acompanhe rurais, responsáveis e transferências.</p>';
       kpiGrid.insertAdjacentElement("beforebegin",kpiHeading);
     }
 
@@ -1158,6 +1170,38 @@
       secondaryHeading.id="economicSecondaryHeading";
       secondaryHeading.className="economic-section-heading economic-secondary-heading";
       secondaryHeading.innerHTML='<div><span>PERFIL ECONÔMICO</span><h2>Situação, atividades e localização</h2></div><p>Explore encerramentos, situação cadastral, tipo de econômico, principais atividades, vínculos e distribuição por bairro.</p>';
+      chartGrid.insertAdjacentElement("beforebegin",secondaryHeading);
+
+      if(coverage) chartGrid.insertAdjacentElement("afterend",coverage);
+    }
+
+    if(view==="imobiliario"){
+      const executive=document.createElement("section");
+      executive.id="propertyExecutive";
+      executive.className="property-executive";
+
+      const trendHeading=document.createElement("div");
+      trendHeading.id="propertyTrendHeading";
+      trendHeading.className="property-section-heading property-trend-heading";
+      trendHeading.innerHTML='<div><span>BASE E RECEITA IMOBILIÁRIA</span><h2>Composição dos imóveis versus arrecadação</h2></div><p>Compare a distribuição urbana/rural com os pagamentos vinculados aos imóveis no período selecionado.</p>';
+      chartGrid.insertAdjacentElement("beforebegin",trendHeading);
+      trendHeading.insertAdjacentElement("afterend",executive);
+
+      const stock=document.querySelector('#chartGrid [data-chart="imoveis-geral"]');
+      const propertyRevenue=document.querySelector('[data-chart="iptu-pagamentos"]');
+      if(stock){
+        stock.classList.add("property-executive-main");
+        executive.appendChild(stock);
+      }
+      if(propertyRevenue){
+        propertyRevenue.classList.add("property-executive-side");
+        executive.appendChild(propertyRevenue);
+      }
+
+      const secondaryHeading=document.createElement("div");
+      secondaryHeading.id="propertySecondaryHeading";
+      secondaryHeading.className="property-section-heading property-secondary-heading";
+      secondaryHeading.innerHTML='<div><span>TERRITÓRIO E RESPONSABILIDADE</span><h2>Bairros, ruas, proprietários e movimentações</h2></div><p>Explore a distribuição territorial, imóveis urbanos e rurais, responsáveis, setores, condomínios, loteamentos e transferências.</p>';
       chartGrid.insertAdjacentElement("beforebegin",secondaryHeading);
 
       if(coverage) chartGrid.insertAdjacentElement("afterend",coverage);
