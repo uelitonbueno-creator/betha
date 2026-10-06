@@ -3130,3 +3130,6 @@ html,body{
 .entity-sync-controls{grid-column:1/-1;border-top:1px solid #dce8e1;margin-top:16px;padding-top:20px;}.entity-sync-controls h3{font-size:16px;margin:0 0 8px;}.entity-sync-controls p{font-size:13px;color:#536259;line-height:1.6;}.entity-sync-controls label{max-width:320px;display:flex;flex-direction:column;gap:6px;}.entity-sync-controls select{min-height:40px;border:1px solid #cddbd3;border-radius:6px;background:#fff;padding:8px;}.entity-sync-controls .entity-settings-actions{flex-wrap:wrap;margin-top:14px;}
 
 .user-save-feedback{margin:0;padding:12px 24px;background:#e4f4ed;color:#234737;font-size:13px;line-height:1.5;flex-shrink:0;}.user-save-feedback.is-error{background:#fff0ef;color:#9d2922;}.user-save-feedback[hidden]{display:none!important;}
+
+/* Hidden chart feedback must not cover an already rendered canvas. */
+.chart-empty[hidden]{display:none!important;}
