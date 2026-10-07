@@ -828,6 +828,10 @@
     document.getElementById("itbiExecutive")?.remove();
     document.getElementById("itbiTrendHeading")?.remove();
     document.getElementById("itbiSecondaryHeading")?.remove();
+    document.getElementById("taxpayerKpiHeading")?.remove();
+    document.getElementById("taxpayerExecutive")?.remove();
+    document.getElementById("taxpayerTrendHeading")?.remove();
+    document.getElementById("taxpayerSecondaryHeading")?.remove();
     restoreViewPreferencesOnce(view);
     renderDashboardFilters(def);
 
@@ -939,6 +943,14 @@
       kpiHeading.id="itbiKpiHeading";
       kpiHeading.className="itbi-section-heading itbi-kpi-heading";
       kpiHeading.innerHTML='<div><span>TRANSFERÊNCIAS E ITBI</span><h2>Operações, valores e imposto apurado</h2></div><p>Priorize o ITBI apurado e o valor declarado; depois acompanhe solicitações, transferências e financiamento.</p>';
+      kpiGrid.insertAdjacentElement("beforebegin",kpiHeading);
+    }
+
+    if(view==="contribuintes"){
+      const kpiHeading=document.createElement("div");
+      kpiHeading.id="taxpayerKpiHeading";
+      kpiHeading.className="taxpayer-section-heading taxpayer-kpi-heading";
+      kpiHeading.innerHTML='<div><span>BASE DE CONTRIBUINTES</span><h2>Cadastro, perfil e qualidade das informações</h2></div><p>Priorize o total cadastrado e os registros desativados; depois acompanhe PF, PJ e optantes do Simples.</p>';
       kpiGrid.insertAdjacentElement("beforebegin",kpiHeading);
     }
 
@@ -1246,6 +1258,38 @@
       secondaryHeading.id="itbiSecondaryHeading";
       secondaryHeading.className="itbi-section-heading itbi-secondary-heading";
       secondaryHeading.innerHTML='<div><span>PROCESSO E COMPOSIÇÃO</span><h2>Solicitações, certidões, financiamento e tramitação</h2></div><p>Explore o fluxo das solicitações, situações, certidão de ITBI, valores declarados, financiamento, cobrança e compradores.</p>';
+      chartGrid.insertAdjacentElement("beforebegin",secondaryHeading);
+
+      if(coverage) chartGrid.insertAdjacentElement("afterend",coverage);
+    }
+
+    if(view==="contribuintes"){
+      const executive=document.createElement("section");
+      executive.id="taxpayerExecutive";
+      executive.className="taxpayer-executive";
+
+      const trendHeading=document.createElement("div");
+      trendHeading.id="taxpayerTrendHeading";
+      trendHeading.className="taxpayer-section-heading taxpayer-trend-heading";
+      trendHeading.innerHTML='<div><span>PERFIL E QUALIDADE</span><h2>Composição do cadastro versus completude de contato</h2></div><p>Compare pessoa física e jurídica com a disponibilidade de e-mail, telefone e celular.</p>';
+      chartGrid.insertAdjacentElement("beforebegin",trendHeading);
+      trendHeading.insertAdjacentElement("afterend",executive);
+
+      const profile=document.querySelector('#chartGrid [data-chart="tipo-pessoa"]');
+      const contact=document.querySelector('#chartGrid [data-chart="completude-contato"]');
+      if(profile){
+        profile.classList.add("taxpayer-executive-main");
+        executive.appendChild(profile);
+      }
+      if(contact){
+        contact.classList.add("taxpayer-executive-side");
+        executive.appendChild(contact);
+      }
+
+      const secondaryHeading=document.createElement("div");
+      secondaryHeading.id="taxpayerSecondaryHeading";
+      secondaryHeading.className="taxpayer-section-heading taxpayer-secondary-heading";
+      secondaryHeading.innerHTML='<div><span>SEGMENTAÇÃO CADASTRAL</span><h2>Simples, porte, situação e território</h2></div><p>Explore opção pelo Simples, porte empresarial, bairros, cidades, situação cadastral e atualizações ao longo do tempo.</p>';
       chartGrid.insertAdjacentElement("beforebegin",secondaryHeading);
 
       if(coverage) chartGrid.insertAdjacentElement("afterend",coverage);
