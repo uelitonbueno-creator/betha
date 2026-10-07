@@ -4617,14 +4617,20 @@
   }
   async function loadEntitySettings() {
     const list=document.getElementById("entitySettingsList");
+    const form=document.getElementById("entitySettingsForm");
+    const newButton=document.getElementById("newEntityButton");
     try {
       const payload=await api("/api/admin/entities");
       entitySettingsRecords=payload.entities||[];
+      if(form) form.hidden=false;
+      if(newButton) newButton.disabled=false;
+      const message=document.getElementById("entitySettingsMessage");
+      if(message && /TENANT_CONFIG_FORBIDDEN|HTTP 503|Cadastro indisponível/i.test(message.textContent||"")) message.textContent="";
       list.innerHTML='<div class="entity-settings-table"><table><thead><tr><th>Prefeitura</th><th>Tenant</th><th>Entidade / banco</th><th>Integração</th><th></th></tr></thead><tbody>'+entitySettingsRecords.map(record=>'<tr><td>'+escapeHtml(record.name)+'</td><td>'+escapeHtml(record.id)+'</td><td>'+escapeHtml(record.entityId)+' / '+escapeHtml(record.databaseId)+'</td><td>'+(record.enabled?'Ativa':'Inativa')+' · '+(record.userAccessConfigured&&record.accessTokenConfigured?'Chaves configuradas':'Chaves pendentes')+'</td><td><button type="button" class="btn-secondary-betha" data-edit-entity="'+escapeHtml(record.id)+'">EDITAR</button></td></tr>').join('')+'</tbody></table></div>';
     } catch(error) {
-      list.textContent="Cadastro indisponível: "+error.message;
-      document.getElementById("entitySettingsForm").hidden=true;
-      document.getElementById("newEntityButton").disabled=true;
+      list.textContent="Não foi possível atualizar a lista de prefeituras agora: "+error.message+". Você ainda pode preencher os dados e testar a conexão.";
+      if(form) form.hidden=false;
+      if(newButton) newButton.disabled=false;
     }
   }
   async function submitEntitySettings(testOnly=false) {
