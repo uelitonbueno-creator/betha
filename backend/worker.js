@@ -1389,8 +1389,10 @@ function corsHeaders(request, env) {
     String(raw).split(",").map(v => v.trim()).filter(Boolean)
   );
   // Production UI must remain allowed even when ALLOWED_ORIGINS is configured
-  // in Cloudflare with an older/stale value.
+  // in Cloudflare with an older/stale value. The Worker also proxies the
+  // frontend, so same-origin POSTs legitimately arrive from workers.dev.
   allowed.add("https://uelitonbueno-creator.github.io");
+  try { allowed.add(new URL(request.url).origin); } catch {}
   const allowOrigin = allowed.has(origin) ? origin : "";
   return {
     ...(allowOrigin ? {"Access-Control-Allow-Origin": allowOrigin} : {}),
@@ -7188,7 +7190,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-07-tenant-config-cors-v88",
+        buildVersion:"2026-10-07-tenant-config-same-origin-v89",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
