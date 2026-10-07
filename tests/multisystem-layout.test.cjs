@@ -362,6 +362,25 @@ test("período Últimos 12 meses possui tratamento próprio nas amostras locais"
   assert.match(block, /key>=startKey&&key<=endKey/);
 });
 
+test("busca global usa somente amostra local em Contabilidade, Compras e Folha", () => {
+  const app = fs.readFileSync(path.join(ROOT, "app.js"), "utf8");
+  const search = fs.readFileSync(path.join(ROOT, "global-search.js"), "utf8");
+  assert.match(app, /window\.BIVellaSearchContext=Object\.freeze/);
+  assert.match(app, /allowedViews=Object\.keys\(dashboards\)\.filter/);
+  assert.match(search, /async function runLocalSampleSearch\(/);
+  assert.match(search, /const localMode=Boolean\(context\?\.localSample&&context\?\.sampleFile\)/);
+  assert.match(search, /localMode\s*\? await runLocalSampleSearch\(q,context\)\s*:\s*await api\("\/api\/search\?q="/);
+  assert.match(search, /AMOSTRA LOCAL · 0 chamadas à API/);
+  assert.match(search, /nenhuma chamada ao Worker\/Cloudflare/);
+});
+
+test("busca local só sugere painéis autorizados do sistema atual", () => {
+  const search = fs.readFileSync(path.join(ROOT, "global-search.js"), "utf8");
+  assert.match(search, /const allowed=new Set\(Array\.isArray\(context\?\.allowedViews\)\?context\.allowedViews:\[\]\)/);
+  assert.match(search, /\[\.\.\.allowed\]\.map\(view=>/);
+  assert.match(search, /preferredLocalView\(row,query,context,config\)/);
+});
+
 test("frontend não expõe User-Access ou access token em configuração pública", () => {
   const config = fs.readFileSync(path.join(ROOT, "config.js"), "utf8");
   assert.doesNotMatch(config, /User-Access\s*[:=]\s*["'][^"']+["']/i);
