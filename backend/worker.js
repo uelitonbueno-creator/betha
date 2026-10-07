@@ -1,5 +1,5 @@
 /**
- * BI Tributos - backend multi-entidade.
+ * BI Vella - backend multi-entidade.
  *
  * Segurança:
  * - Token de serviço e User-Access nunca saem do backend.
@@ -7106,7 +7106,7 @@ async function handleMcpRequest(request,env) {
       status:401,
       headers:{
         "Content-Type":"application/json; charset=utf-8",
-        "WWW-Authenticate":'Bearer realm="BI Tributos MCP"',
+        "WWW-Authenticate":'Bearer realm="BI Vella MCP"',
         ...corsHeaders(request,env)
       }
     });
@@ -7145,7 +7145,7 @@ async function handleMcpRequest(request,env) {
       result:{
         protocolVersion,
         capabilities:{tools:{listChanged:false}},
-        serverInfo:{name:"BI Tributos MCP",version:"1.0.0"},
+        serverInfo:{name:"BI Vella MCP",version:"1.0.0"},
         instructions:"Servidor somente leitura. As respostas respeitam prefeitura, tenant e permissões vinculadas à credencial MCP."
       }
     }),{
@@ -7290,7 +7290,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-07-tenant-selector-owner-backfill-v91",
+        buildVersion:"2026-10-07-bi-vella-v92",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
