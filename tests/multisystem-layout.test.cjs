@@ -64,19 +64,54 @@ test("menus dos sistemas são diretos e não duplicam Visão Geral", () => {
   }
 });
 
-test("painéis locais possuem filtros contextuais configurados", () => {
+test("painéis locais possuem filtros específicos do assunto e campos válidos", () => {
   const window = loadCatalogs();
-  const expected = {
-    contabil: ["unidade", "status", "fonteRecurso", "credor"],
-    compras: ["secretaria", "modalidade", "status", "fornecedor"],
-    folha: ["secretaria", "vinculo", "status", "cargo"]
+  const samples = {
+    contabil: JSON.parse(fs.readFileSync(path.join(ROOT, "data", "samples", "contabil-100.json"), "utf8")),
+    compras: JSON.parse(fs.readFileSync(path.join(ROOT, "data", "samples", "compras-100.json"), "utf8")),
+    folha: JSON.parse(fs.readFileSync(path.join(ROOT, "data", "samples", "folha-100.json"), "utf8"))
   };
-  for (const [system, ids] of Object.entries(expected)) {
-    const dashboards = Object.values(window.BI_DASHBOARDS).filter(item => item.system === system);
-    assert.ok(dashboards.length, "dashboard ausente para " + system);
-    for (const dashboard of dashboards) {
-      assert.deepEqual(dashboard.filters.map(item => item.id), ids, dashboard.title + " sem filtros padrão de " + system);
+  const expectedPrimary = {
+    "contabil-despesa": ["unidade", "funcao"],
+    "contabil-receita": ["unidade", "fonteRecurso"],
+    "contabil-empenhos": ["unidade", "status"],
+    "compras-contratos": ["secretaria", "fornecedor"],
+    "compras-itens": ["itemCategoria", "secretaria"],
+    "folha-servidores": ["secretaria", "status"],
+    "folha-departamentos": ["departamento", "secretaria"],
+    "folha-beneficios": ["beneficio", "secretaria"]
+  };
+
+  for (const [id, dashboard] of Object.entries(window.BI_DASHBOARDS)) {
+    if (!samples[dashboard.system]) continue;
+    assert.ok(Array.isArray(dashboard.filters) && dashboard.filters.length >= 3, id + " deve ter filtros contextuais");
+    const sampleKeys = new Set(Object.keys(samples[dashboard.system].rows[0] || {}));
+    for (const filter of dashboard.filters) {
+      assert.ok(sampleKeys.has(filter.field || filter.id), id + " usa campo inexistente: " + (filter.field || filter.id));
     }
+    const primary = dashboard.filters.filter(filter => filter.primary !== false).slice(0, 2).map(filter => filter.id);
+    assert.ok(primary.length >= 2, id + " deve expor dois filtros principais");
+  }
+
+  for (const [id, expected] of Object.entries(expectedPrimary)) {
+    const primary = window.BI_DASHBOARDS[id].filters.filter(filter => filter.primary !== false).slice(0, 2).map(filter => filter.id);
+    assert.deepEqual(primary, expected, id + " com filtros principais inadequados");
+  }
+});
+
+test("filtros booleanos locais usam opções estáticas com rótulos amigáveis", () => {
+  const window = loadCatalogs();
+  const checks = [
+    ["compras-contratos", "contratoAtivo", ["Ativo", "Inativo"]],
+    ["compras-atas", "ataRegistro", ["Com ata", "Sem ata"]],
+    ["folha-servidores", "ferias", ["Em férias", "Fora de férias"]],
+    ["folha-controle", "afastado", ["Afastado", "Não afastado"]]
+  ];
+  for (const [view, filterId, labels] of checks) {
+    const filter = window.BI_DASHBOARDS[view].filters.find(item => item.id === filterId);
+    assert.ok(filter, view + " sem filtro " + filterId);
+    assert.equal(filter.dynamic, false);
+    assert.deepEqual(filter.options.map(item => item.label), labels);
   }
 });
 
