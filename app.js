@@ -4866,14 +4866,17 @@
     if(id==="detailDrawer") detailLoadGeneration++;
     drawer.classList.remove("open");
     drawer.setAttribute("aria-hidden","true");
-    const anyOpen = document.querySelector(".detail-drawer.open");
+    const openDrawers=[...document.querySelectorAll(".detail-drawer.open")];
+    const anyOpen=openDrawers.at(-1);
     if (!anyOpen) {
       document.getElementById("drawerBackdrop").hidden = true;
       document.body.classList.remove("drawer-open");
     }
     const previous=drawerFocusReturn.get(id);
     drawerFocusReturn.delete(id);
-    if(previous&&document.contains(previous)){
+    if(anyOpen){
+      requestAnimationFrame(()=>drawerFocusable(anyOpen)[0]?.focus?.({preventScroll:true}));
+    }else if(previous&&document.contains(previous)){
       requestAnimationFrame(()=>previous.focus?.({preventScroll:true}));
     }
   }
