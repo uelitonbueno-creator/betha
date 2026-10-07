@@ -7478,3 +7478,279 @@ bth-app{--menu-bg-color:var(--vella-sidebar)}
   .drawer-title-block>span{max-width:58vw}
   .detail-table-wrap .detail-table{min-width:640px}
 }
+
+
+/* === BI VELLA LEFT SIDEBAR FIX 2026-10-07 === */
+.workspace{
+  display:grid;
+  grid-template-columns:248px minmax(0,1fr);
+  grid-template-rows:auto 1fr;
+  column-gap:14px;
+  align-items:start;
+  max-width:none;
+  padding:14px 18px 40px;
+}
+.desktop-sidebar{
+  grid-column:1;
+  grid-row:1 / span 2;
+  position:sticky;
+  top:12px;
+  align-self:start;
+  height:calc(100dvh - 116px);
+  min-height:560px;
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.06);
+  border-radius:12px;
+  background:#0b2842;
+  box-shadow:0 12px 32px rgba(8,31,51,.14);
+  color:#fff;
+}
+.desktop-sidebar-inner{
+  display:flex;
+  flex-direction:column;
+  height:100%;
+  min-height:0;
+}
+.sidebar-brand-panel{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex:0 0 auto;
+  min-height:62px;
+  padding:12px 14px;
+  border-bottom:1px solid rgba(255,255,255,.10);
+}
+.sidebar-brand-panel .bi-brand-mark{
+  display:grid;
+  place-items:center;
+  width:32px;
+  height:32px;
+  flex:0 0 32px;
+  border-radius:9px;
+  background:#fff;
+  color:#0b2842;
+  font-size:18px;
+  font-weight:900;
+}
+.sidebar-brand-panel strong{
+  display:block;
+  font-size:13px;
+  letter-spacing:.045em;
+}
+.sidebar-brand-panel small{
+  display:block;
+  margin-top:2px;
+  color:rgba(255,255,255,.58);
+  font-size:8px;
+  text-transform:uppercase;
+  letter-spacing:.09em;
+}
+.sidebar-context-block{
+  position:relative;
+  display:flex;
+  flex:1 1 auto;
+  min-height:0;
+  flex-direction:column;
+  padding:12px 10px 10px;
+}
+.sidebar-context-label{
+  display:block;
+  margin:0 4px 5px;
+  color:rgba(255,255,255,.46);
+  font-size:8px;
+  font-weight:900;
+  letter-spacing:.12em;
+}
+.sidebar-context-button{
+  display:grid;
+  grid-template-columns:18px minmax(0,1fr) 16px;
+  align-items:center;
+  gap:7px;
+  width:100%;
+  min-height:39px;
+  padding:0 9px;
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:8px;
+  background:rgba(255,255,255,.055);
+  color:#fff;
+  text-align:left;
+  cursor:pointer;
+}
+.sidebar-context-button:hover,
+.sidebar-context-button[aria-expanded="true"]{
+  background:rgba(255,255,255,.10);
+}
+.sidebar-context-button span{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:10px;
+  font-weight:700;
+}
+.sidebar-context-button .mdi{
+  color:rgba(255,255,255,.72);
+  font-size:15px;
+}
+.sidebar-entity-menu{
+  position:absolute;
+  z-index:80;
+  top:58px;
+  left:10px;
+  width:calc(100% - 20px);
+  max-height:320px;
+  overflow:auto;
+  border:1px solid #d8e1ea;
+  border-radius:9px;
+  background:#fff;
+  box-shadow:0 14px 34px rgba(7,24,39,.24);
+  color:#1b2a3a;
+}
+.sidebar-system-label{margin-top:16px}
+.system-rail-list{
+  display:grid;
+  gap:4px;
+  margin-bottom:12px;
+}
+.system-rail-option{
+  display:grid;
+  grid-template-columns:20px minmax(0,1fr);
+  align-items:center;
+  gap:8px;
+  width:100%;
+  min-height:38px;
+  padding:0 10px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:rgba(255,255,255,.72);
+  text-align:left;
+  cursor:pointer;
+}
+.system-rail-option:hover{
+  background:rgba(255,255,255,.07);
+  color:#fff;
+}
+.system-rail-option.is-current{
+  background:#1678da;
+  color:#fff;
+  box-shadow:0 4px 12px rgba(0,78,157,.22);
+}
+.system-rail-option i{font-size:16px}
+.system-rail-option span{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:10px;
+  font-weight:800;
+}
+.sidebar-menu-heading{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  flex:0 0 auto;
+  margin:2px 4px 6px;
+  padding-top:10px;
+  border-top:1px solid rgba(255,255,255,.10);
+}
+.sidebar-menu-heading .sidebar-context-label{margin:0}
+.sidebar-menu-heading strong{
+  min-width:0;
+  overflow:hidden;
+  color:rgba(255,255,255,.82);
+  font-size:8px;
+  letter-spacing:.08em;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.sidebar-panel-list{
+  display:flex;
+  flex:1 1 auto;
+  min-height:0;
+  flex-direction:column;
+  gap:2px;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  padding:0 1px 8px 0;
+  scrollbar-width:thin;
+  scrollbar-color:rgba(255,255,255,.20) transparent;
+}
+.sidebar-panel-option{
+  display:grid;
+  grid-template-columns:20px minmax(0,1fr) 14px;
+  align-items:center;
+  gap:7px;
+  width:100%;
+  min-height:36px;
+  flex:0 0 auto;
+  padding:6px 8px;
+  border:0;
+  border-left:3px solid transparent;
+  border-radius:6px;
+  background:transparent;
+  color:rgba(255,255,255,.70);
+  text-align:left;
+  cursor:pointer;
+}
+.sidebar-panel-option:hover{
+  background:rgba(255,255,255,.065);
+  color:#fff;
+}
+.sidebar-panel-option.is-current{
+  border-left-color:#55a8ff;
+  background:rgba(255,255,255,.11);
+  color:#fff;
+}
+.sidebar-panel-option>i:first-child{font-size:15px}
+.sidebar-panel-option span{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:10px;
+  font-weight:650;
+}
+.sidebar-panel-chevron{
+  justify-self:end;
+  color:rgba(255,255,255,.32);
+  font-size:13px;
+}
+.sidebar-panel-option.is-current .sidebar-panel-chevron{color:#7dbbff}
+.sidebar-panel-empty{
+  padding:12px 8px;
+  color:rgba(255,255,255,.52);
+  font-size:9px;
+  line-height:1.45;
+}
+.mobile-context-bar{grid-column:2}
+.surface{
+  grid-column:2;
+  grid-row:2;
+  max-width:none;
+  width:100%;
+  min-width:0;
+  margin:0;
+}
+@media(max-width:1250px) and (min-width:1101px){
+  .workspace{
+    grid-template-columns:224px minmax(0,1fr);
+    column-gap:10px;
+    padding-inline:12px;
+  }
+  .desktop-sidebar{height:calc(100dvh - 110px)}
+  .sidebar-panel-option{padding-inline:7px}
+}
+@media(max-width:1100px){
+  .workspace{
+    display:block;
+    padding:10px 10px 30px;
+  }
+  .desktop-sidebar{display:none}
+  .mobile-context-bar{display:grid}
+  .surface{width:100%;max-width:none}
+}
+@media(max-width:640px){
+  .workspace{padding:7px 6px 24px}
+}
