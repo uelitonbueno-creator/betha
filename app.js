@@ -78,6 +78,7 @@
   let authorizedTenants = [];
   let currentAllowedViews = new Set(Object.keys(dashboards));
   let currentAllowedAdminViews = new Set(ADMIN_VIEWS);
+  let currentNavigationMenu = [];
 
   let tenantId = query.tenant || query.entidadeId || query.entityId || "";
   let entityLabel = query.entidade || query.entity || query.entidadeNome || "ENTIDADE NÃO IDENTIFICADA";
@@ -188,7 +189,10 @@
 
   function applyNavigationPermissions(tenant) {
     const menu=menuForTenant(tenant);
-    bethaApp.opcoes=menu;
+    currentNavigationMenu=menu;
+    // O menu nativo do bth-app é horizontal. O BI Vella usa navegação lateral
+    // para evitar sobreposição/corte e manter Entidade → Sistema → Painel.
+    bethaApp.opcoes=[];
     if(typeof closeGroupNavigation==="function")closeGroupNavigation();
     if(typeof syncSettingsUtilityPermissions==="function")syncSettingsUtilityPermissions();
 
@@ -197,15 +201,13 @@
       if(fallback) currentView=fallback;
     }
 
-    if(typeof bethaApp.setMenuAtivo==="function" && currentView){
-      bethaApp.setMenuAtivo(currentView);
-    }
+    if(typeof renderSidebarPanelMenu==="function")renderSidebarPanelMenu();
     if(typeof syncSettingsUtilityPermissions==="function")syncSettingsUtilityPermissions();
     if(typeof syncMobileContextSelectors==="function")syncMobileContextSelectors();
   }
 
-  bethaApp.opcoes = (systems.find(item=>String(item.id)===String(currentSystemId))?.menu) || window.BI_MENU || [];
-  if (typeof bethaApp.setMenuAtivo === "function") bethaApp.setMenuAtivo(currentView);
+  currentNavigationMenu=(systems.find(item=>String(item.id)===String(currentSystemId))?.menu) || window.BI_MENU || [];
+  bethaApp.opcoes=[];
 
   const groupNavigationMenu=document.createElement('nav');
   groupNavigationMenu.className='group-navigation-menu';
@@ -354,6 +356,7 @@
     closeSettingsUtilityMenu();
     currentView = view;
     syncSettingsUtilityPermissions();
+    if(typeof renderSidebarPanelMenu==="function")renderSidebarPanelMenu();
     if(typeof syncMobileContextSelectors==="function")syncMobileContextSelectors();
     const url = new URL(location.href);
     url.searchParams.set("view", view);
@@ -5046,6 +5049,7 @@
   const systemMenu=document.getElementById("systemMenu");
   const systemList=document.getElementById("systemList");
   const systemRailList=document.getElementById("systemRailList");
+  const sidebarPanelList=document.getElementById("sidebarPanelList");
   const sidebarSystemMenuLabel=document.getElementById("sidebarSystemMenuLabel");
   const mobileEntitySelect=document.getElementById("mobileEntitySelect");
   const mobileSystemSelect=document.getElementById("mobileSystemSelect");
@@ -5056,6 +5060,49 @@
 
   function currentSystemInfo() {
     return systems.find(system=>String(system.id)===String(currentSystemId)) || systems[0] || null;
+  }
+
+  function sidebarMenuItems(menu=currentNavigationMenu) {
+    const items=[];
+    for(const item of Array.isArray(menu)?menu:[]){
+      if(Array.isArray(item.submenus)&&item.submenus.length){
+        for(const sub of item.submenus){
+          const route=sub.rota||sub.id;
+          if(route&&isViewAllowed(route)) items.push({...sub,route,group:item.descricao||item.label||""});
+        }
+      }else{
+        const route=item.rota||item.id;
+        if(route&&isViewAllowed(route)) items.push({...item,route,group:""});
+      }
+    }
+    return items;
+  }
+
+  function renderSidebarPanelMenu() {
+    if(!sidebarPanelList) return;
+    const items=sidebarMenuItems();
+    sidebarPanelList.innerHTML="";
+    if(!items.length){
+      sidebarPanelList.innerHTML='<div class="sidebar-panel-empty">Nenhum painel autorizado neste sistema.</div>';
+      return;
+    }
+
+    for(const item of items){
+      const route=String(item.route||item.rota||item.id||"");
+      const active=route===String(currentView);
+      const button=document.createElement("button");
+      button.type="button";
+      button.className="sidebar-panel-option"+(active?" is-current":"");
+      button.dataset.sidebarView=route;
+      button.setAttribute("aria-current",active?"page":"false");
+      const icon=String(item.icone||item.icon||"chart-box-outline");
+      button.innerHTML=
+        '<i class="mdi mdi-'+escapeHtml(icon)+'" aria-hidden="true"></i>'+
+        '<span>'+escapeHtml(item.descricao||item.label||dashboards[route]?.title||route)+'</span>'+
+        '<i class="mdi mdi-chevron-right sidebar-panel-chevron" aria-hidden="true"></i>';
+      button.addEventListener("click",()=>navigate(route));
+      sidebarPanelList.appendChild(button);
+    }
   }
 
   function renderMobileEntitySelector() {
@@ -5080,7 +5127,7 @@
 
   function renderMobilePanelSelector() {
     if(!mobilePanelSelect) return;
-    const menu=Array.isArray(bethaApp.opcoes)?bethaApp.opcoes:[];
+    const menu=Array.isArray(currentNavigationMenu)?currentNavigationMenu:[];
     const options=[];
     for(const item of menu){
       if(Array.isArray(item.submenus)&&item.submenus.length){
@@ -5136,6 +5183,7 @@
     const targets=[systemList,systemRailList].filter(Boolean);
     for(const target of targets) target.innerHTML="";
     renderMobileSystemSelector();
+    renderSidebarPanelMenu();
     for(const system of accessibleSystemsForTenant()){
       const icon=String(system.icon||"application-cog-outline");
       if(systemList){
@@ -6775,7 +6823,9 @@
     bethaApp.style.display = "";
     currentAllowedViews = new Set(Object.keys(dashboards));
     currentAllowedAdminViews = new Set(ADMIN_VIEWS);
-    bethaApp.opcoes = window.BI_MENU || [];
+    currentNavigationMenu=(currentSystemInfo()?.menu)||window.BI_MENU||[];
+    bethaApp.opcoes=[];
+    renderSidebarPanelMenu();
   }
 
   if (currentView === "usuarios-admin") {
