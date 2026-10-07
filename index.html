@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261007-vella-redesign18">
+  <link rel="stylesheet" href="style.css?v=20261007-vella-redesign19">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -664,7 +664,7 @@
     </section>
   </div>
 
-  <aside id="detailDrawer" class="detail-drawer" aria-hidden="true">
+  <aside id="detailDrawer" class="detail-drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" aria-describedby="drawerContext" aria-hidden="true" tabindex="-1">
     <div class="drawer-header">
       <div class="drawer-title-block">
         <small>VISÃO MICRO</small>
@@ -684,11 +684,11 @@
   </aside>
   <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
 
-  <aside id="userDrawer" class="detail-drawer user-drawer" aria-hidden="true">
+  <aside id="userDrawer" class="detail-drawer user-drawer" role="dialog" aria-modal="true" aria-labelledby="userDrawerTitle" aria-hidden="true" tabindex="-1">
     <div class="drawer-header">
       <div>
         <small>AUTORIZANDO USUÁRIO</small>
-        <h2>Adicionar usuário</h2>
+        <h2 id="userDrawerTitle">Adicionar usuário</h2>
       </div>
       <button id="closeUserDrawer" class="drawer-close" type="button" aria-label="Fechar"><i class="mdi mdi-close"></i></button>
     </div>
@@ -742,11 +742,11 @@
     </div>
   </aside>
 
-  <aside id="integrationDrawer" class="detail-drawer" aria-hidden="true">
+  <aside id="integrationDrawer" class="detail-drawer" role="dialog" aria-modal="true" aria-labelledby="integrationDrawerTitle" aria-hidden="true" tabindex="-1">
     <div class="drawer-header">
       <div>
         <small>INTEGRAÇÃO</small>
-        <h2>Contexto e segurança</h2>
+        <h2 id="integrationDrawerTitle">Contexto e segurança</h2>
       </div>
       <button id="closeIntegration" class="drawer-close" type="button" aria-label="Fechar"><i class="mdi mdi-close"></i></button>
     </div>
@@ -773,7 +773,7 @@
   <script src="system-catalog.js?v=20261007-vella-redesign13"></script>
   <div id="uiToast" class="ui-toast" role="status" aria-live="polite" aria-atomic="true"></div>
   <script src="api-panel-catalog.js?v=20261006-chart-visible9"></script>
-  <script src="app.js?v=20261007-vella-redesign18"></script>
+  <script src="app.js?v=20261007-vella-redesign19"></script>
   <script src="global-search.js?v=20261007-local-search1"></script>
 </body>
 </html>
