@@ -81,6 +81,11 @@
   let tenantId = query.tenant || query.entidadeId || query.entityId || "";
   let entityLabel = query.entidade || query.entity || query.entidadeNome || "ENTIDADE NÃO IDENTIFICADA";
   let currentSystemId = query.sistema || cfg.DEFAULT_SYSTEM || systems[0]?.id || "tributos";
+  if(!systems.some(system=>String(system.id)===String(currentSystemId))) currentSystemId=systems[0]?.id||"tributos";
+  const initialSystem=systems.find(system=>String(system.id)===String(currentSystemId))||systems[0]||null;
+  const initialSystemHome=initialSystem?.homeView||DEFAULT_VIEW;
+  const initialViewSystem=dashboards[currentView]?.system||"tributos";
+  if(!query.view || query.view===HOME_VIEW || String(initialViewSystem)!==String(currentSystemId)) currentView=initialSystemHome;
 
   document.getElementById("entityContext").textContent = String(entityLabel).toUpperCase();
 
@@ -94,7 +99,8 @@
   }
 
   function isViewAllowed(view) {
-    if(view===HOME_VIEW) view=DEFAULT_VIEW;
+    if(view===HOME_VIEW) view=currentSystemInfo()?.homeView||DEFAULT_VIEW;
+    if(dashboards[view]?.localSample) return String(dashboards[view].system||"")===String(currentSystemId);
     if (dashboards[view]?.apiSource) return (dashboards[view].permissionViews||[]).some(v=>currentAllowedViews.has(v));
     if (dashboards[view]) return currentAllowedViews.has(view);
     if (ADMIN_VIEWS.has(view)) return currentAllowedAdminViews.has(view);
@@ -102,7 +108,8 @@
   }
 
   function menuForTenant(tenant) {
-    const raw=Array.isArray(window.BI_MENU)?window.BI_MENU:[];
+    const system=systems.find(item=>String(item.id)===String(currentSystemId))||systems[0]||null;
+    const raw=Array.isArray(system?.menu) ? system.menu : (Array.isArray(window.BI_MENU)?window.BI_MENU:[]);
     const allowedViews=Array.isArray(tenant?.allowedViews)
       ? new Set(tenant.allowedViews.filter(view=>dashboards[view]))
       : (tenant?.admin||tenant?.technical ? new Set(Object.keys(dashboards)) : new Set(["visao-geral"]));
@@ -115,7 +122,8 @@
 
     const allowed=item=>{
       const view=item?.rota||item?.id;
-      const normalizedView=view===HOME_VIEW?DEFAULT_VIEW:view;
+      const normalizedView=view===HOME_VIEW?(system?.homeView||DEFAULT_VIEW):view;
+      if(dashboards[normalizedView]?.localSample) return String(dashboards[normalizedView].system||"")===String(currentSystemId);
       return dashboards[normalizedView] ? allowedViews.has(normalizedView) :
         (ADMIN_VIEWS.has(normalizedView) ? allowedAdminViews.has(normalizedView) : false);
     };
@@ -131,10 +139,12 @@
   }
 
   function firstAllowedView() {
-    if(currentAllowedViews.has(DEFAULT_VIEW)) return DEFAULT_VIEW;
-    return Object.keys(dashboards).find(view=>currentAllowedViews.has(view)) ||
+    const system=systems.find(item=>String(item.id)===String(currentSystemId))||systems[0]||null;
+    const home=system?.homeView||DEFAULT_VIEW;
+    if(isViewAllowed(home)) return home;
+    return Object.keys(dashboards).find(view=>isViewAllowed(view)) ||
       [...currentAllowedAdminViews][0] ||
-      DEFAULT_VIEW;
+      home;
   }
 
   function applyNavigationPermissions(tenant) {
@@ -154,7 +164,7 @@
     if(typeof syncSettingsUtilityPermissions==="function")syncSettingsUtilityPermissions();
   }
 
-  bethaApp.opcoes = window.BI_MENU || [];
+  bethaApp.opcoes = (systems.find(item=>String(item.id)===String(currentSystemId))?.menu) || window.BI_MENU || [];
   if (typeof bethaApp.setMenuAtivo === "function") bethaApp.setMenuAtivo(currentView);
 
   const groupNavigationMenu=document.createElement('nav');
@@ -296,7 +306,7 @@
   });
 
   function navigate(view) {
-    if(view===HOME_VIEW) view=DEFAULT_VIEW;
+    if(view===HOME_VIEW) view=currentSystemInfo()?.homeView||DEFAULT_VIEW;
     if (!isViewAllowed(view)) {
       showToast("Este painel não está liberado para o seu acesso.");
       return;
@@ -898,7 +908,7 @@
     destroyCharts();
     currentPayload = null;
     const def = dashboards[view];
-    const sourceChoice=document.getElementById("fontePreferencial")?.closest(".field");if(sourceChoice)sourceChoice.hidden=Boolean(def.apiSource);
+    const sourceChoice=document.getElementById("fontePreferencial")?.closest(".field");if(sourceChoice)sourceChoice.hidden=Boolean(def.apiSource||def.localSample);
     const dashboardView = document.getElementById("dashboardView");
     dashboardView.dataset.dashboard = view;
     document.getElementById("overviewExecutive")?.remove();
@@ -2894,8 +2904,138 @@
     finally{if(active())setRefreshBusy(false);}
   }
 
+  const localSampleCache=new Map();
+
+  function localSampleWhere(rows,where) {
+    if(!where||typeof where!=="object") return rows;
+    return rows.filter(row=>Object.entries(where).every(([key,value])=>row?.[key]===value));
+  }
+
+  function localSampleAggregate(rows,spec={}) {
+    const scoped=localSampleWhere(rows,spec.where);
+    if(spec.agg==="count") return scoped.length;
+    if(spec.agg==="distinct") return new Set(scoped.map(row=>row?.[spec.field]).filter(value=>value!==null&&value!==undefined&&value!=="")).size;
+    if(spec.agg==="average"){
+      const values=scoped.map(row=>Number(row?.[spec.field])).filter(Number.isFinite);
+      return values.length ? values.reduce((a,b)=>a+b,0)/values.length : 0;
+    }
+    if(spec.agg==="ratio"){
+      const numerator=scoped.reduce((sum,row)=>sum+(Number(row?.[spec.numerator])||0),0);
+      const denominator=scoped.reduce((sum,row)=>sum+(Number(row?.[spec.denominator])||0),0);
+      return denominator ? (numerator/denominator)*100 : 0;
+    }
+    return scoped.reduce((sum,row)=>sum+(Number(row?.[spec.field])||0),0);
+  }
+
+  function localSampleRowsForPeriod(rows) {
+    const periodo=document.getElementById("periodo")?.value||"ano";
+    const exercicio=document.getElementById("exercicio")?.value||String(currentYear);
+    if(periodo==="todos") return rows.slice();
+    const year=String(exercicio);
+    if(periodo==="mes"){
+      const month=String(new Date().getMonth()+1).padStart(2,"0");
+      return rows.filter(row=>String(row.mes||row.competencia||row.data||"").startsWith(year+"-"+month));
+    }
+    return rows.filter(row=>String(row.mes||row.competencia||row.data||"").startsWith(year+"-"));
+  }
+
+  function localSampleChart(rows,chartDef) {
+    const spec=chartDef.sample||{};
+    const scoped=localSampleWhere(rows,spec.where);
+    const groups=new Map();
+    for(const row of scoped){
+      const label=String(row?.[spec.group]??"Não informado");
+      if(!groups.has(label)) groups.set(label,[]);
+      groups.get(label).push(row);
+    }
+    let labels=[...groups.keys()];
+    if(/^mes|competencia$/i.test(String(spec.group||""))) labels.sort();
+    else labels.sort((a,b)=>a.localeCompare(b,"pt-BR"));
+
+    const fields=Array.isArray(spec.fields)&&spec.fields.length
+      ? spec.fields
+      : [{field:spec.field,label:chartDef.title,agg:spec.agg}];
+
+    const datasets=fields.map(fieldSpec=>({
+      label:fieldSpec.label||chartDef.title,
+      data:labels.map(label=>localSampleAggregate(groups.get(label)||[],{
+        ...spec,
+        ...fieldSpec,
+        agg:fieldSpec.agg||spec.agg,
+        where:null
+      }))
+    }));
+
+    return {
+      labels,
+      datasets,
+      format:spec.format||"number",
+      note:"Amostra local de "+scoped.length+" registros · sem consumo do Cloudflare."
+    };
+  }
+
+  async function localSampleDocument(file) {
+    if(localSampleCache.has(file)) return localSampleCache.get(file);
+    const promise=fetch(file,{cache:"no-store"}).then(async response=>{
+      if(!response.ok) throw new Error("SAMPLE_HTTP_"+response.status);
+      return response.json();
+    });
+    localSampleCache.set(file,promise);
+    try{return await promise;}catch(error){localSampleCache.delete(file);throw error;}
+  }
+
+  async function loadLocalSampleDashboard(view) {
+    const def=dashboards[view];
+    const sample=def?.localSample;
+    if(!sample) return;
+    const generation=++dashboardLoadGeneration;
+    const requestedTenant=tenantId;
+    const requestedSystem=currentSystemId;
+    const active=()=>generation===dashboardLoadGeneration&&currentView===view&&tenantId===requestedTenant&&currentSystemId===requestedSystem;
+
+    setRefreshBusy(true);
+    setDashboardLoading(true);
+    setStatus("waiting","Carregando amostra local · sem consumo do Cloudflare...");
+
+    try{
+      const doc=await localSampleDocument(sample.file);
+      if(!active()) return;
+      const allRows=Array.isArray(doc?.rows)?doc.rows:[];
+      const rows=localSampleRowsForPeriod(allRows);
+      const kpis={};
+      for(const kpi of def.kpis||[]) kpis[kpi.id]=localSampleAggregate(rows,kpi.sample||{agg:"count"});
+      const charts={};
+      for(const chart of def.charts||[]) charts[chart.id]=localSampleChart(rows,chart);
+
+      const key=sample.sourceKey||requestedSystem||"sample";
+      const payload={
+        kpis,
+        charts,
+        meta:{
+          sampleMode:true,
+          sampleFile:sample.file,
+          sourceRows:{[key]:rows.length},
+          sourceAudit:{[key]:{loaded:rows.length,reportedTotal:Number(doc?.recordCount||allRows.length),complete:true,pages:1}},
+          warnings:[]
+        }
+      };
+      renderPayload(payload);
+      setLastUpdated(doc?.generatedAt||new Date().toISOString(),"Amostra local");
+      setStatus("online","TESTE LOCAL · "+allRows.length+" registros disponíveis · 0 chamadas Cloudflare");
+    }catch(error){
+      if(!active()) return;
+      console.warn("Falha ao carregar amostra local:",error);
+      setDashboardLoading(false);
+      setStatus("error","Amostra local indisponível");
+      showToast("Não foi possível carregar os dados locais de teste.","error");
+    }finally{
+      if(active()) setRefreshBusy(false);
+    }
+  }
+
   async function loadDashboardData(view, options = {}) {
-    if(view===HOME_VIEW) view=DEFAULT_VIEW;
+    if(view===HOME_VIEW) view=currentSystemInfo()?.homeView||DEFAULT_VIEW;
+    if(dashboards[view]?.localSample) return loadLocalSampleDashboard(view);
     if(dashboards[view]?.apiSource) return loadApiPanelDashboard(view);
     const generation=++dashboardLoadGeneration;
     const requestedTenant=tenantId;
@@ -4135,7 +4275,12 @@
 
     const url=new URL(location.href);
     url.searchParams.set("sistema",currentSystemId);
+    url.searchParams.set("view",system.homeView||DEFAULT_VIEW);
     history.replaceState({},"",url);
+
+    currentView=system.homeView||DEFAULT_VIEW;
+    applyNavigationPermissions(currentTenantInfo());
+    navigate(currentView);
     if(previous && previous!==currentSystemId) showToast("Sistema alterado para "+(system.name||system.id)+".");
   }
 
