@@ -218,6 +218,33 @@ test("gestão de usuários agrupa permissões por sistema", () => {
   assert.match(app, /groups=systems\.map/);
 });
 
+test("exportações do painel incluem sistema, modo de dados e tabelas executivas", () => {
+  const app = fs.readFileSync(path.join(ROOT, "app.js"), "utf8");
+  const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
+  assert.match(app, /for\(const table of currentPayload\?\.tables\|\|\[\]\)/);
+  assert.match(app, /\["Sistema",system\?\.name\|\|system\?\.label\|\|currentSystemId\]/);
+  assert.match(app, /AMOSTRA LOCAL · DADOS DE TESTE · SEM CONSUMO DA API/);
+  assert.match(app, /BI Vella \| "\+systemName\+" \/ "\+panelName/);
+  assert.match(html, /Indicadores, séries e tabelas/);
+});
+
+test("drill-down local pode exportar PDF CSV e TXT sem buscar registros remotos", () => {
+  const app = fs.readFileSync(path.join(ROOT, "app.js"), "utf8");
+  assert.match(app, /let currentLocalDetailExport = null/);
+  assert.match(app, /function setLocalDetailExport\(/);
+  assert.match(app, /async function currentDetailExportPayload\(/);
+  assert.match(app, /resource:"amostra-local"/);
+  assert.match(app, /sampleMode:true/);
+  const start = app.indexOf("async function currentDetailExportPayload");
+  const end = app.indexOf("function detailExportContext", start);
+  const block = app.slice(start, end);
+  assert.match(block, /if\(currentLocalDetailExport\)/);
+  assert.match(block, /return fetchDetailExport\(currentDetailResource,maxRecords\)/);
+  assert.match(app, /setLocalDetailExport\(tableDef\.title\|\|"Detalhamento",rows,currentSystemId\)/);
+  assert.match(app, /setLocalDetailExport\(kpi\.label,rows,currentSystemId\)/);
+  assert.match(app, /setLocalDetailExport\(resolved\.title,rows,currentSystemId\)/);
+});
+
 test("busca global preserva o sistema do painel encontrado", () => {
   const search = fs.readFileSync(path.join(ROOT, "global-search.js"), "utf8");
   assert.match(search, /window\.BI_DASHBOARDS\?\.\[view\]/);
