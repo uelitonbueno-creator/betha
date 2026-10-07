@@ -5818,7 +5818,7 @@
       });
     });
 
-    container.addEventListener("change",event=>{
+    container.onchange=event=>{
       if(!event.target.matches('input[type="checkbox"]')) return;
       const group=event.target.closest(".permission-system-group");
       const button=group?.querySelector("[data-permission-group-toggle]");
@@ -5827,7 +5827,7 @@
         button.textContent=inputs.every(input=>input.checked)?"Desmarcar grupo":"Marcar grupo";
       }
       updateWizardSaveState();
-    },{once:true});
+    };
 
     applyPermissionPreset();
     container.querySelectorAll(".permission-system-group").forEach(group=>{
