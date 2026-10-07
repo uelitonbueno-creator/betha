@@ -1,0 +1,132 @@
+name: Deploy MCP SDK v2
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "mcp/**"
+      - "config/mcp-tools.generated.json"
+      - "scripts/check-mcp-contract.mjs"
+      - "scripts/check-mcp-oauth.mjs"
+      - ".github/workflows/mcp-sdk-v2-deploy.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-sdk-v2-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      MCP_URL: https://bi-vella-mcp.ueliton-bueno.workers.dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate generated catalog
+        run: |
+          node scripts/generate-mcp-tools.mjs
+          git diff --exit-code -- config/mcp-tools.generated.json
+          node scripts/check-mcp-contract.mjs
+          node scripts/check-mcp-oauth.mjs
+
+      - name: Install MCP dependencies
+        run: npm install --prefix mcp --ignore-scripts --no-audit --no-fund
+
+      - name: Build MCP Worker
+        run: npm --prefix mcp run check
+
+      - name: Check Cloudflare deployment credentials
+        id: cloudflare
+        shell: bash
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -n "$CF_API_TOKEN" ] && [ -n "$CF_ACCOUNT_ID" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "Cloudflare deployment credentials are configured."
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Cloudflare deployment skipped because CLOUDFLARE_API_TOKEN and/or CLOUDFLARE_ACCOUNT_ID are not configured."
+          fi
+
+      - name: Deploy isolated SDK v2 Worker (fail-closed)
+        if: steps.cloudflare.outputs.ready == 'true'
+        working-directory: mcp
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy --config wrangler.jsonc
+
+      - name: Smoke test health
+        if: steps.cloudflare.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 30 "$MCP_URL/health" -o /tmp/mcp-health.json
+          cat /tmp/mcp-health.json
+          node -e '
+            const fs=require("fs");
+            const j=JSON.parse(fs.readFileSync("/tmp/mcp-health.json","utf8"));
+            if(!j.ok) process.exit(1);
+            if(j.service!=="bi-vella-mcp") process.exit(1);
+            if(j.toolCount!==16) process.exit(1);
+            if(j.authReady!==false) process.exit(1);
+            if(!j.introspectionConfigured) process.exit(1);
+          '
+
+      - name: Smoke test OAuth protected-resource discovery
+        if: steps.cloudflare.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 30             "$MCP_URL/.well-known/oauth-protected-resource"             -o /tmp/mcp-resource.json
+          cat /tmp/mcp-resource.json
+          node -e '
+            const fs=require("fs");
+            const j=JSON.parse(fs.readFileSync("/tmp/mcp-resource.json","utf8"));
+            if(j.resource!=="https://bi-vella-mcp.ueliton-bueno.workers.dev/mcp") process.exit(1);
+            if(!Array.isArray(j.authorization_servers) || !j.authorization_servers.includes("https://betha-bi-api.ueliton-bueno.workers.dev")) process.exit(1);
+            if(!Array.isArray(j.scopes_supported) || !j.scopes_supported.includes("bi:read")) process.exit(1);
+          '
+
+      - name: Verify MCP remains fail-closed before cutover
+        if: steps.cloudflare.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl --silent --show-error --max-time 30             -o /tmp/mcp-auth.json -w '%{http_code}'             -X POST "$MCP_URL/mcp"             -H 'Content-Type: application/json'             --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"bi-vella-smoke","version":"1.0"}}}')"
+          cat /tmp/mcp-auth.json
+          test "$status" = "503"
+          node -e '
+            const fs=require("fs");
+            const j=JSON.parse(fs.readFileSync("/tmp/mcp-auth.json","utf8"));
+            if(j.error!=="MCP_AUTH_NOT_READY") process.exit(1);
+          '
+
+      - name: Deployment summary
+        if: always()
+        shell: bash
+        env:
+          READY: ${{ steps.cloudflare.outputs.ready }}
+        run: |
+          if [ "$READY" = "true" ]; then
+            echo "### MCP SDK v2 staging deployed" >> "$GITHUB_STEP_SUMMARY"
+            echo "- URL: $MCP_URL/mcp" >> "$GITHUB_STEP_SUMMARY"
+            echo "- OAuth discovery: validated" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Auth state: fail-closed (MCP_AUTH_READY=false)" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Legacy production MCP remains unchanged" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### MCP SDK v2 deployment prepared" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Deployment was not executed because Cloudflare GitHub secrets are missing." >> "$GITHUB_STEP_SUMMARY"
+            echo "- Required secrets: CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID" >> "$GITHUB_STEP_SUMMARY"
+          fi
