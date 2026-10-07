@@ -7182,7 +7182,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-07-debitos-current-period-d1-v86",
+        buildVersion:"2026-10-07-tenant-config-admin-v87",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
@@ -7546,14 +7546,14 @@ export default {
         requireTenantConfigAdmin(auth);
         if(!env.AUTH_DB&&!env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
         const registry=await tenantRegistry(env);
-        const accesses=await getUserAccesses(auth.userToken);
-        const canManage=config=>{
-          const access=matchAccess(accesses,{entity:String(config.entityId||""),database:String(config.databaseId||"")});
-          return Boolean(access&&(access.admin===true||access.technical===true)&&(!access.expiresIn||new Date(access.expiresIn).getTime()>=Date.now()));
-        };
+        // Reaching this route already requires BIConfiguracoesPage plus
+        // administrator/technical profile in the authenticated current tenant.
+        // Do not make the configuration screen depend on a second @me/access
+        // call for every municipality: that upstream call can return 503 and
+        // used to block both listing and onboarding a new entity.
         if(request.method==="GET") {
           if(url.pathname!=="/api/admin/entities") return json(request,env,405,{error:"METHOD_NOT_ALLOWED"});
-          const entities=Object.entries(registry).filter(([id,config])=>id===current.id||canManage(config)).map(([id,config])=>publicTenantConfig(id,config,env));
+          const entities=Object.entries(registry).map(([id,config])=>publicTenantConfig(id,config,env));
           const response=json(request,env,200,{entities});
           response.headers.set("Cache-Control","no-store");
           return response;
@@ -7565,8 +7565,10 @@ export default {
         if(text.length>20000) throw new Error("TENANT_CONFIG_INVALID");
         let input; try {input=JSON.parse(text);} catch {throw new Error("TENANT_CONFIG_INVALID");}
         const previous=Object.hasOwn(registry,String(input.id||""))?registry[String(input.id)]:{};
-        const isExisting=Object.keys(previous).length>0;
-        if(isExisting&&!canManage(previous)&&String(input.id)!==current.id) throw new Error("TENANT_CONFIG_FORBIDDEN");
+        // Existing entities may be maintained by a BI configuration admin.
+        // Candidate Betha credentials are always validated below before any
+        // configuration is persisted, so invalid context cannot replace a
+        // working entity.
         const {id,config}=validateTenantConfig(input,previous);
         const candidate={id,...config,accessToken:config.accessToken||env.BETHA_ACCESS_TOKEN||""};
         // Test before persistence: invalid credentials never replace a working configuration.
