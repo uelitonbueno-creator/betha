@@ -358,6 +358,44 @@
     return source.startsWith("base:") ? "DADOS" : "BI";
   }
 
+  function renderSourceProvenance(payload,view=currentView) {
+    const def=dashboards[view]||{};
+    const title=document.getElementById("sourceDisclosureTitle");
+    const description=document.getElementById("sourceDisclosureDescription");
+    const summary=document.getElementById("sourceSummary");
+    if(!summary) return;
+
+    if(def.localSample||payload?.meta?.sampleMode){
+      const meta=payload?.meta||{};
+      const activeSystem=currentSystemInfo();
+      const rows=Number(Object.values(meta.sourceRows||{})[0]||0);
+      const audit=Object.values(meta.sourceAudit||{})[0]||{};
+      const total=Number(audit.reportedTotal||rows||0);
+      const generated=meta.sampleGeneratedAt ? formatCacheTime(meta.sampleGeneratedAt) : "";
+      const sampleFile=String(meta.sampleFile||def.localSample?.file||"").split("/").pop();
+      if(title) title.textContent="Origem da amostra desta visão";
+      if(description) description.textContent="Dados sintéticos locais para validação visual e funcional. Não representam dados de produção.";
+      summary.innerHTML=[
+        '<span class="source-chip source-chip-sample"><strong>AMOSTRA LOCAL</strong> · '+escapeHtml(activeSystem?.name||currentSystemId)+'</span>',
+        '<span class="source-chip"><strong>RECORTE</strong> · '+rows.toLocaleString("pt-BR")+' de '+total.toLocaleString("pt-BR")+' registros</span>',
+        sampleFile?'<span class="source-chip"><strong>ARQUIVO</strong> · '+escapeHtml(sampleFile)+'</span>':"",
+        generated?'<span class="source-chip"><strong>GERADA</strong> · '+escapeHtml(generated)+'</span>':"",
+        '<span class="source-chip source-chip-zero-api"><strong>API</strong> · 0 chamadas Cloudflare</span>'
+      ].filter(Boolean).join("");
+      return;
+    }
+
+    if(title) title.textContent="Fontes utilizadas nesta visão";
+    if(description) description.textContent="Integrações autorizadas utilizadas nesta leitura.";
+    const sources=[...new Set([
+      ...(def.kpis||[]).map(item=>item.source),
+      ...dashboardCharts(view).map(item=>item.source)
+    ].filter(Boolean))];
+    summary.innerHTML=sources.map(src=>
+      '<span class="source-chip"><strong>'+sourceLabel(src)+'</strong> · '+escapeHtml(src)+'</span>'
+    ).join("");
+  }
+
   function formatValue(value, format) {
     if(value===null||value===undefined)return "—";
     if(format==="percent")return Number(value).toLocaleString("pt-BR",{maximumFractionDigits:2})+"%";
@@ -1463,14 +1501,7 @@
       if(coverage) chartGrid.insertAdjacentElement("afterend",coverage);
     }
 
-    const sources = [...new Set([
-      ...(def.kpis || []).map(x => x.source),
-      ...dashboardCharts(view).map(x => x.source)
-    ].filter(Boolean))];
-    const summary = document.getElementById("sourceSummary");
-    summary.innerHTML = sources.map(src =>
-      `<span class="source-chip"><strong>${sourceLabel(src)}</strong> · ${escapeHtml(src)}</span>`
-    ).join("");
+    renderSourceProvenance(null,view);
 
     setDashboardLoading(true);
     setLastUpdated(null);
@@ -2029,6 +2060,7 @@
       else renderChartEmptyState(chartDef,payload);
     }
     renderSummaryTables(payload);
+    renderSourceProvenance(payload,currentView);
 
     const sourceRows = payload && payload.meta && payload.meta.sourceRows ? payload.meta.sourceRows : {};
     const sourceAudit = payload && payload.meta && payload.meta.sourceAudit ? payload.meta.sourceAudit : {};
@@ -3074,12 +3106,30 @@
     const periodo=document.getElementById("periodo")?.value||"ano";
     const exercicio=document.getElementById("exercicio")?.value||String(currentYear);
     if(periodo==="todos") return rows.slice();
-    const year=String(exercicio);
+
+    const selectedYear=Number(exercicio)||currentYear;
+    const currentMonth=new Date().getMonth()+1;
+    const anchorMonth=selectedYear===currentYear ? currentMonth : 12;
+    const monthKey=row=>String(row.mes||row.competencia||row.data||"").slice(0,7);
+
     if(periodo==="mes"){
-      const month=String(new Date().getMonth()+1).padStart(2,"0");
-      return rows.filter(row=>String(row.mes||row.competencia||row.data||"").startsWith(year+"-"+month));
+      const key=String(selectedYear)+"-"+String(anchorMonth).padStart(2,"0");
+      return rows.filter(row=>monthKey(row)===key);
     }
-    return rows.filter(row=>String(row.mes||row.competencia||row.data||"").startsWith(year+"-"));
+
+    if(periodo==="12m"){
+      const anchor=new Date(selectedYear,anchorMonth-1,1);
+      const start=new Date(anchor.getFullYear(),anchor.getMonth()-11,1);
+      const startKey=start.getFullYear()+"-"+String(start.getMonth()+1).padStart(2,"0");
+      const endKey=anchor.getFullYear()+"-"+String(anchor.getMonth()+1).padStart(2,"0");
+      return rows.filter(row=>{
+        const key=monthKey(row);
+        return key>=startKey&&key<=endKey;
+      });
+    }
+
+    const year=String(selectedYear);
+    return rows.filter(row=>monthKey(row).startsWith(year+"-"));
   }
 
   function localSampleFilterOptions(rows,filters=[]) {
@@ -3250,6 +3300,8 @@
         meta:{
           sampleMode:true,
           sampleFile:sample.file,
+          sampleGeneratedAt:doc?.generatedAt||null,
+          sampleRecordCount:Number(doc?.recordCount||allRows.length),
           filterOptions,
           sourceRows:{[key]:rows.length},
           sourceAudit:{[key]:{loaded:rows.length,reportedTotal:Number(doc?.recordCount||allRows.length),complete:true,pages:1}},
