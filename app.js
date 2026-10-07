@@ -5774,15 +5774,67 @@
 
   function renderPermissionOptions() {
     const container = document.getElementById("permissionsList");
-    const items = Object.entries(dashboards).map(([id, def]) => ({id, label:def.title}));
-    items.push({id:"usuarios-admin",label:"Usuários e acessos"});
-    items.push({id:"configuracoes-admin",label:"Configurações"});
+    if(!container) return;
 
-    container.innerHTML = items.map(item =>
-      '<label class="permission-item"><input type="checkbox" value="' + escapeHtml(item.id) + '" checked> ' + escapeHtml(item.label) + '</label>'
+    const groups=systems.map(system=>({
+      id:String(system.id),
+      label:system.name||system.label||system.id,
+      icon:system.icon||"view-dashboard-outline",
+      items:Object.entries(dashboards)
+        .filter(([,def])=>String(def?.system||"tributos")===String(system.id))
+        .map(([id,def])=>({id,label:def.title}))
+    })).filter(group=>group.items.length);
+
+    groups.push({
+      id:"administracao",
+      label:"Administração",
+      icon:"cog-outline",
+      items:[
+        {id:"usuarios-admin",label:"Usuários e acessos"},
+        {id:"configuracoes-admin",label:"Configurações"}
+      ]
+    });
+
+    container.innerHTML=groups.map(group=>
+      '<section class="permission-system-group" data-permission-system="'+escapeHtml(group.id)+'">'+
+        '<header><div><i class="mdi mdi-'+escapeHtml(group.icon)+'" aria-hidden="true"></i><strong>'+escapeHtml(group.label)+'</strong><span>'+group.items.length+' painel(is)</span></div>'+
+        '<button type="button" class="permission-group-toggle" data-permission-group-toggle="'+escapeHtml(group.id)+'">Marcar grupo</button></header>'+
+        '<div class="permission-system-items">'+
+          group.items.map(item=>
+            '<label class="permission-item"><input type="checkbox" value="'+escapeHtml(item.id)+'" checked> <span>'+escapeHtml(item.label)+'</span></label>'
+          ).join("")+
+        '</div>'+
+      '</section>'
     ).join("");
 
+    container.querySelectorAll("[data-permission-group-toggle]").forEach(button=>{
+      button.addEventListener("click",()=>{
+        const group=button.closest(".permission-system-group");
+        const inputs=[...group.querySelectorAll('input[type="checkbox"]')];
+        const shouldCheck=inputs.some(input=>!input.checked);
+        inputs.forEach(input=>input.checked=shouldCheck);
+        button.textContent=shouldCheck?"Desmarcar grupo":"Marcar grupo";
+        updateWizardSaveState();
+      });
+    });
+
+    container.addEventListener("change",event=>{
+      if(!event.target.matches('input[type="checkbox"]')) return;
+      const group=event.target.closest(".permission-system-group");
+      const button=group?.querySelector("[data-permission-group-toggle]");
+      if(button){
+        const inputs=[...group.querySelectorAll('input[type="checkbox"]')];
+        button.textContent=inputs.every(input=>input.checked)?"Desmarcar grupo":"Marcar grupo";
+      }
+      updateWizardSaveState();
+    },{once:true});
+
     applyPermissionPreset();
+    container.querySelectorAll(".permission-system-group").forEach(group=>{
+      const inputs=[...group.querySelectorAll('input[type="checkbox"]')];
+      const button=group.querySelector("[data-permission-group-toggle]");
+      if(button) button.textContent=inputs.every(input=>input.checked)?"Desmarcar grupo":"Marcar grupo";
+    });
   }
 
   function selectedProfile() {
