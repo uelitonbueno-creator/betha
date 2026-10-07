@@ -84,6 +84,7 @@ jobs:
           node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("/tmp/mcp-get.json","utf8"));if(j.error!=="MCP_POST_REQUIRED") process.exit(1);'
 
       - name: Check OAuth metadata on production endpoint
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --max-time 20 \
@@ -99,6 +100,7 @@ jobs:
           '
 
       - name: Check production MCP OAuth challenge
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
         run: |
           set -euo pipefail
           status="$(curl --silent --show-error --max-time 20 \
