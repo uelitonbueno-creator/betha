@@ -1,7 +1,7 @@
 {
   "mode": "sample",
   "system": "compras",
-  "generatedAt": "2026-10-06",
+  "generatedAt": "2026-10-07",
   "recordCount": 100,
   "rows": [
     {
@@ -18,7 +18,11 @@
       "economia": 4320,
       "status": "Em andamento",
       "diasTramitacao": 12,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0001/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Materiais de consumo",
+      "quantidadeItens": 1
     },
     {
       "id": 2,
@@ -34,7 +38,11 @@
       "economia": 4551,
       "status": "Homologado",
       "diasTramitacao": 13,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0002/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Serviços de tecnologia",
+      "quantidadeItens": 2
     },
     {
       "id": 3,
@@ -50,7 +58,11 @@
       "economia": 4488,
       "status": "Contratado",
       "diasTramitacao": 14,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0003/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Obra pública",
+      "quantidadeItens": 3
     },
     {
       "id": 4,
@@ -66,7 +78,11 @@
       "economia": 4131,
       "status": "Concluído",
       "diasTramitacao": 15,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0004/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Medicamentos",
+      "quantidadeItens": 4
     },
     {
       "id": 5,
@@ -82,7 +98,11 @@
       "economia": 3480,
       "status": "Suspenso",
       "diasTramitacao": 16,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0005/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Gêneros alimentícios",
+      "quantidadeItens": 5
     },
     {
       "id": 6,
@@ -98,7 +118,11 @@
       "economia": 9360,
       "status": "Em andamento",
       "diasTramitacao": 17,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0006/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Materiais de consumo",
+      "quantidadeItens": 6
     },
     {
       "id": 7,
@@ -114,7 +138,11 @@
       "economia": 8856,
       "status": "Homologado",
       "diasTramitacao": 18,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0007/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Serviços de tecnologia",
+      "quantidadeItens": 7
     },
     {
       "id": 8,
@@ -130,7 +158,11 @@
       "economia": 8058,
       "status": "Contratado",
       "diasTramitacao": 19,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0008/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Obra pública",
+      "quantidadeItens": 8
     },
     {
       "id": 9,
@@ -146,7 +178,11 @@
       "economia": 6966,
       "status": "Concluído",
       "diasTramitacao": 20,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0009/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Medicamentos",
+      "quantidadeItens": 1
     },
     {
       "id": 10,
@@ -162,7 +198,11 @@
       "economia": 5580,
       "status": "Suspenso",
       "diasTramitacao": 21,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0010/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Gêneros alimentícios",
+      "quantidadeItens": 2
     },
     {
       "id": 11,
@@ -178,7 +218,11 @@
       "economia": 14616,
       "status": "Em andamento",
       "diasTramitacao": 22,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0011/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Materiais de consumo",
+      "quantidadeItens": 3
     },
     {
       "id": 12,
@@ -194,7 +238,11 @@
       "economia": 13345,
       "status": "Homologado",
       "diasTramitacao": 23,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0012/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Serviços de tecnologia",
+      "quantidadeItens": 4
     },
     {
       "id": 13,
@@ -210,7 +258,11 @@
       "economia": 11781,
       "status": "Contratado",
       "diasTramitacao": 24,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0013/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Obra pública",
+      "quantidadeItens": 5
     },
     {
       "id": 14,
@@ -226,7 +278,11 @@
       "economia": 9922,
       "status": "Concluído",
       "diasTramitacao": 25,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0014/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Medicamentos",
+      "quantidadeItens": 6
     },
     {
       "id": 15,
@@ -242,7 +298,11 @@
       "economia": 7770,
       "status": "Suspenso",
       "diasTramitacao": 26,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0015/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Gêneros alimentícios",
+      "quantidadeItens": 7
     },
     {
       "id": 16,
@@ -258,7 +318,11 @@
       "economia": 19656,
       "status": "Em andamento",
       "diasTramitacao": 27,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0016/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Materiais de consumo",
+      "quantidadeItens": 8
     },
     {
       "id": 17,
@@ -274,7 +338,11 @@
       "economia": 17650,
       "status": "Homologado",
       "diasTramitacao": 28,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0017/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Serviços de tecnologia",
+      "quantidadeItens": 1
     },
     {
       "id": 18,
@@ -290,7 +358,11 @@
       "economia": 3213,
       "status": "Contratado",
       "diasTramitacao": 29,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0018/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Obra pública",
+      "quantidadeItens": 2
     },
     {
       "id": 19,
@@ -306,7 +378,11 @@
       "economia": 3118,
       "status": "Concluído",
       "diasTramitacao": 30,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0019/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Medicamentos",
+      "quantidadeItens": 3
     },
     {
       "id": 20,
@@ -322,7 +398,11 @@
       "economia": 2730,
       "status": "Suspenso",
       "diasTramitacao": 31,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0020/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Gêneros alimentícios",
+      "quantidadeItens": 4
     },
     {
       "id": 21,
@@ -338,7 +418,11 @@
       "economia": 7776,
       "status": "Em andamento",
       "diasTramitacao": 32,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0021/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Materiais de consumo",
+      "quantidadeItens": 5
     },
     {
       "id": 22,
@@ -354,7 +438,11 @@
       "economia": 7503,
       "status": "Homologado",
       "diasTramitacao": 33,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0022/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Serviços de tecnologia",
+      "quantidadeItens": 6
     },
     {
       "id": 23,
@@ -370,7 +458,11 @@
       "economia": 6936,
       "status": "Contratado",
       "diasTramitacao": 34,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0023/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Obra pública",
+      "quantidadeItens": 7
     },
     {
       "id": 24,
@@ -386,7 +478,11 @@
       "economia": 6075,
       "status": "Concluído",
       "diasTramitacao": 35,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0024/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Medicamentos",
+      "quantidadeItens": 8
     },
     {
       "id": 25,
@@ -402,7 +498,11 @@
       "economia": 4920,
       "status": "Suspenso",
       "diasTramitacao": 36,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0025/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Gêneros alimentícios",
+      "quantidadeItens": 1
     },
     {
       "id": 26,
@@ -418,7 +518,11 @@
       "economia": 12816,
       "status": "Em andamento",
       "diasTramitacao": 37,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0026/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Materiais de consumo",
+      "quantidadeItens": 2
     },
     {
       "id": 27,
@@ -434,7 +538,11 @@
       "economia": 11808,
       "status": "Homologado",
       "diasTramitacao": 38,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0027/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Serviços de tecnologia",
+      "quantidadeItens": 3
     },
     {
       "id": 28,
@@ -450,7 +558,11 @@
       "economia": 10506,
       "status": "Contratado",
       "diasTramitacao": 39,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0028/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Obra pública",
+      "quantidadeItens": 4
     },
     {
       "id": 29,
@@ -466,7 +578,11 @@
       "economia": 8910,
       "status": "Concluído",
       "diasTramitacao": 40,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0029/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Medicamentos",
+      "quantidadeItens": 5
     },
     {
       "id": 30,
@@ -482,7 +598,11 @@
       "economia": 7020,
       "status": "Suspenso",
       "diasTramitacao": 41,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0030/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Gêneros alimentícios",
+      "quantidadeItens": 6
     },
     {
       "id": 31,
@@ -498,7 +618,11 @@
       "economia": 18072,
       "status": "Em andamento",
       "diasTramitacao": 42,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0031/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Materiais de consumo",
+      "quantidadeItens": 7
     },
     {
       "id": 32,
@@ -514,7 +638,11 @@
       "economia": 16297,
       "status": "Homologado",
       "diasTramitacao": 12,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0032/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Serviços de tecnologia",
+      "quantidadeItens": 8
     },
     {
       "id": 33,
@@ -530,7 +658,11 @@
       "economia": 14229,
       "status": "Contratado",
       "diasTramitacao": 13,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0033/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Obra pública",
+      "quantidadeItens": 1
     },
     {
       "id": 34,
@@ -546,7 +678,11 @@
       "economia": 11866,
       "status": "Concluído",
       "diasTramitacao": 14,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0034/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Medicamentos",
+      "quantidadeItens": 2
     },
     {
       "id": 35,
@@ -562,7 +698,11 @@
       "economia": 2070,
       "status": "Suspenso",
       "diasTramitacao": 15,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0035/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Gêneros alimentícios",
+      "quantidadeItens": 3
     },
     {
       "id": 36,
@@ -578,7 +718,11 @@
       "economia": 5976,
       "status": "Em andamento",
       "diasTramitacao": 16,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0036/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Materiais de consumo",
+      "quantidadeItens": 4
     },
     {
       "id": 37,
@@ -594,7 +738,11 @@
       "economia": 5965,
       "status": "Homologado",
       "diasTramitacao": 17,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0037/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Serviços de tecnologia",
+      "quantidadeItens": 5
     },
     {
       "id": 38,
@@ -610,7 +758,11 @@
       "economia": 5661,
       "status": "Contratado",
       "diasTramitacao": 18,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0038/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Obra pública",
+      "quantidadeItens": 6
     },
     {
       "id": 39,
@@ -626,7 +778,11 @@
       "economia": 5062,
       "status": "Concluído",
       "diasTramitacao": 19,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0039/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Medicamentos",
+      "quantidadeItens": 7
     },
     {
       "id": 40,
@@ -642,7 +798,11 @@
       "economia": 4170,
       "status": "Suspenso",
       "diasTramitacao": 20,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0040/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Gêneros alimentícios",
+      "quantidadeItens": 8
     },
     {
       "id": 41,
@@ -658,7 +818,11 @@
       "economia": 11232,
       "status": "Em andamento",
       "diasTramitacao": 21,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0041/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Materiais de consumo",
+      "quantidadeItens": 1
     },
     {
       "id": 42,
@@ -674,7 +838,11 @@
       "economia": 10455,
       "status": "Homologado",
       "diasTramitacao": 22,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0042/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Serviços de tecnologia",
+      "quantidadeItens": 2
     },
     {
       "id": 43,
@@ -690,7 +858,11 @@
       "economia": 9384,
       "status": "Contratado",
       "diasTramitacao": 23,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0043/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Obra pública",
+      "quantidadeItens": 3
     },
     {
       "id": 44,
@@ -706,7 +878,11 @@
       "economia": 8019,
       "status": "Concluído",
       "diasTramitacao": 24,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0044/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Medicamentos",
+      "quantidadeItens": 4
     },
     {
       "id": 45,
@@ -722,7 +898,11 @@
       "economia": 6360,
       "status": "Suspenso",
       "diasTramitacao": 25,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0045/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Gêneros alimentícios",
+      "quantidadeItens": 5
     },
     {
       "id": 46,
@@ -738,7 +918,11 @@
       "economia": 16272,
       "status": "Em andamento",
       "diasTramitacao": 26,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0046/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Materiais de consumo",
+      "quantidadeItens": 6
     },
     {
       "id": 47,
@@ -754,7 +938,11 @@
       "economia": 14760,
       "status": "Homologado",
       "diasTramitacao": 27,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0047/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Serviços de tecnologia",
+      "quantidadeItens": 7
     },
     {
       "id": 48,
@@ -770,7 +958,11 @@
       "economia": 12954,
       "status": "Contratado",
       "diasTramitacao": 28,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0048/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Obra pública",
+      "quantidadeItens": 8
     },
     {
       "id": 49,
@@ -786,7 +978,11 @@
       "economia": 10854,
       "status": "Concluído",
       "diasTramitacao": 29,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0049/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Medicamentos",
+      "quantidadeItens": 1
     },
     {
       "id": 50,
@@ -802,7 +998,11 @@
       "economia": 8460,
       "status": "Suspenso",
       "diasTramitacao": 30,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0050/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Gêneros alimentícios",
+      "quantidadeItens": 2
     },
     {
       "id": 51,
@@ -818,7 +1018,11 @@
       "economia": 21528,
       "status": "Em andamento",
       "diasTramitacao": 31,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0051/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Materiais de consumo",
+      "quantidadeItens": 3
     },
     {
       "id": 52,
@@ -834,7 +1038,11 @@
       "economia": 4612,
       "status": "Homologado",
       "diasTramitacao": 32,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0052/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Serviços de tecnologia",
+      "quantidadeItens": 4
     },
     {
       "id": 53,
@@ -850,7 +1058,11 @@
       "economia": 4539,
       "status": "Contratado",
       "diasTramitacao": 33,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0053/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Obra pública",
+      "quantidadeItens": 5
     },
     {
       "id": 54,
@@ -866,7 +1078,11 @@
       "economia": 4171,
       "status": "Concluído",
       "diasTramitacao": 34,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0054/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Medicamentos",
+      "quantidadeItens": 6
     },
     {
       "id": 55,
@@ -882,7 +1098,11 @@
       "economia": 3510,
       "status": "Suspenso",
       "diasTramitacao": 35,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0055/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Gêneros alimentícios",
+      "quantidadeItens": 7
     },
     {
       "id": 56,
@@ -898,7 +1118,11 @@
       "economia": 9432,
       "status": "Em andamento",
       "diasTramitacao": 36,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0056/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Materiais de consumo",
+      "quantidadeItens": 8
     },
     {
       "id": 57,
@@ -914,7 +1138,11 @@
       "economia": 8917,
       "status": "Homologado",
       "diasTramitacao": 37,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0057/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Serviços de tecnologia",
+      "quantidadeItens": 1
     },
     {
       "id": 58,
@@ -930,7 +1158,11 @@
       "economia": 8109,
       "status": "Contratado",
       "diasTramitacao": 38,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0058/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Obra pública",
+      "quantidadeItens": 2
     },
     {
       "id": 59,
@@ -946,7 +1178,11 @@
       "economia": 7006,
       "status": "Concluído",
       "diasTramitacao": 39,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0059/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Medicamentos",
+      "quantidadeItens": 3
     },
     {
       "id": 60,
@@ -962,7 +1198,11 @@
       "economia": 5610,
       "status": "Suspenso",
       "diasTramitacao": 40,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0060/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Gêneros alimentícios",
+      "quantidadeItens": 4
     },
     {
       "id": 61,
@@ -978,7 +1218,11 @@
       "economia": 14688,
       "status": "Em andamento",
       "diasTramitacao": 41,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0061/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Materiais de consumo",
+      "quantidadeItens": 5
     },
     {
       "id": 62,
@@ -994,7 +1238,11 @@
       "economia": 13407,
       "status": "Homologado",
       "diasTramitacao": 42,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0062/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Serviços de tecnologia",
+      "quantidadeItens": 6
     },
     {
       "id": 63,
@@ -1010,7 +1258,11 @@
       "economia": 11832,
       "status": "Contratado",
       "diasTramitacao": 12,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0063/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Obra pública",
+      "quantidadeItens": 7
     },
     {
       "id": 64,
@@ -1026,7 +1278,11 @@
       "economia": 9963,
       "status": "Concluído",
       "diasTramitacao": 13,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0064/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Medicamentos",
+      "quantidadeItens": 8
     },
     {
       "id": 65,
@@ -1042,7 +1298,11 @@
       "economia": 7800,
       "status": "Suspenso",
       "diasTramitacao": 14,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0065/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Gêneros alimentícios",
+      "quantidadeItens": 1
     },
     {
       "id": 66,
@@ -1058,7 +1318,11 @@
       "economia": 19728,
       "status": "Em andamento",
       "diasTramitacao": 15,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0066/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Materiais de consumo",
+      "quantidadeItens": 2
     },
     {
       "id": 67,
@@ -1074,7 +1338,11 @@
       "economia": 17712,
       "status": "Homologado",
       "diasTramitacao": 16,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0067/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Serviços de tecnologia",
+      "quantidadeItens": 3
     },
     {
       "id": 68,
@@ -1090,7 +1358,11 @@
       "economia": 15402,
       "status": "Contratado",
       "diasTramitacao": 17,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0068/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Obra pública",
+      "quantidadeItens": 4
     },
     {
       "id": 69,
@@ -1106,7 +1378,11 @@
       "economia": 3159,
       "status": "Concluído",
       "diasTramitacao": 18,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0069/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Medicamentos",
+      "quantidadeItens": 5
     },
     {
       "id": 70,
@@ -1122,7 +1398,11 @@
       "economia": 2760,
       "status": "Suspenso",
       "diasTramitacao": 19,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0070/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Gêneros alimentícios",
+      "quantidadeItens": 6
     },
     {
       "id": 71,
@@ -1138,7 +1418,11 @@
       "economia": 7848,
       "status": "Em andamento",
       "diasTramitacao": 20,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0071/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Materiais de consumo",
+      "quantidadeItens": 7
     },
     {
       "id": 72,
@@ -1154,7 +1438,11 @@
       "economia": 7564,
       "status": "Homologado",
       "diasTramitacao": 21,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0072/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Serviços de tecnologia",
+      "quantidadeItens": 8
     },
     {
       "id": 73,
@@ -1170,7 +1458,11 @@
       "economia": 6987,
       "status": "Contratado",
       "diasTramitacao": 22,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0073/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Obra pública",
+      "quantidadeItens": 1
     },
     {
       "id": 74,
@@ -1186,7 +1478,11 @@
       "economia": 6115,
       "status": "Concluído",
       "diasTramitacao": 23,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0074/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Medicamentos",
+      "quantidadeItens": 2
     },
     {
       "id": 75,
@@ -1202,7 +1498,11 @@
       "economia": 4950,
       "status": "Suspenso",
       "diasTramitacao": 24,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0075/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Gêneros alimentícios",
+      "quantidadeItens": 3
     },
     {
       "id": 76,
@@ -1218,7 +1518,11 @@
       "economia": 12888,
       "status": "Em andamento",
       "diasTramitacao": 25,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0076/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Materiais de consumo",
+      "quantidadeItens": 4
     },
     {
       "id": 77,
@@ -1234,7 +1538,11 @@
       "economia": 11869,
       "status": "Homologado",
       "diasTramitacao": 26,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0077/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Serviços de tecnologia",
+      "quantidadeItens": 5
     },
     {
       "id": 78,
@@ -1250,7 +1558,11 @@
       "economia": 10557,
       "status": "Contratado",
       "diasTramitacao": 27,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0078/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Obra pública",
+      "quantidadeItens": 6
     },
     {
       "id": 79,
@@ -1266,7 +1578,11 @@
       "economia": 8950,
       "status": "Concluído",
       "diasTramitacao": 28,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0079/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Medicamentos",
+      "quantidadeItens": 7
     },
     {
       "id": 80,
@@ -1282,7 +1598,11 @@
       "economia": 7050,
       "status": "Suspenso",
       "diasTramitacao": 29,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0080/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Gêneros alimentícios",
+      "quantidadeItens": 8
     },
     {
       "id": 81,
@@ -1298,7 +1618,11 @@
       "economia": 18144,
       "status": "Em andamento",
       "diasTramitacao": 30,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0081/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Materiais de consumo",
+      "quantidadeItens": 1
     },
     {
       "id": 82,
@@ -1314,7 +1638,11 @@
       "economia": 16359,
       "status": "Homologado",
       "diasTramitacao": 31,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0082/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Serviços de tecnologia",
+      "quantidadeItens": 2
     },
     {
       "id": 83,
@@ -1330,7 +1658,11 @@
       "economia": 14280,
       "status": "Contratado",
       "diasTramitacao": 32,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0083/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Obra pública",
+      "quantidadeItens": 3
     },
     {
       "id": 84,
@@ -1346,7 +1678,11 @@
       "economia": 11907,
       "status": "Concluído",
       "diasTramitacao": 33,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0084/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Medicamentos",
+      "quantidadeItens": 4
     },
     {
       "id": 85,
@@ -1362,7 +1698,11 @@
       "economia": 9240,
       "status": "Suspenso",
       "diasTramitacao": 34,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0085/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Gêneros alimentícios",
+      "quantidadeItens": 5
     },
     {
       "id": 86,
@@ -1378,7 +1718,11 @@
       "economia": 6048,
       "status": "Em andamento",
       "diasTramitacao": 35,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0086/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Materiais de consumo",
+      "quantidadeItens": 6
     },
     {
       "id": 87,
@@ -1394,7 +1738,11 @@
       "economia": 6027,
       "status": "Homologado",
       "diasTramitacao": 36,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0087/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Serviços de tecnologia",
+      "quantidadeItens": 7
     },
     {
       "id": 88,
@@ -1410,7 +1758,11 @@
       "economia": 5712,
       "status": "Contratado",
       "diasTramitacao": 37,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0088/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Obra pública",
+      "quantidadeItens": 8
     },
     {
       "id": 89,
@@ -1426,7 +1778,11 @@
       "economia": 5103,
       "status": "Concluído",
       "diasTramitacao": 38,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0089/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Medicamentos",
+      "quantidadeItens": 1
     },
     {
       "id": 90,
@@ -1442,7 +1798,11 @@
       "economia": 4200,
       "status": "Suspenso",
       "diasTramitacao": 39,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0090/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Gêneros alimentícios",
+      "quantidadeItens": 2
     },
     {
       "id": 91,
@@ -1458,7 +1818,11 @@
       "economia": 11304,
       "status": "Em andamento",
       "diasTramitacao": 40,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0091/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Materiais de consumo",
+      "quantidadeItens": 3
     },
     {
       "id": 92,
@@ -1474,7 +1838,11 @@
       "economia": 10516,
       "status": "Homologado",
       "diasTramitacao": 41,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0092/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Serviços de tecnologia",
+      "quantidadeItens": 4
     },
     {
       "id": 93,
@@ -1490,7 +1858,11 @@
       "economia": 9435,
       "status": "Contratado",
       "diasTramitacao": 42,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0093/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Obra pública",
+      "quantidadeItens": 5
     },
     {
       "id": 94,
@@ -1506,7 +1878,11 @@
       "economia": 8059,
       "status": "Concluído",
       "diasTramitacao": 12,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0094/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Medicamentos",
+      "quantidadeItens": 6
     },
     {
       "id": 95,
@@ -1522,7 +1898,11 @@
       "economia": 6390,
       "status": "Suspenso",
       "diasTramitacao": 13,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0095/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Gêneros alimentícios",
+      "quantidadeItens": 7
     },
     {
       "id": 96,
@@ -1538,7 +1918,11 @@
       "economia": 16344,
       "status": "Em andamento",
       "diasTramitacao": 14,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0096/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Materiais de consumo",
+      "quantidadeItens": 8
     },
     {
       "id": 97,
@@ -1554,7 +1938,11 @@
       "economia": 14821,
       "status": "Homologado",
       "diasTramitacao": 15,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0097/2026",
+      "ataRegistro": false,
+      "itemCategoria": "Serviços de tecnologia",
+      "quantidadeItens": 1
     },
     {
       "id": 98,
@@ -1570,7 +1958,11 @@
       "economia": 13005,
       "status": "Contratado",
       "diasTramitacao": 16,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0098/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Obra pública",
+      "quantidadeItens": 2
     },
     {
       "id": 99,
@@ -1586,7 +1978,11 @@
       "economia": 10894,
       "status": "Concluído",
       "diasTramitacao": 17,
-      "contratoAtivo": true
+      "contratoAtivo": true,
+      "ata": "ARP-0099/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Medicamentos",
+      "quantidadeItens": 3
     },
     {
       "id": 100,
@@ -1602,7 +1998,11 @@
       "economia": 8490,
       "status": "Suspenso",
       "diasTramitacao": 18,
-      "contratoAtivo": false
+      "contratoAtivo": false,
+      "ata": "ARP-0100/2026",
+      "ataRegistro": true,
+      "itemCategoria": "Gêneros alimentícios",
+      "quantidadeItens": 4
     }
   ]
 }
