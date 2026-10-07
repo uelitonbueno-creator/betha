@@ -1016,6 +1016,7 @@
         toggleKpiFavorite(view,kpi);
       });
       el.addEventListener("click", () => {
+        if(def.localSample){openLocalSampleKpiDetail(kpi);return;}
         if(def.apiSource){openChartDetail(displayChartDefinition(def.charts[0]));return;}
         const candidates=dashboardCharts(view).filter(chart=>chart.source===kpi.source);
         const target=candidates.find(chart=>chart.id===kpi.chart)||candidates.find(chart=>chart.dimension===kpi.field)||candidates.find(chart=>(chart.measures||[]).includes(kpi.field))||candidates.find(chart=>(chart.measures||[]).includes("count"));
@@ -4244,6 +4245,70 @@
     `);
   }
 
+  function localSampleRowsForKpi(kpi) {
+    const rows=localSampleDetailRowsByView.get(currentView)||[];
+    return localSampleWhere(rows,kpi?.sample?.where);
+  }
+
+  function openLocalSampleKpiDetail(kpi) {
+    const def=dashboards[currentView];
+    if(!def?.localSample) return;
+    const rows=localSampleRowsForKpi(kpi);
+    const raw=currentPayload?.kpis?.[kpi.id];
+    const activeSystem=currentSystemInfo();
+    openDrawer(kpi.label,`
+      <section class="drawer-section detail-hero local-sample-detail-hero">
+        <small>AMOSTRA LOCAL · SEM CONSUMO DA API</small>
+        <strong class="detail-hero-value">${escapeHtml(formatValue(raw,kpi.format))}</strong>
+        <span>${escapeHtml(kpi.label)} · ${rows.length.toLocaleString("pt-BR")} registro(s) no recorte atual</span>
+      </section>
+      <section class="drawer-section">
+        <h3>Registros que compõem o indicador</h3>
+        <p>Detalhamento local de ${escapeHtml(activeSystem?.name||currentSystemId)}, preservando período, exercício e filtros selecionados.</p>
+        ${rows.length?localSampleDetailTable(rows,currentSystemId):'<div class="detail-empty-state compact"><strong>Nenhum registro</strong><span>Não há linhas para o recorte atual.</span></div>'}
+      </section>
+    `);
+  }
+
+  function localSampleRowsForChart(chartDef,selected) {
+    const rows=localSampleDetailRowsByView.get(currentView)||[];
+    const spec=chartDef?.sample||{};
+    let scoped=localSampleWhere(rows,spec.where);
+    const group=spec.group;
+    if(group&&selected?.label!==undefined&&selected?.label!==null){
+      const label=String(selected.label);
+      scoped=scoped.filter(row=>String(row?.[group]??"Não informado")===label);
+    }
+    return scoped;
+  }
+
+  function openLocalSampleChartDetail(chartDef,selected) {
+    const def=dashboards[currentView];
+    if(!def?.localSample) return;
+    const resolved=displayChartDefinition(chartDef);
+    const data=currentPayload?.charts?.[resolved.id]||currentPayload?.charts?.[chartDef.id];
+    const rows=localSampleRowsForChart(resolved,selected);
+    const activeSystem=currentSystemInfo();
+    const selectedSummary=selected?.datasets?.length
+      ? '<div class="detail-summary-grid">'+selected.datasets.map(item=>
+          '<div class="detail-stat"><span>'+escapeHtml(item.label||resolved.title)+'</span><strong>'+escapeHtml(fullChartValue(item.value,data?.format||resolved?.sample?.format))+'</strong></div>'
+        ).join("")+'</div>'
+      : "";
+    openDrawer(resolved.title,`
+      <section class="drawer-section detail-hero local-sample-detail-hero">
+        <small>AMOSTRA LOCAL · SEM CONSUMO DA API</small>
+        <strong class="detail-hero-value">${escapeHtml(selected?.label||resolved.title)}</strong>
+        <span>${rows.length.toLocaleString("pt-BR")} registro(s) neste recorte · filtros atuais preservados</span>
+      </section>
+      ${selectedSummary?'<section class="drawer-section"><h3>Valores selecionados</h3>'+selectedSummary+'</section>':""}
+      <section class="drawer-section">
+        <h3>Registros da amostra</h3>
+        <p>Detalhamento local de ${escapeHtml(activeSystem?.name||currentSystemId)} para o ponto selecionado do gráfico.</p>
+        ${rows.length?localSampleDetailTable(rows,currentSystemId):'<div class="detail-empty-state compact"><strong>Nenhum registro</strong><span>Não há linhas para este ponto do gráfico.</span></div>'}
+      </section>
+    `);
+  }
+
   function openKpiDetail(kpi) {
     const raw=currentPayload?.kpis?.[kpi.id];
     const composition=compositionForKpi(kpi);
@@ -4299,6 +4364,7 @@
   }
 
   function openChartDetail(chartDef, selected) {
+    if(dashboards[currentView]?.localSample){openLocalSampleChartDetail(chartDef,selected);return;}
     if(chartDef.apiPanel){openApiPanelDetail(chartDef,selected);return;}
     const data=currentPayload?.charts?.[chartDef.id];
     let selectedHtml="";
