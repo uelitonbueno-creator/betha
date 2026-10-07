@@ -6,7 +6,10 @@
   "workers_dev": true,
   "vars": {
     "BI_API_BASE": "https://betha-bi-api.ueliton-bueno.workers.dev",
-    "MCP_AUTH_READY": "false"
+    "MCP_AUTH_READY": "false",
+    "MCP_AUTH_SERVER_URL": "https://betha-bi-api.ueliton-bueno.workers.dev",
+    "MCP_RESOURCE_URL": "https://bi-vella-mcp.ueliton-bueno.workers.dev/mcp",
+    "MCP_INTROSPECTION_URL": "https://betha-bi-api.ueliton-bueno.workers.dev/api/mcp/introspect"
   },
   "observability": {
     "enabled": true

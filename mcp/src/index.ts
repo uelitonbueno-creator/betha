@@ -6,6 +6,8 @@ import catalog from "../../config/mcp-tools.generated.json";
 type Env = {
   BI_API_BASE: string;
   MCP_AUTH_READY?: string;
+  MCP_AUTH_SERVER_URL?: string;
+  MCP_RESOURCE_URL?: string;
   MCP_INTROSPECTION_URL?: string;
   MCP_AUDIT_URL?: string;
   MCP_INTERNAL_AUDIT_TOKEN?: string;
@@ -16,6 +18,7 @@ type TenantGrant = {
   name?: string;
   entityId?: string;
   databaseId?: string;
+  permissions?: string[];
 };
 
 type Principal = {
@@ -70,6 +73,28 @@ function bearerToken(request: Request) {
   return match ? match[1].trim() : "";
 }
 
+function canonicalResource(request: Request, env: Env) {
+  const configured = String(env.MCP_RESOURCE_URL || "").trim();
+  if (configured) return configured;
+  return new URL("/mcp", request.url).toString();
+}
+
+function authServerBase(env: Env) {
+  const configured = String(env.MCP_AUTH_SERVER_URL || "").trim();
+  if (configured) return configured.replace(/\/$/, "");
+  return String(env.BI_API_BASE || "").replace(/\/$/, "");
+}
+
+function protectedResourceMetadataUrl(request: Request) {
+  return new URL("/.well-known/oauth-protected-resource", request.url).toString();
+}
+
+function oauthChallenge(request: Request, error = "invalid_token", description = "Authentication required") {
+  const metadata = protectedResourceMetadataUrl(request);
+  const safeDescription = description.replace(/["\\]/g, "");
+  return `Bearer resource_metadata="${metadata}", scope="bi:read", error="${error}", error_description="${safeDescription}"`;
+}
+
 async function introspect(request: Request, env: Env): Promise<Principal> {
   if (String(env.MCP_AUTH_READY || "").toLowerCase() !== "true") {
     throw new Error("MCP_AUTH_NOT_READY");
@@ -88,7 +113,10 @@ async function introspect(request: Request, env: Env): Promise<Principal> {
       "Authorization": "Bearer " + token,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ audience: "bi-vella-mcp" }),
+    body: JSON.stringify({
+      audience: "bi-vella-mcp",
+      resource: canonicalResource(request, env),
+    }),
   });
 
   if (!response.ok) throw new Error("MCP_TOKEN_INVALID");
@@ -113,17 +141,21 @@ async function introspect(request: Request, env: Env): Promise<Principal> {
             name: x.name ? String(x.name) : undefined,
             entityId: x.entityId ? String(x.entityId) : undefined,
             databaseId: x.databaseId ? String(x.databaseId) : undefined,
+            permissions: Array.isArray(x.permissions) ? x.permissions.map(String) : [],
           }))
       : [],
     expiresAt: body.expiresAt ? Number(body.expiresAt) : undefined,
   };
 }
 
+function tenantCanUseTool(tenant: TenantGrant, tool: ToolDefinition) {
+  return Array.isArray(tenant.permissions) && tenant.permissions.includes(tool.permission);
+}
+
 function canUseTool(principal: Principal, tool: ToolDefinition) {
-  return principal.permissions.includes("*") ||
-    principal.permissions.includes(tool.permission) ||
-    principal.scopes.includes(tool.permission) ||
-    principal.scopes.includes("bi:read");
+  if (!principal.scopes.includes("bi:read")) return false;
+  if (principal.permissions.includes("*") || principal.permissions.includes(tool.permission)) return true;
+  return principal.tenants.some(tenant => tenantCanUseTool(tenant, tool));
 }
 
 function resolveTenant(principal: Principal, requested?: string) {
@@ -213,6 +245,11 @@ async function callBi(
 ) {
   if (!canUseTool(principal, tool)) throw new Error("MCP_TOOL_ACCESS_DENIED");
   const tenant = resolveTenant(principal, args.tenant_id ? String(args.tenant_id) : undefined);
+  if (!principal.permissions.includes("*") &&
+      !principal.permissions.includes(tool.permission) &&
+      !tenantCanUseTool(tenant, tool)) {
+    throw new Error("MCP_TOOL_ACCESS_DENIED");
+  }
 
   const started = Date.now();
   let ok = false;
@@ -281,7 +318,7 @@ function toolError(error: unknown) {
 function createServer(principal: Principal, env: Env) {
   const server = new McpServer({
     name: "bi-vella-mcp",
-    version: "0.1.0",
+    version: "0.2.0",
   });
 
   for (const tool of generatedCatalog.tools) {
@@ -290,8 +327,15 @@ function createServer(principal: Principal, env: Env) {
     server.registerTool(
       tool.name,
       {
+        title: tool.title,
         description: tool.description,
         inputSchema,
+        securitySchemes: [{ type: "oauth2", scopes: ["bi:read"] }],
+        annotations: {
+          readOnlyHint: true,
+          destructiveHint: false,
+          openWorldHint: false,
+        },
       },
       async (args) => {
         try {
@@ -306,6 +350,12 @@ function createServer(principal: Principal, env: Env) {
                 data: result.body,
               }),
             }],
+            structuredContent: {
+              ok: true,
+              tenant: result.tenant,
+              panel: tool.panel,
+              data: result.body,
+            },
           };
         } catch (error) {
           return toolError(error);
@@ -317,16 +367,15 @@ function createServer(principal: Principal, env: Env) {
   return server;
 }
 
-function authError(error: unknown) {
+function authError(request: Request, error: unknown) {
   const code = error instanceof Error ? error.message : "MCP_AUTH_FAILED";
-  const status =
-    code === "MCP_AUTH_NOT_READY" || code === "MCP_INTROSPECTION_NOT_CONFIGURED" ? 503 :
-    code === "MCP_TOKEN_REQUIRED" ? 401 :
-    403;
+  const unavailable = code === "MCP_AUTH_NOT_READY" || code === "MCP_INTROSPECTION_NOT_CONFIGURED";
+  const status = unavailable ? 503 : 401;
+  const oauthError = code === "MCP_TOKEN_REQUIRED" ? "invalid_token" : "invalid_token";
 
   return json(status, { ok: false, error: code }, {
     ...(status === 401
-      ? { "WWW-Authenticate": 'Bearer realm="bi-vella-mcp"' }
+      ? { "WWW-Authenticate": oauthChallenge(request, oauthError, code) }
       : {}),
   });
 }
@@ -334,6 +383,16 @@ function authError(error: unknown) {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
+
+    if (url.pathname === "/.well-known/oauth-protected-resource" && request.method === "GET") {
+      return json(200, {
+        resource: canonicalResource(request, env),
+        authorization_servers: [authServerBase(env)],
+        scopes_supported: ["bi:read"],
+        bearer_methods_supported: ["header"],
+        resource_documentation: "https://github.com/uelitonbueno-creator/betha/blob/main/docs/mcp-production.md",
+      });
+    }
 
     if (url.pathname === "/health" && request.method === "GET") {
       return json(200, {
@@ -343,6 +402,7 @@ export default {
         toolCount: generatedCatalog.toolCount,
         missingPermissions: generatedCatalog.missingPermissions,
         authReady: String(env.MCP_AUTH_READY || "").toLowerCase() === "true",
+        authServerConfigured: Boolean(authServerBase(env)),
         introspectionConfigured: Boolean(env.MCP_INTROSPECTION_URL),
         auditSinkConfigured: Boolean(env.MCP_AUDIT_URL),
       });
@@ -365,7 +425,7 @@ export default {
 
       return handler(request, env, ctx);
     } catch (error) {
-      return authError(error);
+      return authError(request, error);
     }
   },
 } satisfies ExportedHandler<Env>;
