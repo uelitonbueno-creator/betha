@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261007-vella-redesign6">
+  <link rel="stylesheet" href="style.css?v=20261007-vella-redesign8">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -126,6 +126,20 @@
     </div>
 
     <main slot="container_aplicacao" class="workspace">
+      <section id="mobileContextBar" class="mobile-context-bar" aria-label="Contexto de navegação móvel">
+        <label class="mobile-context-field" for="mobileEntitySelect">
+          <span>Entidade</span>
+          <select id="mobileEntitySelect" aria-label="Entidade atual"></select>
+        </label>
+        <label class="mobile-context-field" for="mobileSystemSelect">
+          <span>Sistema</span>
+          <select id="mobileSystemSelect" aria-label="Sistema atual"></select>
+        </label>
+        <label class="mobile-context-field mobile-context-panel" for="mobilePanelSelect">
+          <span>Painel</span>
+          <select id="mobilePanelSelect" aria-label="Painel atual"></select>
+        </label>
+      </section>
       <section class="surface">
         <section id="syntheticHomeView" hidden aria-labelledby="syntheticHomeTitle">
           <header class="page-heading"><div><div class="level-label">SINTÉTICO</div><h1 id="syntheticHomeTitle">Painéis do município</h1><p>Selecione um resumo para abrir os gráficos e explorar seus detalhes.</p></div><button id="refreshHomeButton" type="button" class="btn-secondary-betha"><i class="mdi mdi-refresh"></i> ATUALIZAR RESUMOS</button></header>
@@ -752,7 +766,7 @@
   <script src="system-catalog.js?v=20261007-vella-redesign5"></script>
   <div id="uiToast" class="ui-toast" role="status" aria-live="polite" aria-atomic="true"></div>
   <script src="api-panel-catalog.js?v=20261006-chart-visible9"></script>
-  <script src="app.js?v=20261007-vella-redesign7"></script>
+  <script src="app.js?v=20261007-vella-redesign8"></script>
   <script src="global-search.js?v=20261005-1"></script>
 </body>
 </html>
