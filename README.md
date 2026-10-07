@@ -126,3 +126,15 @@ O analítico oferece busca, filtro por campos efetivamente presentes na fonte e 
 ## Seletor de sistemas
 
 O BI Vella separa a marca da aplicação do sistema de origem. O contexto do usuário segue o padrão **Entidade → Sistema → Painel**. Atualmente o sistema registrado é **Tributos**; novos sistemas podem ser adicionados ao catálogo público `window.BI_SYSTEMS`, preservando o tenant e redirecionando para a aplicação/rota configurada.
+
+
+## Sistemas no BI Vella
+
+O seletor de sistema mantém o contexto da prefeitura e troca o catálogo de navegação. Os grupos principais são genéricos em todos os módulos: **Início, Financeiro, Operações, Cadastros e Controle**.
+
+- **Tributos**: dados reais pelo backend existente.
+- **Contábil**: painéis iniciais de visão geral, receita, despesa, movimentos, credores e controle.
+- **Compras**: painéis iniciais de visão geral, processos, licitações, contratos, fornecedores e controle.
+- **Folha de pagamento**: painéis iniciais de visão geral, folha mensal, servidores, eventos, encargos e controle.
+
+Enquanto a cota do Worker estiver indisponível, Contábil, Compras e Folha usam amostras locais de 100 registros por sistema. Essas amostras são sintéticas e servem somente para validar interface e análise. A coleta real sem Worker pode ser feita por `scripts/import-betha-samples.mjs` em um ambiente seguro com as credenciais Betha.
