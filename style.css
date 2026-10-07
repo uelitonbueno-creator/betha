@@ -7159,3 +7159,22 @@ bth-app{--menu-bg-color:var(--vella-sidebar)}
 @media(max-width:390px){
   .mobile-context-bar{margin-bottom:7px}
 }
+
+
+/* === BI VELLA REDESIGN 2026-10-07 / ROUND 7 === */
+.permission-list{display:grid;grid-template-columns:1fr;gap:10px}
+.permission-system-group{border:1px solid var(--vella-border);border-radius:10px;background:#fff;overflow:hidden}
+.permission-system-group>header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 10px;background:#f7f9fc;border-bottom:1px solid var(--vella-border)}
+.permission-system-group>header>div{display:flex;align-items:center;gap:7px;min-width:0}
+.permission-system-group>header i{color:var(--vella-primary);font-size:15px}
+.permission-system-group>header strong{font-size:11px;color:var(--vella-text)}
+.permission-system-group>header span{font-size:9px;color:var(--vella-muted)}
+.permission-group-toggle{border:0;background:transparent;color:var(--vella-primary);font-size:9px;font-weight:800;cursor:pointer;padding:4px 6px;border-radius:6px}
+.permission-group-toggle:hover,.permission-group-toggle:focus-visible{background:var(--vella-primary-soft);outline:none}
+.permission-system-items{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:8px}
+.permission-system-items .permission-item{margin:0;min-width:0;background:#fff;border-radius:8px}
+.permission-system-items .permission-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:720px){
+  .permission-system-items{grid-template-columns:1fr}
+  .permission-system-group>header{align-items:flex-start}
+}
