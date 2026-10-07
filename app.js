@@ -3336,25 +3336,50 @@
     const active=()=>generation===dashboardLoadGeneration&&currentView===view&&tenantId===activeTenant;
     const params=new URLSearchParams({periodo:document.getElementById("periodo").value,exercicio:document.getElementById("exercicio").value,loadId:crypto.randomUUID()});
     for(const [k,v]of Object.entries(currentDashboardFilters(view)))params.set(k,v);
-    setRefreshBusy(true);setDashboardLoading(true);setStatus("waiting","Consultando os indicadores da entidade…");
+
+    let fallbackLoaded=false;
+    if(!hasActiveDashboardFilters(view)){
+      fallbackLoaded=await loadDashboardFromSupabase(view,active);
+      if(active()&&!fallbackLoaded)fallbackLoaded=loadDashboardFromCache(view);
+      if(active()&&fallbackLoaded)setStatus("waiting","Snapshot persistido exibido · conferindo dados atuais da Betha…");
+    }
+
+    setRefreshBusy(true);setDashboardLoading(true);
+    if(!fallbackLoaded)setStatus("waiting","Consultando os indicadores da entidade…");
     try {
       let pending=0;
       for(let batch=0;batch<600&&active();batch++){
         let payload;
         try {payload=await api(apiPanelPath(dashboards[view].apiSource)+"?"+params.toString(),{timeoutMs:60000});pending=0;}
-        catch(error){const transient=["DASHBOARD_BATCH_PENDING","INITIAL_LOAD_IN_PROGRESS"].includes(error.message)||[429,502,503,504].includes(error.status)||error.message==="REQUEST_TIMEOUT";if(!transient||pending++>=6)throw error;setStatus("waiting","Consulta interrompida temporariamente · tentando novamente…");await new Promise(resolve=>setTimeout(resolve,Math.min(10000,1500*pending)));batch--;continue;}
+        catch(error){const transient=["DASHBOARD_BATCH_PENDING","INITIAL_LOAD_IN_PROGRESS"].includes(error.message)||[408,429,502,503,504].includes(error.status)||error.message==="REQUEST_TIMEOUT";if(!transient||pending++>=8)throw error;setStatus("waiting","Consulta interrompida temporariamente · tentando novamente…");await new Promise(resolve=>setTimeout(resolve,Math.min(12000,1500*pending)));batch--;continue;}
         if(!active())return;
         renderPayload(payload);setLastUpdated(payload.meta?.updatedAt,"Betha");
         const loaded=Object.values(payload.meta?.sourceRows||{}).reduce((a,b)=>a+Number(b||0),0);
         const audits=Object.values(payload.meta?.sourceAudit||{}),complete=audits.length&&audits.every(a=>a.complete);
-        if(!payload.loading?.hasMore){setStatus(complete?"online":"waiting",complete?"Fontes consultadas · confira os avisos de cada indicador":"Consulta concluída com limitações · confira a cobertura das fontes");return;}
-        setStatus("waiting",loaded.toLocaleString("pt-BR")+" registros consultados · cálculos parciais");
+        saveDashboardCache(view,payload,complete?"complete":"partial");
+        fallbackLoaded=true;
+        if(!payload.loading?.hasMore){setStatus(complete?"online":"waiting",complete?"Fontes consultadas e snapshot persistido":"Consulta concluída com limitações · snapshot parcial preservado");return;}
+        setStatus("waiting",loaded.toLocaleString("pt-BR")+" registros consultados · cálculos parciais preservados");
         params.set("cursor",JSON.stringify(payload.loading.cursor||{}));
         await new Promise(resolve=>setTimeout(resolve,payload.loading?.background?15000:1200));
       }
       if(active())throw new Error("Limite de consulta atingido; os números exibidos são parciais.");
-    }catch(error){if(active()){setDashboardLoading(false);setStatus("error",error.message||"Consulta indisponível");document.querySelectorAll("#chartGrid .chart-empty").forEach(el=>{el.querySelector("strong").textContent="Não foi possível carregar este gráfico";el.querySelector("span").textContent=error.message==="INITIAL_LOAD_REQUIRED"?"Execute a carga inicial em Administração → Configurações.":error.message||"Tente atualizar o painel.";});showToast("Não foi possível concluir a consulta dos indicadores.");}}
-    finally{if(active())setRefreshBusy(false);}
+    }catch(error){
+      if(active()){
+        setDashboardLoading(false);
+        if(fallbackLoaded){
+          setStatus("waiting","Dados persistidos exibidos · API temporariamente indisponível");
+          showToast("A atualização ao vivo falhou; o último snapshot válido foi mantido.","warning");
+        }else{
+          setStatus("error",error.message||"Consulta indisponível");
+          document.querySelectorAll("#chartGrid .chart-empty").forEach(el=>{
+            el.querySelector("strong").textContent="Não foi possível carregar este gráfico";
+            el.querySelector("span").textContent=error.message==="INITIAL_LOAD_REQUIRED"?"Execute a carga inicial em Administração → Configurações.":error.message||"Tente atualizar o painel.";
+          });
+          showToast("Não foi possível concluir a consulta dos indicadores.");
+        }
+      }
+    }finally{if(active())setRefreshBusy(false);}
   }
 
   const localSampleCache=new Map();
