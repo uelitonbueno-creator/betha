@@ -794,7 +794,7 @@
       toggle.hidden=false;
       const expanded=toggle.dataset.view===currentView
         ? toggle.getAttribute("aria-expanded")==="true"
-        : hasActive;
+        : (hasActive||Boolean(def?.localSample));
       toggle.dataset.view=currentView;
       toggle.setAttribute("aria-expanded",String(expanded));
       row.hidden=!expanded;
@@ -4370,6 +4370,7 @@
   const systemRailList=document.getElementById("systemRailList");
   const systemContext=document.getElementById("systemContext");
   const systemHeaderContext=document.getElementById("systemHeaderContext");
+  const systemHeaderSubtitle=document.getElementById("systemHeaderSubtitle");
 
   function currentSystemInfo() {
     return systems.find(system=>String(system.id)===String(currentSystemId)) || systems[0] || null;
@@ -4380,6 +4381,7 @@
     const activeName=String(active?.name||active?.label||active?.id||"Tributos");
     if(systemContext) systemContext.textContent=activeName.toUpperCase();
     if(systemHeaderContext) systemHeaderContext.textContent=activeName.toUpperCase();
+    if(systemHeaderSubtitle) systemHeaderSubtitle.textContent=String(active?.heading||"");
     const targets=[systemList,systemRailList].filter(Boolean);
     for(const target of targets) target.innerHTML="";
     for(const system of systems){
