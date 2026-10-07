@@ -1903,15 +1903,54 @@
     empty.hidden=false;
   }
 
+  function summaryCellDisplay(value,format="number") {
+    if(value===null||value===undefined||value==="") return "—";
+    const numeric=Number(value);
+    if(!Number.isFinite(numeric)) return escapeHtml(String(value));
+    if(format==="currency") return escapeHtml(formatValue(numeric,"currency"));
+    if(format==="percent") return escapeHtml(formatValue(numeric,"percent"));
+    return escapeHtml(formatValue(numeric,"number"));
+  }
+
+  function appendSummaryTableCard(host,table) {
+    const columns=Array.isArray(table?.columns)?table.columns:[];
+    const rows=Array.isArray(table?.rows)?table.rows:[];
+    if(!columns.length||!rows.length) return false;
+    const card=document.createElement("article");
+    card.className="summary-table-card";
+    card.dataset.table=table.id||"summary";
+    card.innerHTML='<header><div><h3>'+escapeHtml(table.title||"Resumo analítico")+'</h3><span>'+escapeHtml(table.subtitle||"Dados consolidados do painel")+'</span></div><span>'+Number(table.totalRows||rows.length).toLocaleString("pt-BR")+' item(ns)</span></header>'+
+      '<div class="summary-table-scroll"><table class="summary-table"><thead><tr><th>'+escapeHtml(table.groupLabel||"Categoria")+'</th>'+
+      columns.map(column=>'<th>'+escapeHtml(column.label||column.id||"Valor")+'</th>').join("")+
+      '</tr></thead><tbody>'+
+      rows.map(row=>'<tr><td>'+escapeHtml(String(row.label??"—"))+'</td>'+
+        (row.values||[]).map((value,index)=>'<td>'+summaryCellDisplay(value,columns[index]?.format||"number")+'</td>').join("")+
+      '</tr>').join("")+
+      '</tbody></table></div>';
+    host.appendChild(card);
+    return true;
+  }
+
   function renderSummaryTables(payload) {
     const host=document.getElementById("tableGrid");
     if(!host) return;
     host.innerHTML="";
+    let rendered=0;
+
+    const configured=Array.isArray(payload?.tables)?payload.tables.filter(Boolean):[];
+    if(configured.length){
+      for(const table of configured.slice(0,2)){
+        if(appendSummaryTableCard(host,table)) rendered++;
+      }
+      host.hidden=rendered===0;
+      return;
+    }
+
     const defs=dashboardCharts(currentView)
       .map(chart=>displayChartDefinition(chart))
       .filter((chart,index,array)=>array.findIndex(item=>item.id===chart.id)===index);
     const charts=payload?.charts||{};
-    let rendered=0;
+
     for(const chartDef of defs){
       if(rendered>=2) break;
       const data=charts[chartDef.id];
@@ -1923,26 +1962,15 @@
         values:datasets.map(ds=>ds.data[index])
       })).filter(row=>row.values.some(value=>value!==null&&value!==undefined));
       if(!rows.length) continue;
-      const visibleRows=rows.slice(0,10);
-      const format=data.format||chartDef?.sample?.format||"number";
-      const formatCell=value=>{
-        if(value===null||value===undefined||value==="") return "—";
-        const numeric=Number(value);
-        if(!Number.isFinite(numeric)) return escapeHtml(String(value));
-        if(format==="currency") return escapeHtml(formatValue(numeric,"currency"));
-        if(format==="percent") return escapeHtml(formatValue(numeric,"percent"));
-        return escapeHtml(formatValue(numeric,"number"));
+      const fallback={
+        id:"chart-"+chartDef.id,
+        title:chartDef.title,
+        subtitle:"Resumo analítico dos dados exibidos no gráfico",
+        columns:datasets.map(ds=>({label:ds.label||"Valor",format:data.format||chartDef?.sample?.format||"number"})),
+        rows:rows.slice(0,10),
+        totalRows:rows.length
       };
-      const card=document.createElement("article");
-      card.className="summary-table-card";
-      card.innerHTML='<header><div><h3>'+escapeHtml(chartDef.title)+'</h3><span>Resumo analítico dos dados exibidos no gráfico</span></div><span>'+rows.length+' item(ns)</span></header>'+
-        '<div class="summary-table-scroll"><table class="summary-table"><thead><tr><th>Categoria</th>'+
-        datasets.map(ds=>'<th>'+escapeHtml(ds.label||"Valor")+'</th>').join("")+
-        '</tr></thead><tbody>'+
-        visibleRows.map(row=>'<tr><td>'+escapeHtml(String(row.label))+'</td>'+row.values.map(formatCell).map(value=>'<td>'+value+'</td>').join("")+'</tr>').join("")+
-        '</tbody></table></div>';
-      host.appendChild(card);
-      rendered++;
+      if(appendSummaryTableCard(host,fallback)) rendered++;
     }
     host.hidden=rendered===0;
   }
@@ -3060,6 +3088,59 @@
     }));
   }
 
+  function localSampleTable(rows,tableDef) {
+    const scoped=localSampleWhere(rows,tableDef?.where);
+    const groupField=tableDef?.group;
+    if(!groupField) return null;
+
+    const groups=new Map();
+    for(const row of scoped){
+      const raw=row?.[groupField];
+      const key=String(raw??"Não informado");
+      if(!groups.has(key)) groups.set(key,[]);
+      groups.get(key).push(row);
+    }
+
+    const columns=Array.isArray(tableDef.columns)?tableDef.columns:[];
+    if(!columns.length||!groups.size) return null;
+
+    const labelMap=tableDef.labelMap||{};
+    let rowsOut=[...groups.entries()].map(([key,groupRows])=>({
+      label:Object.prototype.hasOwnProperty.call(labelMap,key)?labelMap[key]:key,
+      values:columns.map(column=>localSampleAggregate(groupRows,{
+        ...column,
+        where:null
+      }))
+    }));
+
+    const sortIndex=Math.max(0,columns.findIndex(column=>column.id===tableDef.sortBy));
+    const direction=String(tableDef.sortDir||"desc").toLowerCase()==="asc"?1:-1;
+    rowsOut.sort((a,b)=>{
+      const av=Number(a.values[sortIndex]);
+      const bv=Number(b.values[sortIndex]);
+      if(Number.isFinite(av)&&Number.isFinite(bv)&&av!==bv) return (av-bv)*direction;
+      return String(a.label).localeCompare(String(b.label),"pt-BR");
+    });
+
+    const totalRows=rowsOut.length;
+    const limit=Math.max(1,Number(tableDef.limit||10));
+    rowsOut=rowsOut.slice(0,limit);
+
+    return {
+      id:tableDef.id,
+      title:tableDef.title,
+      subtitle:tableDef.subtitle||"",
+      groupLabel:tableDef.groupLabel||"Categoria",
+      columns:columns.map(column=>({
+        id:column.id,
+        label:column.label||column.id||"Valor",
+        format:column.format||"number"
+      })),
+      rows:rowsOut,
+      totalRows
+    };
+  }
+
   function localSampleChart(rows,chartDef) {
     const spec=chartDef.sample||{};
     const scoped=localSampleWhere(rows,spec.where);
@@ -3129,11 +3210,13 @@
       for(const kpi of def.kpis||[]) kpis[kpi.id]=localSampleAggregate(rows,kpi.sample||{agg:"count"});
       const charts={};
       for(const chart of def.charts||[]) charts[chart.id]=localSampleChart(rows,chart);
+      const tables=(def.summaryTables||[]).map(table=>localSampleTable(rows,table)).filter(Boolean);
 
       const key=sample.sourceKey||requestedSystem||"sample";
       const payload={
         kpis,
         charts,
+        tables,
         meta:{
           sampleMode:true,
           sampleFile:sample.file,
