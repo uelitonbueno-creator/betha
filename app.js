@@ -1953,16 +1953,23 @@
 
   function renderSummaryTables(payload) {
     const host=document.getElementById("tableGrid");
+    const heading=document.getElementById("tableSectionHeading");
     if(!host) return;
     host.innerHTML="";
     let rendered=0;
+
+    const syncVisibility=()=>{
+      const hidden=rendered===0;
+      host.hidden=hidden;
+      if(heading) heading.hidden=hidden;
+    };
 
     const configured=Array.isArray(payload?.tables)?payload.tables.filter(Boolean):[];
     if(configured.length){
       for(const table of configured.slice(0,2)){
         if(appendSummaryTableCard(host,table)) rendered++;
       }
-      host.hidden=rendered===0;
+      syncVisibility();
       return;
     }
 
@@ -1992,7 +1999,7 @@
       };
       if(appendSummaryTableCard(host,fallback)) rendered++;
     }
-    host.hidden=rendered===0;
+    syncVisibility();
   }
 
   function renderPayload(payload) {
