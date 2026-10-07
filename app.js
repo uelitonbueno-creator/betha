@@ -964,7 +964,9 @@
     restoreViewPreferencesOnce(view);
     renderDashboardFilters(def);
 
-    document.getElementById("pageTitle").textContent = def.title;
+    const activeSystem=currentSystemInfo();
+    const activeSystemName=String(activeSystem?.name||activeSystem?.label||activeSystem?.id||"Tributos");
+    document.getElementById("pageTitle").textContent = activeSystemName+" / "+def.title;
     document.getElementById("pageDescription").textContent = def.description;
     document.getElementById("pageContext").textContent = def.title.toUpperCase();
     document.getElementById("levelLabel").textContent = String(def.level || "macro-micro").toUpperCase().replace("-", " → ");
@@ -2983,6 +2985,11 @@
       const denominator=scoped.reduce((sum,row)=>sum+(Number(row?.[spec.denominator])||0),0);
       return denominator ? (numerator/denominator)*100 : 0;
     }
+    if(spec.agg==="difference"){
+      const minuend=scoped.reduce((sum,row)=>sum+(Number(row?.[spec.minuend])||0),0);
+      const subtrahend=scoped.reduce((sum,row)=>sum+(Number(row?.[spec.subtrahend])||0),0);
+      return minuend-subtrahend;
+    }
     return scoped.reduce((sum,row)=>sum+(Number(row?.[spec.field])||0),0);
   }
 
@@ -2996,6 +3003,40 @@
       return rows.filter(row=>String(row.mes||row.competencia||row.data||"").startsWith(year+"-"+month));
     }
     return rows.filter(row=>String(row.mes||row.competencia||row.data||"").startsWith(year+"-"));
+  }
+
+  function localSampleFilterOptions(rows,filters=[]) {
+    const result={};
+    for(const filter of filters){
+      if(filter.type==="search") continue;
+      const field=filter.field||filter.id;
+      result[filter.id]=[...new Set(rows
+        .map(row=>row?.[field])
+        .filter(value=>value!==undefined&&value!==null&&String(value)!=="")
+        .map(value=>String(value)))]
+        .sort((a,b)=>a.localeCompare(b,"pt-BR"));
+    }
+    return result;
+  }
+
+  function localSampleApplyDashboardFilters(rows,view=currentView) {
+    const defs=filterDefinitions(view);
+    const values=currentDashboardFilters(view);
+    if(!Object.keys(values).length) return rows.slice();
+    return rows.filter(row=>defs.every(filter=>{
+      const selected=values[filter.id];
+      if(selected===undefined||selected===null||String(selected)==="") return true;
+      const field=filter.field||filter.id;
+      if(filter.type==="search"){
+        const needle=String(selected).trim().toLocaleLowerCase("pt-BR");
+        if(!needle) return true;
+        const haystack=filter.field
+          ? String(row?.[field]??"")
+          : Object.values(row||{}).map(value=>String(value??"")).join(" ");
+        return haystack.toLocaleLowerCase("pt-BR").includes(needle);
+      }
+      return String(row?.[field]??"")===String(selected);
+    }));
   }
 
   function localSampleChart(rows,chartDef) {
@@ -3060,7 +3101,9 @@
       const doc=await localSampleDocument(sample.file);
       if(!active()) return;
       const allRows=Array.isArray(doc?.rows)?doc.rows:[];
-      const rows=localSampleRowsForPeriod(allRows);
+      const periodRows=localSampleRowsForPeriod(allRows);
+      const filterOptions=localSampleFilterOptions(periodRows,def.filters||[]);
+      const rows=localSampleApplyDashboardFilters(periodRows,view);
       const kpis={};
       for(const kpi of def.kpis||[]) kpis[kpi.id]=localSampleAggregate(rows,kpi.sample||{agg:"count"});
       const charts={};
@@ -3073,6 +3116,7 @@
         meta:{
           sampleMode:true,
           sampleFile:sample.file,
+          filterOptions,
           sourceRows:{[key]:rows.length},
           sourceAudit:{[key]:{loaded:rows.length,reportedTotal:Number(doc?.recordCount||allRows.length),complete:true,pages:1}},
           warnings:[]
@@ -3086,7 +3130,8 @@
         if(sampleText) sampleText.textContent=allRows.length+" registros · sem consumo da API / Cloudflare";
       }
       setLastUpdated(doc?.generatedAt||new Date().toISOString(),"Amostra local");
-      setStatus("online","AMOSTRA LOCAL · "+allRows.length+" registros · 0 chamadas Cloudflare");
+      const activeFilterCount=Object.keys(currentDashboardFilters(view)).length;
+      setStatus("online","AMOSTRA LOCAL · "+rows.length+" de "+allRows.length+" registros"+(activeFilterCount?" · "+activeFilterCount+" filtro(s) ativo(s)":"")+" · 0 chamadas Cloudflare");
     }catch(error){
       if(!active()) return;
       console.warn("Falha ao carregar amostra local:",error);
