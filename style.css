@@ -7879,7 +7879,8 @@ bth-app{--menu-bg-color:var(--vella-sidebar)}
     column-gap:15px;
   }
   .desktop-sidebar{
-    top:-45px;
+    top:0;
+    margin-top:-45px;
     height:calc(100dvh - 12px);
     min-height:0;
     border-top:0;
