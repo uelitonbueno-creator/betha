@@ -7211,3 +7211,96 @@ bth-app{--menu-bg-color:var(--vella-sidebar)}
 .coverage-item.is-sample{border-color:#efd18a;background:#fffaf0}
 .coverage-item.is-sample .coverage-source{color:#7a5a00}
 .coverage-item.is-sample small{color:#8a6200}
+
+
+/* === BI VELLA REDESIGN 2026-10-07 / ROUND 11 === */
+/* Home executiva também para Contabilidade, Compras e Folha.
+   Evita que as homes multi-sistema herdem o tratamento visual de painel detalhado. */
+#dashboardView[data-dashboard$="-visao-geral"] .personal-home{
+  margin:0 0 14px;
+}
+#dashboardView[data-dashboard$="-visao-geral"] .kpi-grid{
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:10px;
+  margin-bottom:16px;
+}
+#dashboardView[data-dashboard$="-visao-geral"] .kpi-card{
+  min-height:116px;
+  padding:14px 15px;
+}
+#dashboardView[data-dashboard$="-visao-geral"] .kpi-card small{
+  margin-bottom:5px;
+  font-size:9px;
+}
+#dashboardView[data-dashboard$="-visao-geral"] .kpi-card strong{
+  margin-bottom:5px;
+  font-size:21px;
+}
+#dashboardView[data-dashboard$="-visao-geral"] #chartGrid{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+#dashboardView[data-dashboard$="-visao-geral"] #chartGrid .chart-card,
+#dashboardView[data-dashboard$="-visao-geral"] #chartGrid .chart-card:first-child,
+#dashboardView[data-dashboard$="-visao-geral"] #chartGrid .chart-card:nth-child(n+2){
+  grid-column:auto;
+  min-height:330px;
+  border-radius:var(--vella-radius);
+}
+#dashboardView[data-dashboard$="-visao-geral"] #chartGrid .chart-card:nth-child(3){
+  grid-column:1/-1;
+}
+#dashboardView[data-dashboard$="-visao-geral"] #chartGrid .chart-card .chart-card-header,
+#dashboardView[data-dashboard$="-visao-geral"] #chartGrid .chart-card:first-child .chart-card-header,
+#dashboardView[data-dashboard$="-visao-geral"] #chartGrid .chart-card:nth-child(n+2) .chart-card-header{
+  min-height:62px;
+  padding:14px 14px 9px;
+}
+#dashboardView[data-dashboard$="-visao-geral"] #chartGrid .chart-card .chart-title-block h2,
+#dashboardView[data-dashboard$="-visao-geral"] #chartGrid .chart-card:first-child .chart-title-block h2,
+#dashboardView[data-dashboard$="-visao-geral"] #chartGrid .chart-card:nth-child(n+2) .chart-title-block h2{
+  font-size:12.5px;
+}
+#dashboardView[data-dashboard$="-visao-geral"] #chartGrid .chart-card .chart-title-block p,
+#dashboardView[data-dashboard$="-visao-geral"] #chartGrid .chart-card:first-child .chart-title-block p,
+#dashboardView[data-dashboard$="-visao-geral"] #chartGrid .chart-card:nth-child(n+2) .chart-title-block p{
+  font-size:9px;
+}
+#dashboardView[data-dashboard$="-visao-geral"] #chartGrid .chart-card .chart-body,
+#dashboardView[data-dashboard$="-visao-geral"] #chartGrid .chart-card:first-child .chart-body,
+#dashboardView[data-dashboard$="-visao-geral"] #chartGrid .chart-card:nth-child(n+2) .chart-body{
+  height:280px;
+  padding:6px 13px 14px;
+}
+#dashboardView[data-dashboard$="-visao-geral"] .personal-home-head small{
+  color:var(--vella-primary);
+}
+#dashboardView[data-dashboard$="-visao-geral"] .personal-home-badge{
+  border-color:#dbe8f8;
+  background:#f5f9ff;
+  color:#41688f;
+}
+@media(max-width:1400px){
+  #dashboardView[data-dashboard$="-visao-geral"] .kpi-grid{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+}
+@media(max-width:900px){
+  #dashboardView[data-dashboard$="-visao-geral"] .kpi-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  #dashboardView[data-dashboard$="-visao-geral"] #chartGrid{
+    grid-template-columns:1fr;
+  }
+  #dashboardView[data-dashboard$="-visao-geral"] #chartGrid .chart-card:nth-child(3){
+    grid-column:auto;
+  }
+}
+@media(max-width:480px){
+  #dashboardView[data-dashboard$="-visao-geral"] .kpi-grid{
+    grid-template-columns:1fr;
+  }
+  #dashboardView[data-dashboard$="-visao-geral"] .kpi-card{
+    min-height:104px;
+  }
+}
