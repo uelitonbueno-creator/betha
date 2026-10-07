@@ -72,9 +72,11 @@ test("painéis locais possuem filtros contextuais configurados", () => {
     folha: ["secretaria", "vinculo", "status", "cargo"]
   };
   for (const [system, ids] of Object.entries(expected)) {
-    const dashboard = Object.values(window.BI_DASHBOARDS).find(item => item.system === system);
-    assert.ok(dashboard, "dashboard ausente para " + system);
-    assert.deepEqual(dashboard.filters.map(item => item.id), ids);
+    const dashboards = Object.values(window.BI_DASHBOARDS).filter(item => item.system === system);
+    assert.ok(dashboards.length, "dashboard ausente para " + system);
+    for (const dashboard of dashboards) {
+      assert.deepEqual(dashboard.filters.map(item => item.id), ids, dashboard.title + " sem filtros padrão de " + system);
+    }
   }
 });
 
@@ -90,7 +92,7 @@ test("shell do layout possui contexto lateral, cabeçalho e tabelas analíticas"
   const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
   for (const id of [
     "sidebarEntityButton", "sidebarEntityList", "systemRailList",
-    "systemHeaderContext", "sampleModeBadge", "tableGrid"
+    "systemHeaderContext", "sampleModeBadge", "primaryDynamicFilters", "tableGrid"
   ]) {
     assert.match(html, new RegExp('id="' + id + '"'), "id ausente: " + id);
   }
