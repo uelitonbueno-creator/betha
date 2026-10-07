@@ -7367,3 +7367,114 @@ bth-app{--menu-bg-color:var(--vella-sidebar)}
   .system-home-section-heading{align-items:flex-start;flex-direction:column;gap:4px}
   .system-home-section-heading p{max-width:none;text-align:left}
 }
+
+
+/* === BI VELLA REDESIGN 2026-10-07 / ROUND 14 === */
+.detail-table-wrap{
+  max-width:100%;
+  overflow:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  border:1px solid var(--vella-border);
+  border-radius:9px;
+  background:#fff;
+}
+.detail-table-wrap .detail-table{min-width:720px;margin:0}
+.detail-table-wrap .detail-table thead th{
+  position:sticky;
+  top:0;
+  z-index:2;
+  background:#f5f8fb;
+}
+@media(max-width:768px){
+  body.drawer-open{overflow:hidden}
+  #detailDrawer.detail-drawer,
+  #userDrawer.detail-drawer,
+  #integrationDrawer.detail-drawer{
+    inset:0;
+    width:100vw;
+    max-width:none;
+    height:100dvh;
+    border-left:0;
+    transform:translateX(100%);
+  }
+  #detailDrawer.detail-drawer.open,
+  #userDrawer.detail-drawer.open,
+  #integrationDrawer.detail-drawer.open{
+    transform:translateX(0);
+  }
+  #detailDrawer .drawer-header,
+  #userDrawer .drawer-header,
+  #integrationDrawer .drawer-header{
+    min-height:70px;
+    padding:12px 14px;
+    gap:10px;
+  }
+  .drawer-title-block h2{font-size:17px}
+  .drawer-title-block>span{
+    max-width:62vw;
+    font-size:9px;
+    white-space:normal;
+    line-height:1.35;
+  }
+  #detailDrawer .drawer-header-actions{gap:6px}
+  #detailDrawer .drawer-export-actions{gap:4px;padding-right:6px}
+  #detailDrawer .drawer-export-btn{
+    width:36px;
+    height:36px;
+    padding:0;
+    justify-content:center;
+  }
+  #detailDrawer .drawer-export-btn span{display:none}
+  #detailDrawer .drawer-close,
+  #userDrawer .drawer-close,
+  #integrationDrawer .drawer-close{
+    width:38px;
+    height:38px;
+    flex:0 0 38px;
+  }
+  #detailDrawer .drawer-body,
+  #userDrawer .drawer-body,
+  #integrationDrawer .drawer-body{
+    padding:12px 12px 24px;
+  }
+  #detailDrawer .drawer-section{padding:12px}
+  .detail-table-wrap .detail-table{
+    min-width:680px;
+    font-size:9px;
+  }
+  .detail-table-wrap .detail-table th:first-child,
+  .detail-table-wrap .detail-table td:first-child{
+    position:sticky;
+    left:0;
+    z-index:1;
+    background:#fff;
+    box-shadow:1px 0 0 var(--vella-border);
+  }
+  .detail-table-wrap .detail-table thead th:first-child{
+    z-index:3;
+    background:#f5f8fb;
+  }
+}
+@media(max-width:430px){
+  #detailDrawer .drawer-header{
+    align-items:flex-start;
+  }
+  #detailDrawer .drawer-header-actions{
+    align-items:center;
+  }
+  #detailDrawer .drawer-export-actions{
+    border-right:0;
+    padding-right:0;
+  }
+  #detailDrawer .drawer-export-btn{
+    width:34px;
+    height:34px;
+  }
+  .drawer-title-block h2{
+    max-width:56vw;
+    font-size:16px;
+  }
+  .drawer-title-block>span{max-width:58vw}
+  .detail-table-wrap .detail-table{min-width:640px}
+}
