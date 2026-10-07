@@ -83,6 +83,39 @@ jobs:
           test "$code" = "405"
           node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("/tmp/mcp-get.json","utf8"));if(j.error!=="MCP_POST_REQUIRED") process.exit(1);'
 
+      - name: Check OAuth metadata on production endpoint
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 20 \
+            https://betha-bi-api.ueliton-bueno.workers.dev/.well-known/oauth-authorization-server \
+            -o /tmp/mcp-oauth-server.json
+          cat /tmp/mcp-oauth-server.json
+          node -e '
+            const fs=require("fs");
+            const j=JSON.parse(fs.readFileSync("/tmp/mcp-oauth-server.json","utf8"));
+            if(!j.authorization_endpoint || !j.token_endpoint || !j.registration_endpoint) process.exit(1);
+            if(!Array.isArray(j.code_challenge_methods_supported) || !j.code_challenge_methods_supported.includes("S256")) process.exit(1);
+            if(j.authorization_response_iss_parameter_supported!==true) process.exit(1);
+          '
+
+      - name: Check production MCP OAuth challenge
+        run: |
+          set -euo pipefail
+          status="$(curl --silent --show-error --max-time 20 \
+            -D /tmp/mcp-post.headers -o /tmp/mcp-post.json -w '%{http_code}' \
+            -X POST https://betha-bi-api.ueliton-bueno.workers.dev/mcp \
+            -H 'Content-Type: application/json' \
+            --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"bi-vella-oauth-smoke","version":"1.0"}}}')"
+          cat /tmp/mcp-post.headers
+          cat /tmp/mcp-post.json
+          test "$status" = "401"
+          grep -qi 'resource_metadata=' /tmp/mcp-post.headers
+          node -e '
+            const fs=require("fs");
+            const j=JSON.parse(fs.readFileSync("/tmp/mcp-post.json","utf8"));
+            if(j.error!=="MCP_TOKEN_REQUIRED") process.exit(1);
+          '
+
   report:
     if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main')
     needs: validate
