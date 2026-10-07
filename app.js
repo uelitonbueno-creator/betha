@@ -100,6 +100,10 @@
 
   function isViewAllowed(view) {
     if(view===HOME_VIEW) view=currentSystemInfo()?.homeView||DEFAULT_VIEW;
+    if(dashboards[view]){
+      const owner=String(dashboards[view].system||"tributos");
+      if(owner!==String(currentSystemId)) return false;
+    }
     if(dashboards[view]?.localSample){
       const tenant=currentTenantInfo();
       const privileged=Boolean(tenant&&(tenant.admin===true||tenant.technical===true));
@@ -149,7 +153,10 @@
     const system=systems.find(item=>String(item.id)===String(currentSystemId))||systems[0]||null;
     const home=system?.homeView||DEFAULT_VIEW;
     if(isViewAllowed(home)) return home;
-    return Object.keys(dashboards).find(view=>isViewAllowed(view)) ||
+    return Object.keys(dashboards).find(view=>{
+      const owner=String(dashboards[view]?.system||"tributos");
+      return owner===String(currentSystemId)&&isViewAllowed(view);
+    }) ||
       [...currentAllowedAdminViews][0] ||
       home;
   }
@@ -4647,11 +4654,12 @@
 
   function renderMobileSystemSelector() {
     if(!mobileSystemSelect) return;
-    mobileSystemSelect.innerHTML=systems.map(system=>
+    const available=accessibleSystemsForTenant();
+    mobileSystemSelect.innerHTML=available.length ? available.map(system=>
       '<option value="'+escapeHtml(String(system.id))+'"'+(String(system.id)===String(currentSystemId)?' selected':'')+'>'+escapeHtml(system.name||system.label||system.id)+'</option>'
-    ).join("");
-    mobileSystemSelect.disabled=systems.length<=1;
-    if(currentSystemId) mobileSystemSelect.value=String(currentSystemId);
+    ).join("") : '<option value="">Nenhum sistema autorizado</option>';
+    mobileSystemSelect.disabled=available.length<=1;
+    if(currentSystemId&&available.some(system=>String(system.id)===String(currentSystemId))) mobileSystemSelect.value=String(currentSystemId);
   }
 
   function renderMobilePanelSelector() {
@@ -4688,6 +4696,20 @@
     renderMobilePanelSelector();
   }
 
+  function tenantCanAccessSystem(system,tenant=currentTenantInfo()) {
+    if(!system) return false;
+    if(!tenant) return true;
+    if(tenant.admin===true||tenant.technical===true) return true;
+    const allowed=new Set(Array.isArray(tenant.allowedViews)?tenant.allowedViews:[]);
+    return Object.entries(dashboards).some(([view,def])=>
+      String(def?.system||"tributos")===String(system.id)&&allowed.has(view)
+    );
+  }
+
+  function accessibleSystemsForTenant(tenant=currentTenantInfo()) {
+    return systems.filter(system=>tenantCanAccessSystem(system,tenant));
+  }
+
   function renderSystemSelector() {
     const active=currentSystemInfo();
     const activeName=String(active?.name||active?.label||active?.id||"Tributos");
@@ -4698,7 +4720,7 @@
     const targets=[systemList,systemRailList].filter(Boolean);
     for(const target of targets) target.innerHTML="";
     renderMobileSystemSelector();
-    for(const system of systems){
+    for(const system of accessibleSystemsForTenant()){
       const icon=String(system.icon||"application-cog-outline");
       if(systemList){
         const button=document.createElement("button");
@@ -4722,6 +4744,10 @@
 
   function selectSystem(system) {
     if(!system||!system.id) return;
+    if(!tenantCanAccessSystem(system)){
+      showToast("Este sistema não possui painéis liberados para o seu acesso.");
+      return;
+    }
     const previous=String(currentSystemId||"");
     currentSystemId=String(system.id);
     renderSystemSelector();
@@ -6014,7 +6040,14 @@
     tenantId = tenant.id;
     entityLabel = tenant.name || tenant.id;
 
+    const availableSystems=accessibleSystemsForTenant(tenant);
+    if(!availableSystems.some(system=>String(system.id)===String(currentSystemId)) && availableSystems.length){
+      currentSystemId=String(availableSystems[0].id);
+      currentView=availableSystems[0].homeView||DEFAULT_VIEW;
+    }
+
     applyNavigationPermissions(tenant);
+    renderSystemSelector();
 
     const url = new URL(location.href);
     url.searchParams.set("tenant", tenantId);
