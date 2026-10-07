@@ -1173,7 +1173,7 @@
     for (const kpi of def.kpis || []) {
       const el = document.createElement("article");
       const kpiFormat = kpi.format === "currency" ? "currency" : "number";
-      el.className = "kpi-card kpi-card-" + kpiFormat + " kpi-tone-" + ((def.kpis||[]).indexOf(kpi)%6);
+      el.className = "kpi-card kpi-card-" + kpiFormat + " kpi-tone-" + ((def.kpis||[]).indexOf(kpi)%4);
       el.dataset.kpi = kpi.id;
       el.dataset.format = kpiFormat;
       el.innerHTML = `
