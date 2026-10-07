@@ -7107,3 +7107,21 @@ bth-app{--menu-bg-color:var(--vella-sidebar)}
 @media (max-width:430px){
   .filter-row{grid-template-columns:1fr}
 }
+
+
+/* === BI VELLA REDESIGN 2026-10-07 / ROUND 5 === */
+.summary-table-row-drill{cursor:pointer;transition:background .14s ease}
+.summary-table-row-drill:hover,
+.summary-table-row-drill:focus{background:#eef6ff;outline:none}
+.summary-table-row-drill:focus-visible{box-shadow:inset 0 0 0 2px rgba(8,120,249,.35)}
+.summary-table-row-drill td:first-child{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--vella-primary);font-weight:700}
+.summary-row-arrow{font-size:15px;opacity:.72;flex:0 0 auto}
+.local-sample-detail-hero{border-left:4px solid var(--vella-warning);background:#fffaf0}
+.local-sample-detail-hero small{color:#8a6200}
+.local-sample-detail-hero .detail-hero-value{font-size:22px}
+@media(max-width:768px){
+  .summary-table-card header{padding:9px 10px}
+  .summary-table{font-size:9px}
+  .summary-table th,.summary-table td{padding:7px 8px}
+  .summary-table-scroll{max-height:270px}
+}
