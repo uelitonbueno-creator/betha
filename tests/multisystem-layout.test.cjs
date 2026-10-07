@@ -44,12 +44,38 @@ test("menus contextuais não apontam para painéis de outro sistema", () => {
 test("painéis complementares multi-sistema estão registrados", () => {
   const window = loadCatalogs();
   const required = [
-    "contabil-empenhos", "contabil-restos", "contabil-demonstrativos",
+    "contabil-execucao-orcamentaria", "contabil-empenhos", "contabil-restos",
+    "contabil-demonstrativos", "contabil-relatorios",
     "compras-atas", "compras-itens",
     "folha-vinculos", "folha-cargos", "folha-departamentos",
     "folha-beneficios", "folha-despesas"
   ];
   for (const id of required) assert.ok(window.BI_DASHBOARDS[id], "dashboard ausente: " + id);
+});
+
+
+test("menus dos sistemas são diretos e não duplicam Visão Geral", () => {
+  const window = loadCatalogs();
+  for (const system of window.BI_SYSTEMS) {
+    assert.equal(system.menu[0].descricao, "Início");
+    assert.equal(system.menu[0].rota, system.homeView);
+    assert.equal(system.menu.filter(item => item.descricao === "Início").length, 1);
+    assert.equal(system.menu.some(item => Array.isArray(item.submenus) && item.submenus.length), false);
+  }
+});
+
+test("painéis locais possuem filtros contextuais configurados", () => {
+  const window = loadCatalogs();
+  const expected = {
+    contabil: ["unidade", "status", "fonteRecurso", "credor"],
+    compras: ["secretaria", "modalidade", "status", "fornecedor"],
+    folha: ["secretaria", "vinculo", "status", "cargo"]
+  };
+  for (const [system, ids] of Object.entries(expected)) {
+    const dashboard = Object.values(window.BI_DASHBOARDS).find(item => item.system === system);
+    assert.ok(dashboard, "dashboard ausente para " + system);
+    assert.deepEqual(dashboard.filters.map(item => item.id), ids);
+  }
 });
 
 test("amostras locais continuam com exatamente 100 registros", () => {
