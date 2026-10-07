@@ -11,6 +11,8 @@
   const tenantGateList = document.getElementById("tenantGateList");
   const tenantGateTitle = document.getElementById("tenantGateTitle");
   const tenantGateMessage = document.getElementById("tenantGateMessage");
+  const settingsUtilityButton = document.getElementById("settingsUtilityButton");
+  const settingsUtilityMenu = document.getElementById("settingsUtilityMenu");
   const authRequired = cfg.AUTH_REQUIRED !== false;
 
   if (authRequired && window.BIAuth && BIAuth.ready) {
@@ -125,6 +127,7 @@
     const menu=menuForTenant(tenant);
     bethaApp.opcoes=menu;
     if(typeof closeGroupNavigation==="function")closeGroupNavigation();
+    if(typeof syncSettingsUtilityPermissions==="function")syncSettingsUtilityPermissions();
 
     if(!isViewAllowed(currentView)){
       const fallback=firstAllowedView();
@@ -134,6 +137,7 @@
     if(typeof bethaApp.setMenuAtivo==="function" && currentView){
       bethaApp.setMenuAtivo(currentView);
     }
+    if(typeof syncSettingsUtilityPermissions==="function")syncSettingsUtilityPermissions();
   }
 
   bethaApp.opcoes = window.BI_MENU || [];
@@ -182,6 +186,90 @@
   });
   window.addEventListener('resize',()=>closeGroupNavigation());
 
+  function syncSettingsUtilityPermissions() {
+    if(!settingsUtilityButton||!settingsUtilityMenu) return;
+    const buttons=[...settingsUtilityMenu.querySelectorAll("[data-settings-view]")];
+    let visible=0;
+    for(const button of buttons){
+      const allowed=isViewAllowed(button.dataset.settingsView);
+      button.hidden=!allowed;
+      if(allowed) visible++;
+    }
+    settingsUtilityButton.hidden=visible===0;
+    settingsUtilityButton.classList.toggle("is-active",ADMIN_VIEWS.has(currentView));
+    if(!visible) closeSettingsUtilityMenu();
+  }
+
+  function positionSettingsUtilityMenu() {
+    if(!settingsUtilityButton||!settingsUtilityMenu||settingsUtilityMenu.hidden) return;
+    const rect=settingsUtilityButton.getBoundingClientRect();
+    const width=Math.min(360,window.innerWidth-16);
+    settingsUtilityMenu.style.width=width+"px";
+    settingsUtilityMenu.style.left=Math.max(8,Math.min(rect.right-width,window.innerWidth-width-8))+"px";
+    settingsUtilityMenu.style.top=Math.min(rect.bottom+7,window.innerHeight-settingsUtilityMenu.offsetHeight-8)+"px";
+  }
+
+  function closeSettingsUtilityMenu(restoreFocus=false) {
+    if(!settingsUtilityMenu||!settingsUtilityButton) return;
+    settingsUtilityMenu.hidden=true;
+    settingsUtilityButton.setAttribute("aria-expanded","false");
+    if(restoreFocus) settingsUtilityButton.focus();
+  }
+
+  function openSettingsUtilityMenu() {
+    if(!settingsUtilityMenu||!settingsUtilityButton||settingsUtilityButton.hidden) return;
+    syncSettingsUtilityPermissions();
+    const visible=[...settingsUtilityMenu.querySelectorAll("[data-settings-view]:not([hidden])")];
+    if(!visible.length) return;
+    closeGroupNavigation();
+    settingsUtilityMenu.hidden=false;
+    settingsUtilityButton.setAttribute("aria-expanded","true");
+    requestAnimationFrame(()=>{
+      positionSettingsUtilityMenu();
+      visible[0]?.focus();
+    });
+  }
+
+  settingsUtilityButton?.addEventListener("click",event=>{
+    event.stopPropagation();
+    if(settingsUtilityMenu?.hidden) openSettingsUtilityMenu();
+    else closeSettingsUtilityMenu(true);
+  });
+  settingsUtilityMenu?.addEventListener("click",event=>{
+    const item=event.target.closest("[data-settings-view]");
+    if(!item||item.hidden) return;
+    const view=item.dataset.settingsView;
+    closeSettingsUtilityMenu();
+    if(isViewAllowed(view)) navigate(view);
+  });
+  settingsUtilityMenu?.addEventListener("keydown",event=>{
+    const buttons=[...settingsUtilityMenu.querySelectorAll("[data-settings-view]:not([hidden])")];
+    if(event.key==="Escape"){
+      event.preventDefault();
+      closeSettingsUtilityMenu(true);
+      return;
+    }
+    if(!["ArrowDown","ArrowUp","ArrowLeft","ArrowRight","Home","End"].includes(event.key)||!buttons.length) return;
+    event.preventDefault();
+    const index=Math.max(0,buttons.indexOf(document.activeElement));
+    let next=index;
+    if(event.key==="Home") next=0;
+    else if(event.key==="End") next=buttons.length-1;
+    else next=(index+(event.key==="ArrowDown"||event.key==="ArrowRight"?1:-1)+buttons.length)%buttons.length;
+    buttons[next]?.focus();
+  });
+  document.addEventListener("pointerdown",event=>{
+    if(!settingsUtilityMenu||settingsUtilityMenu.hidden) return;
+    const path=event.composedPath();
+    if(!path.includes(settingsUtilityMenu)&&!path.includes(settingsUtilityButton)) closeSettingsUtilityMenu();
+  });
+  window.addEventListener("resize",()=>{
+    closeSettingsUtilityMenu();
+  });
+  window.addEventListener("scroll",()=>{
+    if(settingsUtilityMenu&&!settingsUtilityMenu.hidden) positionSettingsUtilityMenu();
+  },true);
+
   bethaApp.addEventListener("opcaoMenuSelecionada", (event) => {
     const detail = event.detail || {};
     const group=(bethaApp.opcoes||[]).find(item=>item.id===detail.id&&item.submenus?.length);
@@ -198,7 +286,9 @@
       showToast("Este painel não está liberado para o seu acesso.");
       return;
     }
+    closeSettingsUtilityMenu();
     currentView = view;
+    syncSettingsUtilityPermissions();
     const url = new URL(location.href);
     url.searchParams.set("view", view);
     history.replaceState({}, "", url);
