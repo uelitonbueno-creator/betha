@@ -201,7 +201,7 @@ test("amostras locais continuam com exatamente 100 registros", () => {
 test("shell do layout possui contexto lateral, cabeçalho e tabelas analíticas", () => {
   const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
   for (const id of [
-    "sidebarEntityButton", "sidebarEntityList", "systemRailList",
+    "desktopSidebar", "sidebarEntityButton", "sidebarEntityList", "systemRailList", "sidebarPanelList",
     "systemHeaderContext", "sampleModeBadge", "primaryDynamicFilters", "tableSectionHeading", "tableGrid",
     "sourceDisclosureTitle", "sourceDisclosureDescription", "sourceSummary",
     "mobileContextBar", "mobileEntitySelect", "mobileSystemSelect", "mobilePanelSelect"
@@ -210,6 +210,25 @@ test("shell do layout possui contexto lateral, cabeçalho e tabelas analíticas"
   }
   assert.match(html, /menu-bg-color="#0b2842"/);
   assert.match(html, />BI VELLA</);
+});
+
+test("desktop usa menu lateral e suprime a navegação horizontal nativa", () => {
+  const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
+  const app = fs.readFileSync(path.join(ROOT, "app.js"), "utf8");
+  const css = fs.readFileSync(path.join(ROOT, "style.css"), "utf8");
+
+  assert.match(html, /id="desktopSidebar"[^>]*class="desktop-sidebar"/);
+  assert.match(html, /id="systemRailList"/);
+  assert.match(html, /id="sidebarPanelList"/);
+  assert.match(app, /let currentNavigationMenu = \[\]/);
+  assert.match(app, /function renderSidebarPanelMenu\(\)/);
+  assert.match(app, /bethaApp\.opcoes=\[\]/);
+  assert.match(app, /function suppressNativeHorizontalMenu\(\)/);
+  assert.match(app, /bth-menu-horizontal-item\{display:none!important/);
+  assert.match(css, /\.workspace\{[\s\S]*?grid-template-columns:248px minmax\(0,1fr\)/);
+  assert.match(css, /\.desktop-sidebar\{[\s\S]*?background:#0b2842/);
+  assert.match(css, /\.sidebar-panel-option\.is-current/);
+  assert.match(css, /@media\(max-width:1100px\)[\s\S]*?\.desktop-sidebar\{display:none\}/);
 });
 
 test("navegação móvel mantém contexto Entidade → Sistema → Painel sincronizado", () => {
