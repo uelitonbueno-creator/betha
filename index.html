@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261007-vella-redesign1">
+  <link rel="stylesheet" href="style.css?v=20261007-vella-redesign2">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -88,7 +88,9 @@
 
     <div slot="container_contexto" class="context-bar">
       <div class="vella-context-title"><strong>BI VELLA</strong><span aria-hidden="true">|</span><span>PAINEL <span id="systemHeaderContext">TRIBUTOS</span></span></div>
-      <div class="context-breadcrumb" aria-label="Caminho atual">
+      <div class="vella-context-meta">
+        <span id="systemHeaderSubtitle" class="system-header-subtitle">Arrecadação, dívida, parcelamentos e situação dos contribuintes</span>
+        <div class="context-breadcrumb" aria-label="Caminho atual">
       <div class="entity-control">
         <button id="entityButton" class="context-entity-button" type="button">
           <i class="mdi mdi-office-building"></i>
@@ -118,6 +120,7 @@
       </div>
       <span class="context-divider">›</span>
       <span id="pageContext">VISÃO GERAL</span>
+        </div>
       </div>
     </div>
 
@@ -744,10 +747,10 @@
   <script src="config.js?v=20261007-vella-redesign1"></script>
   <script src="auth/auth.js?v=20261002-kvsession1"></script>
   <script src="dashboard-catalog.js?v=20261007-bi-vella-home1"></script>
-  <script src="system-catalog.js?v=20261007-vella-redesign1"></script>
+  <script src="system-catalog.js?v=20261007-vella-redesign2"></script>
   <div id="uiToast" class="ui-toast" role="status" aria-live="polite" aria-atomic="true"></div>
   <script src="api-panel-catalog.js?v=20261006-chart-visible9"></script>
-  <script src="app.js?v=20261007-vella-redesign1"></script>
+  <script src="app.js?v=20261007-vella-redesign2"></script>
   <script src="global-search.js?v=20261005-1"></script>
 </body>
 </html>
