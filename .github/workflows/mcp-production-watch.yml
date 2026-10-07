@@ -108,7 +108,7 @@ jobs:
           body="${marker}
           **MCP production watch:** ${state}
           - Última verificação: ${now}
-          - Branch canônica: `main`
+          - Branch canônica: main
           - ${detail}"
 
           comment_id="$(gh api "repos/${REPO}/issues/1/comments" --paginate \
