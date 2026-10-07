@@ -80,6 +80,20 @@ test("painéis locais possuem filtros contextuais configurados", () => {
   }
 });
 
+test("homes de Contabilidade, Compras e Folha possuem duas tabelas executivas", () => {
+  const window = loadCatalogs();
+  for (const id of ["contabil-visao-geral", "compras-visao-geral", "folha-visao-geral"]) {
+    const dashboard = window.BI_DASHBOARDS[id];
+    assert.ok(dashboard, "dashboard ausente: " + id);
+    assert.equal(dashboard.summaryTables.length, 2, id + " deve ter duas tabelas executivas");
+    for (const table of dashboard.summaryTables) {
+      assert.ok(table.title, id + " possui tabela sem título");
+      assert.ok(table.group, id + " possui tabela sem agrupamento");
+      assert.ok(Array.isArray(table.columns) && table.columns.length >= 2, id + " possui tabela sem colunas");
+    }
+  }
+});
+
 test("amostras locais continuam com exatamente 100 registros", () => {
   for (const file of ["contabil-100.json", "compras-100.json", "folha-100.json"]) {
     const doc = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "samples", file), "utf8"));
