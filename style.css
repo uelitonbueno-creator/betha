@@ -7866,3 +7866,6 @@ bth-app{--menu-bg-color:var(--vella-sidebar)}
 #dashboardView[data-dashboard] .kpi-card.kpi-tone-1 .kpi-favorite-button,
 #dashboardView[data-dashboard] .kpi-card.kpi-tone-2 .kpi-favorite-button,
 #dashboardView[data-dashboard] .kpi-card.kpi-tone-3 .kpi-favorite-button{color:#fff!important}
+
+.summary-table-empty{display:flex;flex-direction:column;gap:5px;padding:16px;border:1px dashed var(--vella-border);border-radius:9px;background:#f8fbfd;color:var(--vella-muted);font-size:11px}
+.summary-table-empty strong{color:var(--vella-text);font-size:12px}
