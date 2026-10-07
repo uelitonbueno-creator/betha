@@ -7178,3 +7178,18 @@ bth-app{--menu-bg-color:var(--vella-sidebar)}
   .permission-system-items{grid-template-columns:1fr}
   .permission-system-group>header{align-items:flex-start}
 }
+
+
+/* === BI VELLA REDESIGN 2026-10-07 / ROUND 8 === */
+.table-section-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin:16px 0 8px;padding:0 2px}
+.table-section-heading[hidden]{display:none}
+.table-section-heading>div{min-width:0}
+.table-section-heading span{display:block;margin-bottom:2px;font-size:9px;font-weight:900;letter-spacing:.12em;color:var(--vella-primary)}
+.table-section-heading h2{margin:0;font-size:15px;line-height:1.2;color:var(--vella-text)}
+.table-section-heading p{max-width:520px;margin:0;font-size:10px;line-height:1.4;color:var(--vella-muted);text-align:right}
+.summary-table-card header>div{min-width:0}
+.summary-table-card header>div>span{display:block;margin-top:2px;white-space:normal;line-height:1.35}
+@media(max-width:768px){
+  .table-section-heading{align-items:flex-start;flex-direction:column;gap:4px;margin-top:12px}
+  .table-section-heading p{max-width:none;text-align:left}
+}
