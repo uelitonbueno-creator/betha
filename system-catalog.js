@@ -29,12 +29,45 @@
     ]
   };
 
+  function autoSummaryTables(charts=[]){
+    return charts
+      .filter(chart=>chart?.sample?.group)
+      .slice(0,2)
+      .map(chart=>{
+        const sample=chart.sample||{};
+        const columns=Array.isArray(sample.fields)&&sample.fields.length
+          ? sample.fields.map((field,index)=>({
+              id:field.id||field.field||("valor-"+index),
+              label:field.label||field.field||("Valor "+(index+1)),
+              field:field.field,
+              agg:sample.agg||"sum",
+              format:field.format||sample.format||"number"
+            }))
+          : [{
+              id:"valor",
+              label:sample.agg==="count"||sample.agg==="distinct"?"Quantidade":(chart.title||"Valor"),
+              field:sample.field,
+              agg:sample.agg||(sample.field?"sum":"count"),
+              format:sample.format||"number"
+            }];
+        return {
+          id:"table-"+chart.id,
+          title:chart.title,
+          subtitle:chart.subtitle||"Detalhamento analítico do recorte atual",
+          group:sample.group,
+          columns,
+          sortBy:columns[0]?.id||"valor",
+          limit:8
+        };
+      });
+  }
+
   function add(id,system,file,title,description,kpis,charts,options={}){
     dashboards[id]={
       title,description,level:"macro-micro",system,
       localSample:local(system,file),
       filters:Array.isArray(options.filters)?options.filters:(systemFilters[system]||[]),
-      summaryTables:Array.isArray(options.summaryTables)?options.summaryTables:[],
+      summaryTables:Array.isArray(options.summaryTables)?options.summaryTables:autoSummaryTables(charts),
       kpis:kpis.map(k=>({...k,source:src(system)})),
       charts:charts.map(c=>({...c,source:src(system)}))
     };
