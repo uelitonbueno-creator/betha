@@ -13,8 +13,8 @@ window.BI_CONFIG = {
 // Catálogo de sistemas do BI Vella. Novos módulos podem apontar para outra
 // aplicação/rota mantendo o mesmo contexto de entidade na troca.
 window.BI_SYSTEMS = [
-  {id:"tributos",name:"Tributos",enabled:true,homeView:"visao-geral"},
-  {id:"contabil",name:"Contábil",enabled:true,homeView:"contabil-visao-geral",sampleMode:true},
-  {id:"compras",name:"Compras",enabled:true,homeView:"compras-visao-geral",sampleMode:true},
-  {id:"folha",name:"Folha de pagamento",enabled:true,homeView:"folha-visao-geral",sampleMode:true}
+  {id:"tributos",name:"Tributos",icon:"bank-outline",enabled:true,homeView:"visao-geral"},
+  {id:"contabil",name:"Contabilidade",icon:"calculator-variant-outline",enabled:true,homeView:"contabil-visao-geral",sampleMode:true},
+  {id:"compras",name:"Compras",icon:"cart-outline",enabled:true,homeView:"compras-visao-geral",sampleMode:true},
+  {id:"folha",name:"Folha de Pagamento",icon:"account-group-outline",enabled:true,homeView:"folha-visao-geral",sampleMode:true}
 ];
