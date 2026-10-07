@@ -34,12 +34,14 @@
       title,description,level:"macro-micro",system,
       localSample:local(system,file),
       filters:Array.isArray(options.filters)?options.filters:(systemFilters[system]||[]),
+      summaryTables:Array.isArray(options.summaryTables)?options.summaryTables:[],
       kpis:kpis.map(k=>({...k,source:src(system)})),
       charts:charts.map(c=>({...c,source:src(system)}))
     };
   }
   const k=(id,label,format,sample)=>({id,label,format,sample});
   const ch=(id,title,type,sample,subtitle="")=>({id,title,type,subtitle,sample});
+  const tbl=(id,title,group,columns,options={})=>({id,title,group,columns,...options});
 
   add("contabil-visao-geral","contabil","contabil-100.json","Visão geral","Resumo executivo da execução contábil e orçamentária.",
     [
@@ -53,7 +55,18 @@
       ch("execucao-mensal","Execução mensal","line",{group:"mes",fields:[{field:"valorEmpenhado",label:"Empenhado"},{field:"valorLiquidado",label:"Liquidado"},{field:"valorPago",label:"Pago"}],agg:"sum",format:"currency"}),
       ch("despesa-funcao","Despesa por função","bar",{group:"funcao",field:"valorEmpenhado",agg:"sum",format:"currency"}),
       ch("receita-mensal","Receita mensal","bar",{group:"mes",fields:[{field:"receitaPrevista",label:"Prevista"},{field:"receitaArrecadada",label:"Arrecadada"}],agg:"sum",format:"currency"})
-    ]);
+    ],
+    {summaryTables:[
+      tbl("contabil-despesa-natureza","Despesa por natureza","natureza",[
+        {id:"empenhado",label:"Empenhado",field:"valorEmpenhado",agg:"sum",format:"currency"},
+        {id:"liquidado",label:"Liquidado",field:"valorLiquidado",agg:"sum",format:"currency"},
+        {id:"pago",label:"Pago",field:"valorPago",agg:"sum",format:"currency"}
+      ],{subtitle:"Principais naturezas da despesa",sortBy:"empenhado",limit:8}),
+      tbl("contabil-receita-fonte","Receita por fonte de recurso","fonteRecurso",[
+        {id:"prevista",label:"Prevista",field:"receitaPrevista",agg:"sum",format:"currency"},
+        {id:"arrecadada",label:"Arrecadada",field:"receitaArrecadada",agg:"sum",format:"currency"}
+      ],{subtitle:"Composição das receitas",sortBy:"arrecadada",limit:8})
+    ]});
 
   add("contabil-despesa","contabil","contabil-100.json","Despesa","Empenho, liquidação e pagamento por unidade, função e natureza.",
     [
@@ -126,7 +139,17 @@
       ch("compras-mensal","Valores por mês","line",{group:"mes",fields:[{field:"valorEstimado",label:"Estimado"},{field:"valorHomologado",label:"Homologado"}],agg:"sum",format:"currency"}),
       ch("compras-modalidade","Processos por modalidade","doughnut",{group:"modalidade",agg:"count",format:"number"}),
       ch("compras-secretaria","Contratações por secretaria","bar",{group:"secretaria",field:"valorHomologado",agg:"sum",format:"currency"})
-    ]);
+    ],
+    {summaryTables:[
+      tbl("compras-fornecedores-ranking","Principais fornecedores","fornecedor",[
+        {id:"valor",label:"Valor homologado",field:"valorHomologado",agg:"sum",format:"currency"},
+        {id:"processos",label:"Processos",agg:"count",format:"number"}
+      ],{subtitle:"Ranking por valor homologado",sortBy:"valor",limit:8}),
+      tbl("compras-contratos-situacao","Situação dos contratos","contratoAtivo",[
+        {id:"quantidade",label:"Quantidade",agg:"count",format:"number"},
+        {id:"valor",label:"Valor homologado",field:"valorHomologado",agg:"sum",format:"currency"}
+      ],{subtitle:"Contratos ativos e inativos na amostra",sortBy:"valor",limit:8,labelMap:{"true":"Ativo","false":"Inativo"}})
+    ]});
 
   add("compras-processos","compras","compras-100.json","Processos","Volume, situação e tramitação dos processos de compra.",
     [
@@ -198,7 +221,17 @@
       ch("folha-mensal","Evolução da folha","line",{group:"mes",fields:[{field:"bruto",label:"Bruto"},{field:"liquido",label:"Líquido"},{field:"encargos",label:"Encargos"}],agg:"sum",format:"currency"}),
       ch("folha-secretaria","Custo bruto por secretaria","bar",{group:"secretaria",field:"bruto",agg:"sum",format:"currency"}),
       ch("folha-vinculo","Servidores por vínculo","doughnut",{group:"vinculo",field:"servidorId",agg:"distinct",format:"number"})
-    ]);
+    ],
+    {summaryTables:[
+      tbl("folha-despesa-secretaria","Despesa por secretaria","secretaria",[
+        {id:"bruto",label:"Despesa bruta",field:"bruto",agg:"sum",format:"currency"},
+        {id:"servidores",label:"Servidores",field:"servidorId",agg:"distinct",format:"number"}
+      ],{subtitle:"Custo e quadro por secretaria",sortBy:"bruto",limit:8}),
+      tbl("folha-servidores-situacao","Servidores por situação","status",[
+        {id:"servidores",label:"Quantidade",field:"servidorId",agg:"distinct",format:"number"},
+        {id:"bruto",label:"Despesa bruta",field:"bruto",agg:"sum",format:"currency"}
+      ],{subtitle:"Situação funcional do quadro",sortBy:"servidores",limit:8})
+    ]});
 
   add("folha-mensal","folha","folha-100.json","Folha mensal","Valores brutos, líquidos e descontos por competência.",
     [
