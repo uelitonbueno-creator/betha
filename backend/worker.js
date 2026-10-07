@@ -1234,7 +1234,8 @@ async function advanceSyncSource(env,tenant,scope,job,card){
   });
   const fingerprint=JSON.stringify(result.rows.slice(0,10).map(r=>r.id??r.codigo??r));
   if(entry.fingerprint&&entry.fingerprint===fingerprint&&result.loaded)throw new Error('SOURCE_PAGINATION_REPEATED');
-  await env.BI_SESSIONS.put(scope+':rows:'+job.id+':'+card.id+':'+entry.pages,JSON.stringify(result.rows),{expirationTtl:SYNC_TTL});
+  const pageNo=entry.pages;
+  await env.BI_SESSIONS.put(scope+':rows:'+job.id+':'+card.id+':'+pageNo,JSON.stringify(result.rows),{expirationTtl:SYNC_TTL});
   entry.pages++;
   entry.loaded+=result.loaded;
   entry.fingerprint=fingerprint;
@@ -1252,7 +1253,7 @@ async function advanceSyncSource(env,tenant,scope,job,card){
    entry.pageSize=entry.pageSize===50?100:250;
    entry.stablePages=0;
   }
-  return {entry,added:result.loaded};
+  return {entry,added:result.loaded,page:{pageNo,rows:result.rows,nextOffset:entry.nextOffset,complete:entry.complete}};
  }catch(error){
   const code=syncErrorCode(error);
   entry.lastError=code;
@@ -1276,7 +1277,7 @@ async function advanceSyncSource(env,tenant,scope,job,card){
     entry.errorDetail='A API Betha recusou a fonte de campos adicionais mesmo com cpaFields=true e filtro id > 0; a carga das demais fontes continua normalmente.';
    }
   }
-  return {entry,added:0};
+  return {entry,added:0,page:null};
  }
 }
 async function beginSync(env,tenant,config){
@@ -1305,7 +1306,7 @@ async function advanceSync(env,tenant,config){
    job.rows=(Number(job.rows)||0)+result.added;
    setSyncFailure(job,card.id,result.entry);
    try{
-    await persistBackgroundSourceProgress(env,tenant,job,card,result.entry);
+    await persistBackgroundSourceProgress(env,tenant,job,card,result.entry,result.page);
    }catch(error){
     job.persistenceFailures=Array.isArray(job.persistenceFailures)?job.persistenceFailures:[];
     job.persistenceFailures=job.persistenceFailures.filter(item=>item.source!==card.id);
@@ -1437,7 +1438,7 @@ async function persistSupabaseCache(env,body) {
   return data;
 }
 
-async function persistBackgroundSourceProgress(env,tenant,job,card,entry){
+async function persistBackgroundSourceProgress(env,tenant,job,card,entry,page=null){
   const now=new Date().toISOString();
   const status=entry.error?"error":entry.complete?"complete":"partial";
   return persistSupabaseCache(env,{
@@ -1456,6 +1457,8 @@ async function persistBackgroundSourceProgress(env,tenant,job,card,entry){
         completo:entry.complete===true,
         error:entry.error||null,
         errorDetail:entry.errorDetail||null,
+        pageNo:page?.pageNo??null,
+        rows:page?.rows||undefined,
         updatedAt:now
       },
       status
