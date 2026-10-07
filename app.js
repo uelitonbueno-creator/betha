@@ -4368,6 +4368,7 @@
   const systemMenu=document.getElementById("systemMenu");
   const systemList=document.getElementById("systemList");
   const systemRailList=document.getElementById("systemRailList");
+  const sidebarSystemMenuLabel=document.getElementById("sidebarSystemMenuLabel");
   const systemContext=document.getElementById("systemContext");
   const systemHeaderContext=document.getElementById("systemHeaderContext");
   const systemHeaderSubtitle=document.getElementById("systemHeaderSubtitle");
@@ -4380,6 +4381,7 @@
     const active=currentSystemInfo();
     const activeName=String(active?.name||active?.label||active?.id||"Tributos");
     if(systemContext) systemContext.textContent=activeName.toUpperCase();
+    if(sidebarSystemMenuLabel) sidebarSystemMenuLabel.textContent=activeName.toUpperCase();
     if(systemHeaderContext) systemHeaderContext.textContent=activeName.toUpperCase();
     if(systemHeaderSubtitle) systemHeaderSubtitle.textContent=String(active?.heading||"");
     const targets=[systemList,systemRailList].filter(Boolean);
@@ -4444,6 +4446,24 @@
     const opening=systemMenu.hidden;
     systemMenu.hidden=!opening;
     systemButton.setAttribute("aria-expanded",String(opening));
+  });
+
+  document.addEventListener("keydown",event=>{
+    if(event.key!=="Escape") return;
+    if(sidebarEntityMenu&&!sidebarEntityMenu.hidden){
+      sidebarEntityMenu.hidden=true;
+      sidebarEntityButton?.setAttribute("aria-expanded","false");
+      sidebarEntityButton?.focus();
+    }
+    if(entityMenu&&!entityMenu.hidden){
+      entityMenu.hidden=true;
+      entityButton?.focus();
+    }
+    if(systemMenu&&!systemMenu.hidden){
+      systemMenu.hidden=true;
+      systemButton?.setAttribute("aria-expanded","false");
+      systemButton?.focus();
+    }
   });
 
   document.addEventListener("click", (event) => {
