@@ -74,6 +74,7 @@
   let currentDetailPayload = null;
   let currentDetailResource = "";
   let currentDetailTitle = "";
+  let currentLocalDetailExport = null;
   let authorizedTenants = [];
   let currentAllowedViews = new Set(Object.keys(dashboards));
   let currentAllowedAdminViews = new Set(ADMIN_VIEWS);
@@ -3803,6 +3804,21 @@
         });
       });
     }
+    for(const table of currentPayload?.tables||[]){
+      const columns=Array.isArray(table?.columns)?table.columns:[];
+      for(const row of table?.rows||[]){
+        columns.forEach((column,index)=>{
+          rows.push({
+            tipo:"Tabela",
+            item:table.title||table.id||"Tabela",
+            serie:column.label||column.id||"Valor",
+            categoria:row.label??"",
+            valor:summaryCellDisplay(row.values?.[index],column.format||"number"),
+            fonte:def.localSample?"AMOSTRA LOCAL":"Painel"
+          });
+        });
+      }
+    }
     return rows;
   }
 
@@ -3817,18 +3833,23 @@
       return;
     }
     const context=exportContextLabel();
+    const system=currentSystemInfo();
+    const sampleMode=Boolean(dashboards[currentView]?.localSample);
     const header=["Tipo","Item","Série","Categoria","Valor","Fonte"].map(x=>csvEscape(x,separator)).join(separator);
     const body=rows.map(row=>[
       row.tipo,row.item,row.serie,row.categoria,row.valor,row.fonte
     ].map(value=>csvEscape(value,separator)).join(separator)).join("\r\n");
     const meta=[
+      ["BI","BI Vella"],
       ["Entidade",entityLabel||tenantId||"Entidade"],
+      ["Sistema",system?.name||system?.label||currentSystemId],
       ["Painel",dashboards[currentView]?.title||currentView],
+      ["Modo de dados",sampleMode?"AMOSTRA LOCAL · DADOS DE TESTE · SEM CONSUMO DA API":"DADOS AUTORIZADOS"],
       ["Contexto",context.summary||"Padrão"]
     ].map(row=>row.map(value=>csvEscape(value,separator)).join(separator)).join("\r\n");
     const text=(extension==="csv"?"\uFEFF":"")+meta+"\r\n\r\n"+header+"\r\n"+body;
     const mime=extension==="csv"?"text/csv;charset=utf-8":"text/plain;charset=utf-8";
-    const name=safeFilePart("bi-"+(entityLabel||tenantId)+"-"+(dashboards[currentView]?.title||currentView));
+    const name=safeFilePart("bi-vella-"+(currentSystemInfo()?.name||currentSystemId)+"-"+(entityLabel||tenantId)+"-"+(dashboards[currentView]?.title||currentView));
     downloadBlob(text,mime,name+"."+extension);
     showToast(extension.toUpperCase()+" gerado com sucesso.");
   }
@@ -3914,14 +3935,18 @@
       const imgHeight=canvas.height*usableWidth/canvas.width;
       const imgData=canvas.toDataURL("image/jpeg",0.92);
       const context=exportContextLabel();
+      const activeSystem=currentSystemInfo();
+      const systemName=String(activeSystem?.name||activeSystem?.label||currentSystemId||"Tributos");
+      const sampleMode=Boolean(dashboards[currentView]?.localSample);
+      const panelName=String(dashboards[currentView]?.title||"Painel");
 
       const drawHeader=(pageNo)=>{
         pdf.setFontSize(13);
-        pdf.text(String(dashboards[currentView]?.title||"BI Vella"),margin,8);
+        pdf.text("BI Vella | "+systemName+" / "+panelName,margin,8);
         pdf.setFontSize(8);
         pdf.text(String(entityLabel||tenantId||"Entidade"),margin,13);
         pdf.setTextColor(90);
-        pdf.text(context.summary||"Sem filtros adicionais",margin,17);
+        pdf.text((sampleMode?"AMOSTRA LOCAL · DADOS DE TESTE · ":"")+(context.summary||"Sem filtros adicionais"),margin,17);
         pdf.text("Página "+pageNo,pageWidth-margin-18,17);
         pdf.setTextColor(0);
       };
@@ -3952,11 +3977,11 @@
         while(yOffset<imgHeight && p<=20){
           if(p>1) longPdf.addPage();
           longPdf.setFontSize(13);
-          longPdf.text(String(dashboards[currentView]?.title||"BI Vella"),margin,8);
+          longPdf.text("BI Vella | "+systemName+" / "+panelName,margin,8);
           longPdf.setFontSize(8);
           longPdf.text(String(entityLabel||tenantId||"Entidade"),margin,13);
           longPdf.setTextColor(90);
-          longPdf.text(context.summary||"Sem filtros adicionais",margin,17);
+          longPdf.text((sampleMode?"AMOSTRA LOCAL · DADOS DE TESTE · ":"")+(context.summary||"Sem filtros adicionais"),margin,17);
           longPdf.text("Página "+p,pageWidth-margin-18,17);
           longPdf.setTextColor(0);
           longPdf.addImage(imgData,"JPEG",margin,headerHeight-yOffset,usableWidth,imgHeight,undefined,"FAST");
@@ -3964,11 +3989,11 @@
           p++;
         }
         longPdf.save(
-          safeFilePart("bi-"+(entityLabel||tenantId)+"-"+(dashboards[currentView]?.title||currentView))+".pdf"
+          safeFilePart("bi-vella-"+systemName+"-"+(entityLabel||tenantId)+"-"+panelName)+".pdf"
         );
       } else {
         pdf.save(
-          safeFilePart("bi-"+(entityLabel||tenantId)+"-"+(dashboards[currentView]?.title||currentView))+".pdf"
+          safeFilePart("bi-vella-"+systemName+"-"+(entityLabel||tenantId)+"-"+panelName)+".pdf"
         );
       }
       showToast("PDF gerado com sucesso.");
@@ -3980,6 +4005,43 @@
     }
   }
 
+  function localDetailColumns(rows,system) {
+    const configured=(localSampleDetailColumns[system]||[]).filter(([key])=>rows.some(row=>row?.[key]!==undefined));
+    const fallback=[...new Set(rows.flatMap(row=>Object.keys(row)))].slice(0,8).map(key=>[key,key]);
+    return (configured.length?configured:fallback).map(([key,label])=>({
+      key,
+      label,
+      format:["valorEmpenhado","valorLiquidado","valorPago","valorEstimado","valorHomologado","bruto","descontos","liquido","encargos","beneficioValor","receitaPrevista","receitaArrecadada","restosPagar"].includes(key)?"currency":"text"
+    }));
+  }
+
+  function setLocalDetailExport(title,rows,system=currentSystemId) {
+    currentLocalDetailExport={
+      title:title||"Detalhamento",
+      system:String(system||currentSystemId),
+      columns:localDetailColumns(rows,system),
+      rows:rows.slice()
+    };
+    const actions=document.getElementById("drawerExportActions");
+    if(actions) actions.hidden=!rows.length;
+  }
+
+  async function currentDetailExportPayload(maxRecords) {
+    if(currentLocalDetailExport){
+      const rows=currentLocalDetailExport.rows.slice(0,maxRecords);
+      return {
+        resource:"amostra-local",
+        columns:currentLocalDetailExport.columns,
+        rows,
+        truncated:currentLocalDetailExport.rows.length>rows.length,
+        maxRecords,
+        sampleMode:true
+      };
+    }
+    if(!currentDetailResource) return null;
+    return fetchDetailExport(currentDetailResource,maxRecords);
+  }
+
   function detailExportContext() {
     const params=new URLSearchParams(detailQuerySnapshot);
     const labels={detailSearch:"Busca",detailField:"Campo",detailValue:"Valor",detailDateField:"Data",detailFrom:"De",detailTo:"Até",parcelamentoId:"Parcelamento"};
@@ -3989,12 +4051,26 @@
   }
 
   async function exportDetailCsv() {
-    if(!currentDetailResource) return;
+    if(!currentDetailResource&&!currentLocalDetailExport) return;
     setExportBusy(true);
     try{
-      const payload=await fetchDetailExport(currentDetailResource,10000);
-      const text="\uFEFF"+exportRowsText(payload,";");
-      const name=safeFilePart((entityLabel||tenantId)+"-"+currentDetailTitle+"-"+currentDetailResource);
+      const payload=await currentDetailExportPayload(10000);
+      if(!payload) return;
+      const context=detailExportContext();
+      const systemName=currentSystemInfo()?.name||currentSystemId;
+      const meta=payload.sampleMode
+        ? [
+            ["BI","BI Vella"],
+            ["Entidade",entityLabel||tenantId||"Entidade"],
+            ["Sistema",systemName],
+            ["Detalhamento",currentDetailTitle],
+            ["Modo de dados","AMOSTRA LOCAL · DADOS DE TESTE · SEM CONSUMO DA API"],
+            ["Contexto",context.summary||"Padrão"]
+          ].map(row=>row.map(value=>csvEscape(value,";")).join(";")).join("\r\n")+"\r\n\r\n"
+        : "";
+      const text="\uFEFF"+meta+exportRowsText(payload,";");
+      const resource=currentLocalDetailExport?"amostra-local":currentDetailResource;
+      const name=safeFilePart("bi-vella-"+systemName+"-"+(entityLabel||tenantId)+"-"+currentDetailTitle+"-"+resource);
       downloadBlob(text,"text/csv;charset=utf-8",name+".csv");
     }catch(error){
       console.error("detail csv export",error);
@@ -4005,20 +4081,25 @@
   }
 
   async function exportDetailTxt() {
-    if(!currentDetailResource) return;
+    if(!currentDetailResource&&!currentLocalDetailExport) return;
     setExportBusy(true);
     try{
-      const payload=await fetchDetailExport(currentDetailResource,10000);
+      const payload=await currentDetailExportPayload(10000);
+      if(!payload) return;
       const context=detailExportContext();
+      const systemName=currentSystemInfo()?.name||currentSystemId;
       const meta=[
         "BI Vella",
         "Entidade: "+(entityLabel||tenantId||""),
+        "Sistema: "+systemName,
         "Detalhamento: "+currentDetailTitle,
+        "Modo de dados: "+(payload.sampleMode?"AMOSTRA LOCAL · DADOS DE TESTE · SEM CONSUMO DA API":"DADOS AUTORIZADOS"),
         "Período/Filtros: "+(context.summary||""),
         "Registros exportados: "+payload.rows.length+(payload.truncated?" (limite atingido)":""),
         ""
       ].join("\r\n");
-      const name=safeFilePart((entityLabel||tenantId)+"-"+currentDetailTitle+"-"+currentDetailResource);
+      const resource=currentLocalDetailExport?"amostra-local":currentDetailResource;
+      const name=safeFilePart("bi-vella-"+systemName+"-"+(entityLabel||tenantId)+"-"+currentDetailTitle+"-"+resource);
       downloadBlob("\uFEFF"+meta+exportRowsText(payload,"\t"),"text/plain;charset=utf-8",name+".txt");
     }catch(error){
       console.error("detail txt export",error);
@@ -4029,23 +4110,25 @@
   }
 
   async function exportDetailPdf() {
-    if(!currentDetailResource || !window.jspdf?.jsPDF) return;
+    if((!currentDetailResource&&!currentLocalDetailExport) || !window.jspdf?.jsPDF) return;
     setExportBusy(true);
     try{
-      const payload=await fetchDetailExport(currentDetailResource,1000);
+      const payload=await currentDetailExportPayload(1000);
+      if(!payload) return;
       const {jsPDF}=window.jspdf;
       const pdf=new jsPDF({orientation:"landscape",unit:"mm",format:"a4"});
       const context=detailExportContext();
+      const systemName=currentSystemInfo()?.name||currentSystemId;
       const columns=payload.columns||[];
       const head=[columns.map(col=>col.label||col.key)];
       const body=payload.rows.map(row=>columns.map(col=>formatDetailCell(row[col.key],col.format)));
 
       pdf.setFontSize(13);
-      pdf.text(currentDetailTitle||"Detalhamento",10,10);
+      pdf.text("BI Vella | "+systemName+" / "+(currentDetailTitle||"Detalhamento"),10,10);
       pdf.setFontSize(8);
       pdf.text(String(entityLabel||tenantId||"Entidade"),10,15);
       pdf.setTextColor(90);
-      pdf.text(context.summary||"Sem filtros adicionais",10,19);
+      pdf.text((payload.sampleMode?"AMOSTRA LOCAL · DADOS DE TESTE · ":"")+(context.summary||"Sem filtros adicionais"),10,19);
       pdf.text(
         "Registros: "+payload.rows.length+(payload.truncated?" · PDF limitado aos primeiros 1.000 registros":""),
         10,23
@@ -4066,7 +4149,8 @@
         pdf.text("Tabela indisponível: plugin de exportação não carregado.",10,30);
       }
 
-      const name=safeFilePart((entityLabel||tenantId)+"-"+currentDetailTitle+"-"+currentDetailResource);
+      const resource=currentLocalDetailExport?"amostra-local":currentDetailResource;
+      const name=safeFilePart("bi-vella-"+systemName+"-"+(entityLabel||tenantId)+"-"+currentDetailTitle+"-"+resource);
       pdf.save(name+".pdf");
     }catch(error){
       console.error("detail pdf export",error);
@@ -4259,6 +4343,7 @@
         ${rows.length?localSampleDetailTable(rows,currentSystemId):'<div class="detail-empty-state compact"><strong>Nenhum registro</strong><span>Não há linhas para o recorte atual.</span></div>'}
       </section>
     `);
+    setLocalDetailExport(tableDef.title||"Detalhamento",rows,currentSystemId);
   }
 
   function localSampleRowsForKpi(kpi) {
@@ -4284,6 +4369,7 @@
         ${rows.length?localSampleDetailTable(rows,currentSystemId):'<div class="detail-empty-state compact"><strong>Nenhum registro</strong><span>Não há linhas para o recorte atual.</span></div>'}
       </section>
     `);
+    setLocalDetailExport(kpi.label,rows,currentSystemId);
   }
 
   function localSampleRowsForChart(chartDef,selected) {
@@ -4323,6 +4409,7 @@
         ${rows.length?localSampleDetailTable(rows,currentSystemId):'<div class="detail-empty-state compact"><strong>Nenhum registro</strong><span>Não há linhas para este ponto do gráfico.</span></div>'}
       </section>
     `);
+    setLocalDetailExport(resolved.title,rows,currentSystemId);
   }
 
   function openKpiDetail(kpi) {
@@ -4466,6 +4553,7 @@
     detailPageOffsets=[];
     currentDetailPayload=null;
     currentDetailResource="";
+    currentLocalDetailExport=null;
     currentDetailTitle=title||"Detalhamento";
     const exportActions=document.getElementById("drawerExportActions");
     if(exportActions) exportActions.hidden=true;
