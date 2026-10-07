@@ -144,12 +144,31 @@ test("shell do layout possui contexto lateral, cabeçalho e tabelas analíticas"
   const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
   for (const id of [
     "sidebarEntityButton", "sidebarEntityList", "systemRailList",
-    "systemHeaderContext", "sampleModeBadge", "primaryDynamicFilters", "tableGrid"
+    "systemHeaderContext", "sampleModeBadge", "primaryDynamicFilters", "tableGrid",
+    "mobileContextBar", "mobileEntitySelect", "mobileSystemSelect", "mobilePanelSelect"
   ]) {
     assert.match(html, new RegExp('id="' + id + '"'), "id ausente: " + id);
   }
   assert.match(html, /menu-bg-color="#0b2842"/);
   assert.match(html, />BI VELLA</);
+});
+
+test("navegação móvel mantém contexto Entidade → Sistema → Painel sincronizado", () => {
+  const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
+  const app = fs.readFileSync(path.join(ROOT, "app.js"), "utf8");
+  const css = fs.readFileSync(path.join(ROOT, "style.css"), "utf8");
+
+  for (const id of ["mobileEntitySelect", "mobileSystemSelect", "mobilePanelSelect"]) {
+    assert.match(html, new RegExp('id="' + id + '"'));
+  }
+  assert.match(app, /function syncMobileContextSelectors\(\)/);
+  assert.match(app, /mobileEntitySelect\?\.addEventListener\("change"/);
+  assert.match(app, /mobileSystemSelect\?\.addEventListener\("change"/);
+  assert.match(app, /mobilePanelSelect\?\.addEventListener\("change"/);
+  assert.match(css, /@media\(max-width:1100px\)[\s\S]*?\.mobile-context-bar/);
+  assert.match(css, /@media\(max-width:768px\)[\s\S]*?\.mobile-context-panel/);
+  assert.match(css, /@media\(max-width:430px\)[\s\S]*?\.mobile-context-bar/);
+  assert.match(css, /@media\(max-width:390px\)[\s\S]*?\.mobile-context-bar/);
 });
 
 test("frontend não expõe User-Access ou access token em configuração pública", () => {
