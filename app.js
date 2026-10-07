@@ -194,8 +194,15 @@
     if(!style){
       style=document.createElement("style");
       style.id="bi-vella-hide-native-horizontal-items";
-      style.textContent="bth-menu-horizontal-item{display:none!important;width:0!important;min-width:0!important;overflow:hidden!important}";
+      style.textContent="@media(min-width:1101px){.menu-horizontal{height:12px!important;min-height:12px!important;max-height:12px!important;padding:0!important;overflow:hidden!important}.menu-horizontal__body,.menu-horizontal__list{height:12px!important;min-height:12px!important;max-height:12px!important;overflow:hidden!important}bth-menu-horizontal-item{display:none!important;width:0!important;min-width:0!important;overflow:hidden!important}}";
       root.appendChild(style);
+    }
+    const tools=document.querySelector(".menu-tools");
+    const brand=document.querySelector(".sidebar-brand-panel");
+    if(window.matchMedia("(min-width:1101px)").matches&&tools&&brand&&tools.parentElement!==brand){
+      tools.removeAttribute("slot");
+      tools.classList.add("sidebar-menu-tools");
+      brand.appendChild(tools);
     }
   }
 
