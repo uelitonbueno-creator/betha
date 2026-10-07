@@ -5679,7 +5679,8 @@
       const restrictions = item.totalRestrictions ?? item.restrictions?.length ?? 0;
       const connected = Boolean(item.connected);
       const blocked = Boolean(item.blocked);
-      const profile = item.admin ? "Administrador" : item.technical ? "Técnico" : (groups ? groups + " grupo(s)" : "Usuário");
+      const permissionCount=Number(item.permissionCount??item.permissions?.length??0);
+      const profile = item.admin ? "Administrador" : item.technical ? "Técnico" : (permissionCount ? permissionCount + " permissão(ões)" : groups ? groups + " grupo(s)" : "Usuário");
 
       return `
         <tr data-user-row data-search="${escapeHtml((name + " " + login).toLowerCase())}" data-access-id="${escapeHtml(accessId)}">
@@ -5873,7 +5874,7 @@
 
     const help=document.getElementById("permissionMappingHelp");
     if(help){
-      help.textContent="As permissões são gravadas no BI. No acesso ao sistema, a identidade e a entidade são validadas novamente pela Central Betha.";
+      help.textContent="As permissões são gravadas por painel no BI. Tributos preserva a validação Betha; Contabilidade, Compras e Folha usam autorização local enquanto estiverem em AMOSTRA LOCAL.";
     }
   }
 
