@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261007-vella-redesign20">
+  <link rel="stylesheet" href="style.css?v=20261007-vella-sidebar1">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -59,23 +59,8 @@
 
   <bth-app id="bethaApp" menu-bg-color="#0b2842">
 
-    <div slot="menu_marca_produto" class="bi-product-brand vella-sidebar-brand">
+    <div slot="menu_marca_produto" class="bi-product-brand">
       <div class="bi-brand-row"><span class="bi-brand-mark" aria-hidden="true">V</span><strong>BI VELLA</strong></div>
-      <div class="sidebar-context-block" aria-label="Contexto do BI">
-        <span class="sidebar-context-label">ENTIDADE</span>
-        <button id="sidebarEntityButton" class="sidebar-context-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="sidebarEntityMenu">
-          <i class="mdi mdi-office-building-outline" aria-hidden="true"></i>
-          <span id="sidebarEntityContext">Selecione a entidade</span>
-          <i class="mdi mdi-chevron-down" aria-hidden="true"></i>
-        </button>
-        <div id="sidebarEntityMenu" class="sidebar-entity-menu" hidden>
-          <div class="entity-menu-title">Entidades autorizadas</div>
-          <div id="sidebarEntityList" class="entity-list"></div>
-        </div>
-        <span class="sidebar-context-label sidebar-system-label">SISTEMAS</span>
-        <div id="systemRailList" class="system-rail-list" role="navigation" aria-label="Sistemas disponíveis"></div>
-        <span class="sidebar-context-label sidebar-panel-label">MENU <strong id="sidebarSystemMenuLabel">TRIBUTOS</strong></span>
-      </div>
     </div>
 
     <div slot="menu_ferramentas" class="menu-tools" aria-label="Ferramentas">
@@ -126,6 +111,37 @@
     </div>
 
     <main slot="container_aplicacao" class="workspace">
+      <aside id="desktopSidebar" class="desktop-sidebar" aria-label="Navegação principal do BI Vella">
+        <div class="desktop-sidebar-inner">
+          <div class="sidebar-brand-panel">
+            <span class="bi-brand-mark" aria-hidden="true">V</span>
+            <div><strong>BI VELLA</strong><small>Inteligência municipal</small></div>
+          </div>
+
+          <div class="sidebar-context-block" aria-label="Contexto do BI">
+            <span class="sidebar-context-label">ENTIDADE</span>
+            <button id="sidebarEntityButton" class="sidebar-context-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="sidebarEntityMenu">
+              <i class="mdi mdi-office-building-outline" aria-hidden="true"></i>
+              <span id="sidebarEntityContext">Selecione a entidade</span>
+              <i class="mdi mdi-chevron-down" aria-hidden="true"></i>
+            </button>
+            <div id="sidebarEntityMenu" class="sidebar-entity-menu" hidden>
+              <div class="entity-menu-title">Entidades autorizadas</div>
+              <div id="sidebarEntityList" class="entity-list"></div>
+            </div>
+
+            <span class="sidebar-context-label sidebar-system-label">SISTEMA</span>
+            <div id="systemRailList" class="system-rail-list" role="navigation" aria-label="Sistemas disponíveis"></div>
+
+            <div class="sidebar-menu-heading">
+              <span class="sidebar-context-label">MENU</span>
+              <strong id="sidebarSystemMenuLabel">TRIBUTOS</strong>
+            </div>
+            <nav id="sidebarPanelList" class="sidebar-panel-list" aria-label="Painéis do sistema atual"></nav>
+          </div>
+        </div>
+      </aside>
+
       <section id="mobileContextBar" class="mobile-context-bar" aria-label="Contexto de navegação móvel">
         <label class="mobile-context-field" for="mobileEntitySelect">
           <span>Entidade</span>
@@ -773,7 +789,7 @@
   <script src="system-catalog.js?v=20261007-vella-redesign13"></script>
   <div id="uiToast" class="ui-toast" role="status" aria-live="polite" aria-atomic="true"></div>
   <script src="api-panel-catalog.js?v=20261006-chart-visible9"></script>
-  <script src="app.js?v=20261007-vella-redesign20"></script>
+  <script src="app.js?v=20261007-vella-sidebar1"></script>
   <script src="global-search.js?v=20261007-local-search1"></script>
 </body>
 </html>
