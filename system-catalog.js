@@ -446,6 +446,53 @@
       ch("despesas-mes","Evolução das despesas","line",{group:"mes",fields:[{field:"bruto",label:"Bruto"},{field:"liquido",label:"Líquido"},{field:"encargos",label:"Encargos"}],agg:"sum",format:"currency"})
     ]);
 
+  const sf=(id,label,options={})=>({id,field:id,label,type:"select",...options});
+  const qf=(id,label,placeholder)=>({id,field:id,label,type:"search",primary:false,placeholder});
+  const bf=(id,label,trueLabel="Sim",falseLabel="Não")=>({
+    id,field:id,label,type:"select",primary:false,dynamic:false,
+    options:[{value:"true",label:trueLabel},{value:"false",label:falseLabel}]
+  });
+  const secondary=filter=>({...filter,primary:false});
+
+  const panelFilters={
+    "contabil-visao-geral":[sf("unidade","Unidade"),sf("fonteRecurso","Fonte de recurso"),secondary(sf("status","Situação")),secondary(sf("credor","Credor"))],
+    "contabil-execucao-orcamentaria":[sf("unidade","Unidade"),sf("fonteRecurso","Fonte de recurso"),secondary(sf("funcao","Função")),secondary(sf("status","Situação"))],
+    "contabil-receita":[sf("unidade","Unidade"),sf("fonteRecurso","Fonte de recurso"),secondary(sf("status","Situação"))],
+    "contabil-despesa":[sf("unidade","Unidade"),sf("funcao","Função"),secondary(sf("natureza","Natureza")),secondary(sf("credor","Credor")),secondary(sf("status","Situação"))],
+    "contabil-empenhos":[sf("unidade","Unidade"),sf("status","Situação"),secondary(sf("natureza","Natureza")),secondary(sf("credor","Credor")),qf("empenho","Empenho","Pesquisar número do empenho")],
+    "contabil-movimentos":[sf("unidade","Unidade"),sf("status","Situação"),secondary(sf("natureza","Natureza")),secondary(sf("funcao","Função"))],
+    "contabil-restos":[sf("unidade","Unidade"),sf("credor","Credor"),secondary(sf("natureza","Natureza")),secondary(sf("status","Situação"))],
+    "contabil-credores":[sf("credor","Credor"),sf("unidade","Unidade"),secondary(sf("natureza","Natureza")),secondary(sf("status","Situação"))],
+    "contabil-demonstrativos":[sf("unidade","Unidade"),sf("funcao","Função"),secondary(sf("natureza","Natureza")),secondary(sf("fonteRecurso","Fonte de recurso"))],
+    "contabil-relatorios":[sf("unidade","Unidade"),sf("funcao","Função"),secondary(sf("natureza","Natureza")),secondary(sf("fonteRecurso","Fonte de recurso"))],
+    "contabil-controle":[sf("status","Situação"),sf("unidade","Unidade"),secondary(sf("natureza","Natureza")),secondary(sf("funcao","Função"))],
+
+    "compras-visao-geral":[sf("secretaria","Secretaria"),sf("modalidade","Modalidade"),secondary(sf("status","Situação")),secondary(sf("fornecedor","Fornecedor"))],
+    "compras-processos":[sf("secretaria","Secretaria"),sf("status","Situação"),secondary(sf("modalidade","Modalidade")),qf("processo","Processo","Pesquisar número do processo")],
+    "compras-licitacoes":[sf("modalidade","Modalidade"),sf("status","Situação"),secondary(sf("secretaria","Secretaria")),secondary(sf("fornecedor","Fornecedor"))],
+    "compras-contratos":[sf("secretaria","Secretaria"),sf("fornecedor","Fornecedor"),bf("contratoAtivo","Contrato","Ativo","Inativo"),secondary(sf("status","Situação"))],
+    "compras-fornecedores":[sf("fornecedor","Fornecedor"),sf("secretaria","Secretaria"),secondary(sf("modalidade","Modalidade")),secondary(sf("status","Situação"))],
+    "compras-atas":[sf("secretaria","Secretaria"),sf("fornecedor","Fornecedor"),bf("ataRegistro","Ata de registro","Com ata","Sem ata"),secondary(sf("modalidade","Modalidade")),qf("ata","Número da ata","Pesquisar ata")],
+    "compras-itens":[sf("itemCategoria","Categoria do item"),sf("secretaria","Secretaria"),secondary(sf("fornecedor","Fornecedor")),secondary(sf("status","Situação"))],
+    "compras-controle":[sf("status","Situação"),sf("secretaria","Secretaria"),secondary(sf("modalidade","Modalidade")),secondary(sf("fornecedor","Fornecedor"))],
+
+    "folha-visao-geral":[sf("secretaria","Secretaria"),sf("vinculo","Vínculo"),secondary(sf("status","Situação")),secondary(sf("cargo","Cargo"))],
+    "folha-servidores":[sf("secretaria","Secretaria"),sf("status","Situação"),secondary(sf("vinculo","Vínculo")),secondary(sf("cargo","Cargo")),bf("ferias","Férias","Em férias","Fora de férias"),bf("afastado","Afastamento","Afastado","Não afastado"),qf("servidor","Servidor","Pesquisar servidor")],
+    "folha-vinculos":[sf("vinculo","Vínculo"),sf("secretaria","Secretaria"),secondary(sf("status","Situação")),secondary(sf("cargo","Cargo"))],
+    "folha-cargos":[sf("cargo","Cargo"),sf("secretaria","Secretaria"),secondary(sf("vinculo","Vínculo")),secondary(sf("status","Situação"))],
+    "folha-departamentos":[sf("departamento","Departamento"),sf("secretaria","Secretaria"),secondary(sf("cargo","Cargo")),secondary(sf("status","Situação"))],
+    "folha-mensal":[sf("secretaria","Secretaria"),sf("cargo","Cargo"),secondary(sf("vinculo","Vínculo")),secondary(sf("status","Situação"))],
+    "folha-eventos":[sf("evento","Evento"),sf("secretaria","Secretaria"),secondary(sf("vinculo","Vínculo")),secondary(sf("cargo","Cargo"))],
+    "folha-encargos":[sf("secretaria","Secretaria"),sf("vinculo","Vínculo"),secondary(sf("cargo","Cargo")),secondary(sf("status","Situação"))],
+    "folha-beneficios":[sf("beneficio","Benefício"),sf("secretaria","Secretaria"),secondary(sf("vinculo","Vínculo")),secondary(sf("cargo","Cargo"))],
+    "folha-despesas":[sf("secretaria","Secretaria"),sf("cargo","Cargo"),secondary(sf("vinculo","Vínculo")),secondary(sf("status","Situação"))],
+    "folha-controle":[sf("status","Situação"),sf("secretaria","Secretaria"),bf("ferias","Férias","Em férias","Fora de férias"),bf("afastado","Afastamento","Afastado","Não afastado"),secondary(sf("vinculo","Vínculo"))]
+  };
+
+  for(const [view,filters] of Object.entries(panelFilters)){
+    if(dashboards[view]) dashboards[view].filters=filters;
+  }
+
   const item=(id,descricao,icone="chart-box-outline")=>({id,descricao,icone,rota:id,possuiPermissao:true});
   const directMenu=(home,items=[])=>[
     {id:home,descricao:"Início",icone:"home-outline",rota:home,possuiPermissao:true},
