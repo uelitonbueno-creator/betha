@@ -770,65 +770,34 @@
     updateActiveFilterSummary();
   }
 
-  function renderDashboardFilters(def) {
-    const row=document.getElementById("advancedFilterRow");
-    const container=document.getElementById("advancedFilters");
-    const toggle=document.getElementById("moreFiltersButton");
-    if(!row||!container) return;
+  function filterControlHtml(filter,state,prefix="filter") {
+    const current=String(state[filter.id]||"");
+    const fieldId=prefix+"-"+filter.id;
 
-    const filters=Array.isArray(def?.filters)?def.filters:[];
-    if(!filters.length){
-      row.hidden=true;
-      container.innerHTML="";
-      if(toggle){
-        toggle.hidden=true;
-        toggle.setAttribute("aria-expanded","false");
-      }
-      updateFilterActiveCount();
-      return;
-    }
-
-    const state=currentFilterState(currentView);
-    const hasActive=Object.keys(currentDashboardFilters()).length>0;
-    if(toggle){
-      toggle.hidden=false;
-      const expanded=toggle.dataset.view===currentView
-        ? toggle.getAttribute("aria-expanded")==="true"
-        : (hasActive||Boolean(def?.localSample));
-      toggle.dataset.view=currentView;
-      toggle.setAttribute("aria-expanded",String(expanded));
-      row.hidden=!expanded;
-    }else{
-      row.hidden=false;
-    }
-
-    container.innerHTML=filters.map(filter=>{
-      const current=String(state[filter.id]||"");
-      const fieldId="filter-"+filter.id;
-
-      if(filter.type==="search"){
-        return '<div class="field filter-search-field">'+
-          '<label for="'+escapeHtml(fieldId)+'">'+escapeHtml(filter.label||filter.id)+'</label>'+
-          '<div class="filter-search-wrap"><i class="mdi mdi-magnify"></i>'+
-          '<input id="'+escapeHtml(fieldId)+'" type="search" data-dashboard-filter="'+escapeHtml(filter.id)+'" '+
-          'placeholder="'+escapeHtml(filter.placeholder||"Pesquisar")+'" value="'+escapeHtml(current)+'"></div></div>';
-      }
-
-      const options=normalizeFilterOptions(filter.options||[]);
-      const currentExists=options.some(item=>item.value===current);
-      const all=[
-        {value:"",label:"Todos"},
-        ...options,
-        ...(current&&!currentExists?[{value:current,label:current}]:[])
-      ];
-
-      return '<div class="field">'+
+    if(filter.type==="search"){
+      return '<div class="field filter-search-field">'+
         '<label for="'+escapeHtml(fieldId)+'">'+escapeHtml(filter.label||filter.id)+'</label>'+
-        '<select id="'+escapeHtml(fieldId)+'" data-dashboard-filter="'+escapeHtml(filter.id)+'">'+
-        all.map(item=>'<option value="'+escapeHtml(item.value)+'"'+(item.value===current?' selected':'')+'>'+escapeHtml(item.label)+'</option>').join("")+
-        '</select></div>';
-    }).join("");
+        '<div class="filter-search-wrap"><i class="mdi mdi-magnify"></i>'+
+        '<input id="'+escapeHtml(fieldId)+'" type="search" data-dashboard-filter="'+escapeHtml(filter.id)+'" '+
+        'placeholder="'+escapeHtml(filter.placeholder||"Pesquisar")+'" value="'+escapeHtml(current)+'"></div></div>';
+    }
 
+    const options=normalizeFilterOptions(filter.options||[]);
+    const currentExists=options.some(item=>item.value===current);
+    const all=[
+      {value:"",label:"Todos"},
+      ...options,
+      ...(current&&!currentExists?[{value:current,label:current}]:[])
+    ];
+
+    return '<div class="field">'+
+      '<label for="'+escapeHtml(fieldId)+'">'+escapeHtml(filter.label||filter.id)+'</label>'+
+      '<select id="'+escapeHtml(fieldId)+'" data-dashboard-filter="'+escapeHtml(filter.id)+'">'+
+      all.map(item=>'<option value="'+escapeHtml(item.value)+'"'+(item.value===current?' selected':'')+'>'+escapeHtml(item.label)+'</option>').join("")+
+      '</select></div>';
+  }
+
+  function bindDashboardFilterControls(hosts=[]) {
     const applyControlValue=(control)=>{
       const state=currentFilterState(currentView);
       const value=String(control.value||"").trim();
@@ -841,31 +810,83 @@
       if(definition?.type!=="search") saveViewPreferences({silent:true});
 
       const loaded=loadDashboardFromCache(currentView);
-      if(!loaded) setStatus("waiting","Atualizando o gráfico para os filtros selecionados…");
+      if(!loaded) setStatus("waiting","Atualizando o painel para os filtros selecionados…");
       loadDashboardData(currentView,{force:true});
     };
 
-    container.querySelectorAll("select[data-dashboard-filter]").forEach(select=>{
-      select.addEventListener("change",()=>applyControlValue(select));
-    });
-
-    container.querySelectorAll('input[type="search"][data-dashboard-filter]').forEach(input=>{
-      let timer=null;
-      input.addEventListener("input",()=>{
-        clearTimeout(timer);
-        timer=setTimeout(()=>applyControlValue(input),350);
+    for(const host of hosts.filter(Boolean)){
+      host.querySelectorAll("select[data-dashboard-filter]").forEach(select=>{
+        select.addEventListener("change",()=>applyControlValue(select));
       });
-      input.addEventListener("keydown",(event)=>{
-        if(event.key==="Enter"){
-          event.preventDefault();
+
+      host.querySelectorAll('input[type="search"][data-dashboard-filter]').forEach(input=>{
+        let timer=null;
+        input.addEventListener("input",()=>{
           clearTimeout(timer);
-          applyControlValue(input);
-        }
+          timer=setTimeout(()=>applyControlValue(input),350);
+        });
+        input.addEventListener("keydown",(event)=>{
+          if(event.key==="Enter"){
+            event.preventDefault();
+            clearTimeout(timer);
+            applyControlValue(input);
+          }
+        });
       });
+    }
+  }
+
+  function renderDashboardFilters(def) {
+    const row=document.getElementById("advancedFilterRow");
+    const container=document.getElementById("advancedFilters");
+    const primaryContainer=document.getElementById("primaryDynamicFilters");
+    const toggle=document.getElementById("moreFiltersButton");
+    if(!row||!container||!primaryContainer) return;
+
+    const filters=Array.isArray(def?.filters)?def.filters:[];
+    const primaryFilters=filters.filter(filter=>filter.primary!==false).slice(0,2);
+    const primaryIds=new Set(primaryFilters.map(filter=>filter.id));
+    const advancedFilters=filters.filter(filter=>!primaryIds.has(filter.id));
+
+    if(!filters.length){
+      row.hidden=true;
+      container.innerHTML="";
+      primaryContainer.innerHTML="";
+      primaryContainer.hidden=true;
+      if(toggle){
+        toggle.hidden=true;
+        toggle.setAttribute("aria-expanded","false");
+      }
+      updateFilterActiveCount();
+      return;
+    }
+
+    const state=currentFilterState(currentView);
+    primaryContainer.hidden=!primaryFilters.length;
+    primaryContainer.innerHTML=primaryFilters.map(filter=>filterControlHtml(filter,state,"primary-filter")).join("");
+
+    const hasAdvancedActive=advancedFilters.some(filter=>{
+      const value=state[filter.id];
+      return value!==undefined&&value!==null&&String(value)!=="";
     });
 
+    if(toggle){
+      toggle.hidden=!advancedFilters.length;
+      const expanded=advancedFilters.length && (toggle.dataset.view===currentView
+        ? toggle.getAttribute("aria-expanded")==="true"
+        : hasAdvancedActive);
+      toggle.dataset.view=currentView;
+      toggle.setAttribute("aria-expanded",String(Boolean(expanded)));
+      row.hidden=!expanded;
+    }else{
+      row.hidden=!advancedFilters.length;
+    }
+
+    container.innerHTML=advancedFilters.map(filter=>filterControlHtml(filter,state,"filter")).join("");
+    bindDashboardFilterControls([primaryContainer,container]);
     updateFilterActiveCount();
   }
+
   function populateDashboardFilterOptions(payload) {
     const def=dashboards[currentView];
     const filters=Array.isArray(def?.filters)?def.filters:[];
