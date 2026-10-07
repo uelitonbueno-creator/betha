@@ -1,7 +1,7 @@
 {
   "mode": "sample",
   "system": "folha",
-  "generatedAt": "2026-10-06",
+  "generatedAt": "2026-10-07",
   "recordCount": 100,
   "rows": [
     {
@@ -19,7 +19,11 @@
       "encargos": 608,
       "ferias": true,
       "afastado": true,
-      "status": "Afastado"
+      "status": "Afastado",
+      "cargo": "Analista",
+      "departamento": "Administração / Unidade 1",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 2,
@@ -36,7 +40,11 @@
       "encargos": 744,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Professor",
+      "departamento": "Educação / Unidade 2",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 3,
@@ -53,7 +61,11 @@
       "encargos": 892,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Técnico",
+      "departamento": "Saúde / Unidade 3",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 4,
@@ -70,7 +82,11 @@
       "encargos": 785,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Agente administrativo",
+      "departamento": "Obras / Unidade 1",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 5,
@@ -87,7 +103,11 @@
       "encargos": 932,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Assistente",
+      "departamento": "Assistência Social / Unidade 2",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 6,
@@ -104,7 +124,11 @@
       "encargos": 1091,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Analista",
+      "departamento": "Administração / Unidade 3",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 7,
@@ -121,7 +145,11 @@
       "encargos": 961,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Professor",
+      "departamento": "Educação / Unidade 1",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 8,
@@ -138,7 +166,11 @@
       "encargos": 1120,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Técnico",
+      "departamento": "Saúde / Unidade 2",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 9,
@@ -155,7 +187,11 @@
       "encargos": 1290,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Agente administrativo",
+      "departamento": "Obras / Unidade 3",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 10,
@@ -172,7 +208,11 @@
       "encargos": 1138,
       "ferias": true,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Assistente",
+      "departamento": "Assistência Social / Unidade 1",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 11,
@@ -189,7 +229,11 @@
       "encargos": 1308,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Analista",
+      "departamento": "Administração / Unidade 2",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 12,
@@ -206,7 +250,11 @@
       "encargos": 1489,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Professor",
+      "departamento": "Educação / Unidade 3",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 13,
@@ -223,7 +271,11 @@
       "encargos": 1315,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Técnico",
+      "departamento": "Saúde / Unidade 1",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 14,
@@ -240,7 +292,11 @@
       "encargos": 1496,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Agente administrativo",
+      "departamento": "Obras / Unidade 2",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 15,
@@ -257,7 +313,11 @@
       "encargos": 760,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Assistente",
+      "departamento": "Assistência Social / Unidade 3",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 16,
@@ -274,7 +334,11 @@
       "encargos": 667,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Analista",
+      "departamento": "Administração / Unidade 1",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 17,
@@ -291,7 +355,11 @@
       "encargos": 807,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Professor",
+      "departamento": "Educação / Unidade 2",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 18,
@@ -308,7 +376,11 @@
       "encargos": 959,
       "ferias": false,
       "afastado": true,
-      "status": "Afastado"
+      "status": "Afastado",
+      "cargo": "Técnico",
+      "departamento": "Saúde / Unidade 3",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 19,
@@ -325,7 +397,11 @@
       "encargos": 844,
       "ferias": true,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Agente administrativo",
+      "departamento": "Obras / Unidade 1",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 20,
@@ -342,7 +418,11 @@
       "encargos": 995,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Assistente",
+      "departamento": "Assistência Social / Unidade 2",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 21,
@@ -359,7 +439,11 @@
       "encargos": 1158,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Analista",
+      "departamento": "Administração / Unidade 3",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 22,
@@ -376,7 +460,11 @@
       "encargos": 1020,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Professor",
+      "departamento": "Educação / Unidade 1",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 23,
@@ -393,7 +481,11 @@
       "encargos": 1183,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Técnico",
+      "departamento": "Saúde / Unidade 2",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 24,
@@ -410,7 +502,11 @@
       "encargos": 1357,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Agente administrativo",
+      "departamento": "Obras / Unidade 3",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 25,
@@ -427,7 +523,11 @@
       "encargos": 1197,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Assistente",
+      "departamento": "Assistência Social / Unidade 1",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 26,
@@ -444,7 +544,11 @@
       "encargos": 1371,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Analista",
+      "departamento": "Administração / Unidade 2",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 27,
@@ -461,7 +565,11 @@
       "encargos": 1556,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Professor",
+      "departamento": "Educação / Unidade 3",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 28,
@@ -478,7 +586,11 @@
       "encargos": 1374,
       "ferias": true,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Técnico",
+      "departamento": "Saúde / Unidade 1",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 29,
@@ -495,7 +607,11 @@
       "encargos": 682,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Agente administrativo",
+      "departamento": "Obras / Unidade 2",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 30,
@@ -512,7 +628,11 @@
       "encargos": 826,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Assistente",
+      "departamento": "Assistência Social / Unidade 3",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 31,
@@ -529,7 +649,11 @@
       "encargos": 726,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Analista",
+      "departamento": "Administração / Unidade 1",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 32,
@@ -546,7 +670,11 @@
       "encargos": 870,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Professor",
+      "departamento": "Educação / Unidade 2",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 33,
@@ -563,7 +691,11 @@
       "encargos": 1025,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Técnico",
+      "departamento": "Saúde / Unidade 3",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 34,
@@ -580,7 +712,11 @@
       "encargos": 903,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Agente administrativo",
+      "departamento": "Obras / Unidade 1",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 35,
@@ -597,7 +733,11 @@
       "encargos": 1057,
       "ferias": false,
       "afastado": true,
-      "status": "Afastado"
+      "status": "Afastado",
+      "cargo": "Assistente",
+      "departamento": "Assistência Social / Unidade 2",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 36,
@@ -614,7 +754,11 @@
       "encargos": 1224,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Analista",
+      "departamento": "Administração / Unidade 3",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 37,
@@ -631,7 +775,11 @@
       "encargos": 1079,
       "ferias": true,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Professor",
+      "departamento": "Educação / Unidade 1",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 38,
@@ -648,7 +796,11 @@
       "encargos": 1245,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Técnico",
+      "departamento": "Saúde / Unidade 2",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 39,
@@ -665,7 +817,11 @@
       "encargos": 1423,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Agente administrativo",
+      "departamento": "Obras / Unidade 3",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 40,
@@ -682,7 +838,11 @@
       "encargos": 1256,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Assistente",
+      "departamento": "Assistência Social / Unidade 1",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 41,
@@ -699,7 +859,11 @@
       "encargos": 1433,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Analista",
+      "departamento": "Administração / Unidade 2",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 42,
@@ -716,7 +880,11 @@
       "encargos": 1622,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Professor",
+      "departamento": "Educação / Unidade 3",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 43,
@@ -733,7 +901,11 @@
       "encargos": 608,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Técnico",
+      "departamento": "Saúde / Unidade 1",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 44,
@@ -750,7 +922,11 @@
       "encargos": 744,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Agente administrativo",
+      "departamento": "Obras / Unidade 2",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 45,
@@ -767,7 +943,11 @@
       "encargos": 892,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Assistente",
+      "departamento": "Assistência Social / Unidade 3",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 46,
@@ -784,7 +964,11 @@
       "encargos": 785,
       "ferias": true,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Analista",
+      "departamento": "Administração / Unidade 1",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 47,
@@ -801,7 +985,11 @@
       "encargos": 932,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Professor",
+      "departamento": "Educação / Unidade 2",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 48,
@@ -818,7 +1006,11 @@
       "encargos": 1091,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Técnico",
+      "departamento": "Saúde / Unidade 3",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 49,
@@ -835,7 +1027,11 @@
       "encargos": 961,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Agente administrativo",
+      "departamento": "Obras / Unidade 1",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 50,
@@ -852,7 +1048,11 @@
       "encargos": 1120,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Assistente",
+      "departamento": "Assistência Social / Unidade 2",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 51,
@@ -869,7 +1069,11 @@
       "encargos": 1290,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Analista",
+      "departamento": "Administração / Unidade 3",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 52,
@@ -886,7 +1090,11 @@
       "encargos": 1138,
       "ferias": false,
       "afastado": true,
-      "status": "Afastado"
+      "status": "Afastado",
+      "cargo": "Professor",
+      "departamento": "Educação / Unidade 1",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 53,
@@ -903,7 +1111,11 @@
       "encargos": 1308,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Técnico",
+      "departamento": "Saúde / Unidade 2",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 54,
@@ -920,7 +1132,11 @@
       "encargos": 1489,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Agente administrativo",
+      "departamento": "Obras / Unidade 3",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 55,
@@ -937,7 +1153,11 @@
       "encargos": 1315,
       "ferias": true,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Assistente",
+      "departamento": "Assistência Social / Unidade 1",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 56,
@@ -954,7 +1174,11 @@
       "encargos": 1496,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Analista",
+      "departamento": "Administração / Unidade 2",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 57,
@@ -971,7 +1195,11 @@
       "encargos": 760,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Professor",
+      "departamento": "Educação / Unidade 3",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 58,
@@ -988,7 +1216,11 @@
       "encargos": 667,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Técnico",
+      "departamento": "Saúde / Unidade 1",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 59,
@@ -1005,7 +1237,11 @@
       "encargos": 807,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Agente administrativo",
+      "departamento": "Obras / Unidade 2",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 60,
@@ -1022,7 +1258,11 @@
       "encargos": 959,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Assistente",
+      "departamento": "Assistência Social / Unidade 3",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 61,
@@ -1039,7 +1279,11 @@
       "encargos": 844,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Analista",
+      "departamento": "Administração / Unidade 1",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 62,
@@ -1056,7 +1300,11 @@
       "encargos": 995,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Professor",
+      "departamento": "Educação / Unidade 2",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 63,
@@ -1073,7 +1321,11 @@
       "encargos": 1158,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Técnico",
+      "departamento": "Saúde / Unidade 3",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 64,
@@ -1090,7 +1342,11 @@
       "encargos": 1020,
       "ferias": true,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Agente administrativo",
+      "departamento": "Obras / Unidade 1",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 65,
@@ -1107,7 +1363,11 @@
       "encargos": 1183,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Assistente",
+      "departamento": "Assistência Social / Unidade 2",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 66,
@@ -1124,7 +1384,11 @@
       "encargos": 1357,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Analista",
+      "departamento": "Administração / Unidade 3",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 67,
@@ -1141,7 +1405,11 @@
       "encargos": 1197,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Professor",
+      "departamento": "Educação / Unidade 1",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 68,
@@ -1158,7 +1426,11 @@
       "encargos": 1371,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Técnico",
+      "departamento": "Saúde / Unidade 2",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 69,
@@ -1175,7 +1447,11 @@
       "encargos": 1556,
       "ferias": false,
       "afastado": true,
-      "status": "Afastado"
+      "status": "Afastado",
+      "cargo": "Agente administrativo",
+      "departamento": "Obras / Unidade 3",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 70,
@@ -1192,7 +1468,11 @@
       "encargos": 1374,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Assistente",
+      "departamento": "Assistência Social / Unidade 1",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 71,
@@ -1209,7 +1489,11 @@
       "encargos": 682,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Analista",
+      "departamento": "Administração / Unidade 2",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 72,
@@ -1226,7 +1510,11 @@
       "encargos": 826,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Professor",
+      "departamento": "Educação / Unidade 3",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 73,
@@ -1243,7 +1531,11 @@
       "encargos": 726,
       "ferias": true,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Técnico",
+      "departamento": "Saúde / Unidade 1",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 74,
@@ -1260,7 +1552,11 @@
       "encargos": 870,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Agente administrativo",
+      "departamento": "Obras / Unidade 2",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 75,
@@ -1277,7 +1573,11 @@
       "encargos": 1025,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Assistente",
+      "departamento": "Assistência Social / Unidade 3",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 76,
@@ -1294,7 +1594,11 @@
       "encargos": 903,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Analista",
+      "departamento": "Administração / Unidade 1",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 77,
@@ -1311,7 +1615,11 @@
       "encargos": 1057,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Professor",
+      "departamento": "Educação / Unidade 2",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 78,
@@ -1328,7 +1636,11 @@
       "encargos": 1224,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Técnico",
+      "departamento": "Saúde / Unidade 3",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 79,
@@ -1345,7 +1657,11 @@
       "encargos": 1079,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Agente administrativo",
+      "departamento": "Obras / Unidade 1",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 80,
@@ -1362,7 +1678,11 @@
       "encargos": 1245,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Assistente",
+      "departamento": "Assistência Social / Unidade 2",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 81,
@@ -1379,7 +1699,11 @@
       "encargos": 1423,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Analista",
+      "departamento": "Administração / Unidade 3",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 82,
@@ -1396,7 +1720,11 @@
       "encargos": 1256,
       "ferias": true,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Professor",
+      "departamento": "Educação / Unidade 1",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 83,
@@ -1413,7 +1741,11 @@
       "encargos": 1433,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Técnico",
+      "departamento": "Saúde / Unidade 2",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 84,
@@ -1430,7 +1762,11 @@
       "encargos": 1622,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Agente administrativo",
+      "departamento": "Obras / Unidade 3",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 85,
@@ -1447,7 +1783,11 @@
       "encargos": 608,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Assistente",
+      "departamento": "Assistência Social / Unidade 1",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 86,
@@ -1464,7 +1804,11 @@
       "encargos": 744,
       "ferias": false,
       "afastado": true,
-      "status": "Afastado"
+      "status": "Afastado",
+      "cargo": "Analista",
+      "departamento": "Administração / Unidade 2",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 87,
@@ -1481,7 +1825,11 @@
       "encargos": 892,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Professor",
+      "departamento": "Educação / Unidade 3",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 88,
@@ -1498,7 +1846,11 @@
       "encargos": 785,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Técnico",
+      "departamento": "Saúde / Unidade 1",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 89,
@@ -1515,7 +1867,11 @@
       "encargos": 932,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Agente administrativo",
+      "departamento": "Obras / Unidade 2",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 90,
@@ -1532,7 +1888,11 @@
       "encargos": 1091,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Assistente",
+      "departamento": "Assistência Social / Unidade 3",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 91,
@@ -1549,7 +1909,11 @@
       "encargos": 961,
       "ferias": true,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Analista",
+      "departamento": "Administração / Unidade 1",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 92,
@@ -1566,7 +1930,11 @@
       "encargos": 1120,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Professor",
+      "departamento": "Educação / Unidade 2",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 93,
@@ -1583,7 +1951,11 @@
       "encargos": 1290,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Técnico",
+      "departamento": "Saúde / Unidade 3",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 94,
@@ -1600,7 +1972,11 @@
       "encargos": 1138,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Agente administrativo",
+      "departamento": "Obras / Unidade 1",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 95,
@@ -1617,7 +1993,11 @@
       "encargos": 1308,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Assistente",
+      "departamento": "Assistência Social / Unidade 2",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 96,
@@ -1634,7 +2014,11 @@
       "encargos": 1489,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Analista",
+      "departamento": "Administração / Unidade 3",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     },
     {
       "id": 97,
@@ -1651,7 +2035,11 @@
       "encargos": 1315,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Professor",
+      "departamento": "Educação / Unidade 1",
+      "beneficio": "Auxílio alimentação",
+      "beneficioValor": 420
     },
     {
       "id": 98,
@@ -1668,7 +2056,11 @@
       "encargos": 1496,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Técnico",
+      "departamento": "Saúde / Unidade 2",
+      "beneficio": "Auxílio transporte",
+      "beneficioValor": 280
     },
     {
       "id": 99,
@@ -1685,7 +2077,11 @@
       "encargos": 760,
       "ferias": false,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Agente administrativo",
+      "departamento": "Obras / Unidade 3",
+      "beneficio": "Plano de saúde",
+      "beneficioValor": 650
     },
     {
       "id": 100,
@@ -1702,7 +2098,11 @@
       "encargos": 667,
       "ferias": true,
       "afastado": false,
-      "status": "Ativo"
+      "status": "Ativo",
+      "cargo": "Assistente",
+      "departamento": "Assistência Social / Unidade 1",
+      "beneficio": "Sem benefício",
+      "beneficioValor": 0
     }
   ]
 }
