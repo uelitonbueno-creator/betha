@@ -5398,8 +5398,17 @@ function biUserAliases(userId,accesses=[]) {
   return [...aliases];
 }
 
+async function ensureBiTenantAdminStore(env) {
+  if(!env.AUTH_DB) return false;
+  await env.AUTH_DB.prepare(
+    "CREATE TABLE IF NOT EXISTS bi_tenant_admins (tenant_id TEXT NOT NULL,user_id TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY (tenant_id,user_id))"
+  ).run();
+  return true;
+}
+
 async function isBiTenantAdmin(env,tenantId,aliases=[]) {
   if(!env.AUTH_DB||!tenantId||!aliases.length) return false;
+  await ensureBiTenantAdminStore(env);
   for(const alias of aliases){
     const row=await env.AUTH_DB.prepare(
       "SELECT 1 AS ok FROM bi_tenant_admins WHERE tenant_id=?1 AND lower(user_id)=lower(?2) LIMIT 1"
@@ -5409,19 +5418,56 @@ async function isBiTenantAdmin(env,tenantId,aliases=[]) {
   return false;
 }
 
+async function rememberTenantAdminAliases(env,tenantId,aliases=[]) {
+  if(!env.AUTH_DB||!tenantId||!aliases.length) return;
+  await ensureBiTenantAdminStore(env);
+  const now=new Date().toISOString();
+  for(const alias of new Set(aliases.map(value=>String(value||"").trim()).filter(Boolean))){
+    await env.AUTH_DB.prepare(
+      "INSERT OR IGNORE INTO bi_tenant_admins (tenant_id,user_id,created_at) VALUES (?1,?2,?3)"
+    ).bind(String(tenantId),alias,now).run();
+  }
+}
+
 async function rememberBiTenantAdmin(env,tenantId,auth) {
-  if(!env.AUTH_DB||!tenantId||!auth) return;
-  const aliases=new Set([
+  if(!auth) return;
+  await rememberTenantAdminAliases(env,tenantId,[
     ...biUserAliases(auth.userId,[auth.access,auth.bethaAccess].filter(Boolean)),
     auditActorLabel(auth.access)
   ]);
-  const now=new Date().toISOString();
-  for(const alias of aliases){
-    if(!alias) continue;
-    await env.AUTH_DB.prepare(
-      "INSERT OR IGNORE INTO bi_tenant_admins (tenant_id,user_id,created_at) VALUES (?1,?2,?3)"
-    ).bind(String(tenantId),String(alias),now).run();
+}
+
+function auditActorMatchesAliases(actor,aliases=[]) {
+  const normalized=String(actor||"").trim().toLowerCase();
+  if(!normalized || normalized==="authenticated-user") return false;
+  return aliases.some(alias=>String(alias||"").trim().toLowerCase()===normalized);
+}
+
+async function legacyTenantOwnershipFromAudit(env,targetTenantId,sourceTenantIds,aliases,auditCache=new Map()) {
+  if(!env.BI_SESSIONS||!targetTenantId||!sourceTenantIds.length||!aliases.length) return false;
+  for(const sourceTenantId of [...new Set(sourceTenantIds)]){
+    let events=auditCache.get(sourceTenantId);
+    if(!events){
+      try{
+        const result=await listAuditEvents(env,sourceTenantId,500);
+        events=Array.isArray(result.events)?result.events:[];
+      }catch{
+        events=[];
+      }
+      auditCache.set(sourceTenantId,events);
+    }
+    const owned=events.some(event=>
+      event?.category==="configuration" &&
+      event?.action==="entity.save" &&
+      String(event?.subject||"")===String(targetTenantId) &&
+      auditActorMatchesAliases(event?.actor,aliases)
+    );
+    if(owned){
+      await rememberTenantAdminAliases(env,targetTenantId,aliases);
+      return true;
+    }
   }
+  return false;
 }
 
 function applyBiGrantToAccess(access,grant) {
@@ -7244,7 +7290,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-07-tenant-selector-admin-v90",
+        buildVersion:"2026-10-07-tenant-selector-owner-backfill-v91",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
@@ -7851,8 +7897,12 @@ export default {
         const registry=await tenantRegistry(env);
         const tenants=[];
         const tenantErrors=[];
+        const candidates=[];
+        const directTenantIds=[];
         const userAliases=biUserAliases(userId,accesses);
 
+        // Primeira passagem: resolve todos os contextos e identifica quais
+        // prefeituras têm acesso Betha direto para esta sessão.
         for (const id of Object.keys(registry)) {
           try {
             const tenant=await resolveTenant(env,id);
@@ -7865,36 +7915,8 @@ export default {
               count:contextMatches.length
             });
 
-            const tenantAdmin=!access && await isBiTenantAdmin(env,tenant.id,userAliases);
-            if (!access && !tenantAdmin) {
-              await authTrace(env,"TENANT_ACCESS_NOT_MATCHED",{tenant:id});
-              continue;
-            }
-
-            const grant=userId?await getBiUserGrant(env,tenant.id,userId):null;
-            if(access && !grant && access.admin!==true && access.technical!==true){
-              await authTrace(env,"TENANT_BI_GRANT_MISSING",{tenant:id});
-              continue;
-            }
-            const baseAccess=access || {
-              accepted:true,
-              admin:true,
-              technical:true,
-              user:userId||userAliases[0]||"",
-              userName:userId||userAliases[0]||""
-            };
-            const effective=tenantAdmin ? baseAccess : applyBiGrantToAccess(baseAccess,grant);
-            tenants.push({
-              id:tenant.id,
-              name:tenant.name,
-              entityId:context.entity,
-              databaseId:context.database,
-              admin:Boolean(effective.admin),
-              technical:Boolean(effective.technical),
-              allowedViews:permissionViewsForAccess(effective),
-              allowedAdminViews:adminViewsForAccess(effective)
-            });
-            await authTrace(env,"TENANT_AUTHORIZED",{tenant:id,biManaged:Boolean(grant),tenantAdmin});
+            if(access) directTenantIds.push(tenant.id);
+            candidates.push({id,tenant,context,access});
           } catch(error) {
             await authTrace(env,"TENANT_VALIDATION_ERROR",{
               tenant:id,
@@ -7903,6 +7925,59 @@ export default {
             tenantErrors.push(error && error.message ? error.message : "TENANT_VALIDATION_FAILED");
             console.warn("tenant validation",id,error.message);
           }
+        }
+
+        // Segunda passagem: além do acesso direto, aceita o administrador que
+        // cadastrou a prefeitura no BI. Para cadastros anteriores à tabela de
+        // vínculo, o histórico auditado de entity.save faz a migração uma vez.
+        const auditCache=new Map();
+        for (const candidate of candidates) {
+          const {id,tenant,context,access}=candidate;
+          let tenantAdmin=false;
+
+          if(!access){
+            tenantAdmin=await isBiTenantAdmin(env,tenant.id,userAliases);
+            if(!tenantAdmin){
+              tenantAdmin=await legacyTenantOwnershipFromAudit(
+                env,
+                tenant.id,
+                directTenantIds,
+                userAliases,
+                auditCache
+              );
+            }
+          }
+
+          if (!access && !tenantAdmin) {
+            await authTrace(env,"TENANT_ACCESS_NOT_MATCHED",{tenant:id});
+            continue;
+          }
+
+          const grant=userId?await getBiUserGrant(env,tenant.id,userId):null;
+          if(access && !grant && access.admin!==true && access.technical!==true){
+            await authTrace(env,"TENANT_BI_GRANT_MISSING",{tenant:id});
+            continue;
+          }
+
+          const baseAccess=access || {
+            accepted:true,
+            admin:true,
+            technical:true,
+            user:userId||userAliases[0]||"",
+            userName:userId||userAliases[0]||""
+          };
+          const effective=tenantAdmin ? baseAccess : applyBiGrantToAccess(baseAccess,grant);
+          tenants.push({
+            id:tenant.id,
+            name:tenant.name,
+            entityId:context.entity,
+            databaseId:context.database,
+            admin:Boolean(effective.admin),
+            technical:Boolean(effective.technical),
+            allowedViews:permissionViewsForAccess(effective),
+            allowedAdminViews:adminViewsForAccess(effective)
+          });
+          await authTrace(env,"TENANT_AUTHORIZED",{tenant:id,biManaged:Boolean(grant),tenantAdmin});
         }
 
         if (!tenants.length && tenantErrors.includes("SERVICE_LICENSE_SCOPE_REQUIRED")) {
