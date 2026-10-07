@@ -5198,7 +5198,6 @@
     const targets=[systemList,systemRailList].filter(Boolean);
     for(const target of targets) target.innerHTML="";
     renderMobileSystemSelector();
-    renderSidebarPanelMenu();
     for(const system of accessibleSystemsForTenant()){
       const icon=String(system.icon||"application-cog-outline");
       if(systemList){
