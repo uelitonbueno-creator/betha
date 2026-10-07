@@ -7833,3 +7833,36 @@ bth-app{--menu-bg-color:var(--vella-sidebar)}
   .settings-utility-menu{padding:12px}
   .settings-utility-card{padding:11px 9px}
 }
+/* Keep the same four-color KPI sequence across every dashboard. */
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-0{background:linear-gradient(135deg,#0878f9,#0d65d8)!important}
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-1{background:linear-gradient(135deg,#0aae72,#078d60)!important}
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-2{background:linear-gradient(135deg,#ffa114,#f18b05)!important}
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-3{background:linear-gradient(135deg,#7c3aed,#6530c8)!important}
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-0,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-1,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-2,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-3{border:0!important;color:#fff!important}
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-0 small,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-1 small,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-2 small,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-3 small,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-0 strong,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-1 strong,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-2 strong,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-3 strong,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-0 span,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-1 span,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-2 span,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-3 span,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-0 .kpi-kind-icon,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-1 .kpi-kind-icon,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-2 .kpi-kind-icon,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-3 .kpi-kind-icon,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-0 .kpi-more,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-1 .kpi-more,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-2 .kpi-more,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-3 .kpi-more,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-0 .kpi-favorite-button,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-1 .kpi-favorite-button,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-2 .kpi-favorite-button,
+#dashboardView[data-dashboard] .kpi-card.kpi-tone-3 .kpi-favorite-button{color:#fff!important}
