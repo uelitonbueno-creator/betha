@@ -162,6 +162,7 @@
       bethaApp.setMenuAtivo(currentView);
     }
     if(typeof syncSettingsUtilityPermissions==="function")syncSettingsUtilityPermissions();
+    if(typeof syncMobileContextSelectors==="function")syncMobileContextSelectors();
   }
 
   bethaApp.opcoes = (systems.find(item=>String(item.id)===String(currentSystemId))?.menu) || window.BI_MENU || [];
@@ -314,6 +315,7 @@
     closeSettingsUtilityMenu();
     currentView = view;
     syncSettingsUtilityPermissions();
+    if(typeof syncMobileContextSelectors==="function")syncMobileContextSelectors();
     const url = new URL(location.href);
     url.searchParams.set("view", view);
     history.replaceState({}, "", url);
@@ -4615,12 +4617,68 @@
   const systemList=document.getElementById("systemList");
   const systemRailList=document.getElementById("systemRailList");
   const sidebarSystemMenuLabel=document.getElementById("sidebarSystemMenuLabel");
+  const mobileEntitySelect=document.getElementById("mobileEntitySelect");
+  const mobileSystemSelect=document.getElementById("mobileSystemSelect");
+  const mobilePanelSelect=document.getElementById("mobilePanelSelect");
   const systemContext=document.getElementById("systemContext");
   const systemHeaderContext=document.getElementById("systemHeaderContext");
   const systemHeaderSubtitle=document.getElementById("systemHeaderSubtitle");
 
   function currentSystemInfo() {
     return systems.find(system=>String(system.id)===String(currentSystemId)) || systems[0] || null;
+  }
+
+  function renderMobileEntitySelector() {
+    if(!mobileEntitySelect) return;
+    const tenants=Array.isArray(authorizedTenants)?authorizedTenants:[];
+    mobileEntitySelect.innerHTML=tenants.length
+      ? tenants.map(tenant=>'<option value="'+escapeHtml(String(tenant.id))+'"'+(String(tenant.id)===String(tenantId)?' selected':'')+'>'+escapeHtml(tenant.name||tenant.id)+'</option>').join("")
+      : '<option value="">Sem entidade autorizada</option>';
+    mobileEntitySelect.disabled=tenants.length<=1;
+    if(tenantId&&tenants.some(tenant=>String(tenant.id)===String(tenantId))) mobileEntitySelect.value=String(tenantId);
+  }
+
+  function renderMobileSystemSelector() {
+    if(!mobileSystemSelect) return;
+    mobileSystemSelect.innerHTML=systems.map(system=>
+      '<option value="'+escapeHtml(String(system.id))+'"'+(String(system.id)===String(currentSystemId)?' selected':'')+'>'+escapeHtml(system.name||system.label||system.id)+'</option>'
+    ).join("");
+    mobileSystemSelect.disabled=systems.length<=1;
+    if(currentSystemId) mobileSystemSelect.value=String(currentSystemId);
+  }
+
+  function renderMobilePanelSelector() {
+    if(!mobilePanelSelect) return;
+    const menu=Array.isArray(bethaApp.opcoes)?bethaApp.opcoes:[];
+    const options=[];
+    for(const item of menu){
+      if(Array.isArray(item.submenus)&&item.submenus.length){
+        for(const sub of item.submenus){
+          const route=sub.rota||sub.id;
+          if(route) options.push({route,label:sub.descricao||sub.label||route});
+        }
+      }else{
+        const route=item.rota||item.id;
+        if(route) options.push({route,label:item.descricao||item.label||route});
+      }
+    }
+    if(ADMIN_VIEWS.has(currentView)&&!options.some(item=>item.route===currentView)){
+      options.push({
+        route:currentView,
+        label:currentView==="usuarios-admin"?"Usuários":"Configurações"
+      });
+    }
+    mobilePanelSelect.innerHTML=options.length
+      ? options.map(item=>'<option value="'+escapeHtml(String(item.route))+'"'+(String(item.route)===String(currentView)?' selected':'')+'>'+escapeHtml(item.label)+'</option>').join("")
+      : '<option value="">Nenhum painel disponível</option>';
+    mobilePanelSelect.disabled=options.length<=1;
+    if(options.some(item=>String(item.route)===String(currentView))) mobilePanelSelect.value=String(currentView);
+  }
+
+  function syncMobileContextSelectors() {
+    renderMobileEntitySelector();
+    renderMobileSystemSelector();
+    renderMobilePanelSelector();
   }
 
   function renderSystemSelector() {
@@ -4632,6 +4690,7 @@
     if(systemHeaderSubtitle) systemHeaderSubtitle.textContent=String(active?.heading||"");
     const targets=[systemList,systemRailList].filter(Boolean);
     for(const target of targets) target.innerHTML="";
+    renderMobileSystemSelector();
     for(const system of systems){
       const icon=String(system.icon||"application-cog-outline");
       if(systemList){
@@ -4684,6 +4743,20 @@
   }
 
   renderSystemSelector();
+  syncMobileContextSelectors();
+
+  mobileEntitySelect?.addEventListener("change",()=>{
+    const tenant=authorizedTenants.find(item=>String(item.id)===String(mobileEntitySelect.value));
+    if(tenant) applyTenantInPlace(tenant,true);
+  });
+  mobileSystemSelect?.addEventListener("change",()=>{
+    const system=systems.find(item=>String(item.id)===String(mobileSystemSelect.value));
+    if(system) selectSystem(system);
+  });
+  mobilePanelSelect?.addEventListener("change",()=>{
+    const view=String(mobilePanelSelect.value||"");
+    if(view&&isViewAllowed(view)) navigate(view);
+  });
 
   systemButton?.addEventListener("click",event=>{
     event.stopPropagation();
@@ -5889,6 +5962,7 @@
       }
     }
     if(sidebarEntityContext) sidebarEntityContext.textContent=entityLabel||"Selecione a entidade";
+    renderMobileEntitySelector();
   }
 
   function applyTenantInPlace(tenant, resumeView = false) {
@@ -5987,6 +6061,7 @@
       if (!tenants.length) {
         document.getElementById("entityContext").textContent = "SEM ENTIDADE AUTORIZADA";
         if(sidebarEntityContext) sidebarEntityContext.textContent="Sem entidade autorizada";
+        renderMobileEntitySelector();
         list.innerHTML = '<div class="table-empty">Nenhuma entidade autorizada para este usuário.</div>';
         if(sidebarEntityList) sidebarEntityList.innerHTML=list.innerHTML;
         showTenantSelector([], {
@@ -6038,6 +6113,7 @@
 
       if (entityContext) entityContext.textContent = "ACESSO BETHA NÃO VALIDADO";
       if(sidebarEntityContext) sidebarEntityContext.textContent="Acesso não validado";
+      renderMobileEntitySelector();
       if (entityList) entityList.innerHTML = '<div class="table-empty">' + escapeHtml(friendly) + '</div>';
       if(sidebarEntityList) sidebarEntityList.innerHTML='<div class="table-empty">'+escapeHtml(friendly)+'</div>';
 
