@@ -618,7 +618,7 @@
     state.recentViews=[
       {view,at:new Date().toISOString()},
       ...(state.recentViews||[]).filter(item=>item&&item.view!==view&&dashboards[item.view])
-    ].slice(0,8);
+    ].slice(0,24);
     writePersonalization(state);
   }
 
@@ -628,7 +628,7 @@
     const set=new Set((state.favoriteDashboards||[]).filter(id=>dashboards[id]));
     const adding=!set.has(view);
     if(adding) set.add(view); else set.delete(view);
-    state.favoriteDashboards=[...set].slice(0,8);
+    state.favoriteDashboards=[...set].slice(0,24);
     writePersonalization(state);
     updateDashboardFavoriteButton();
     renderPersonalHome();
@@ -641,7 +641,7 @@
     const exists=(state.favoriteKpis||[]).some(item=>item.view===view&&item.kpiId===kpi.id);
     state.favoriteKpis=exists
       ? (state.favoriteKpis||[]).filter(item=>!(item.view===view&&item.kpiId===kpi.id))
-      : [{view,kpiId:kpi.id},...(state.favoriteKpis||[])].slice(0,10);
+      : [{view,kpiId:kpi.id},...(state.favoriteKpis||[])].slice(0,32);
 
     const snapshotKey=favoriteKpiKey(view,kpi.id);
     if(exists){
