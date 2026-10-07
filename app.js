@@ -1916,6 +1916,7 @@
     const columns=Array.isArray(table?.columns)?table.columns:[];
     const rows=Array.isArray(table?.rows)?table.rows:[];
     if(!columns.length||!rows.length) return false;
+    const drillable=Boolean(currentPayload?.meta?.sampleMode&&table?.id&&rows.some(row=>row.key!==undefined));
     const card=document.createElement("article");
     card.className="summary-table-card";
     card.dataset.table=table.id||"summary";
@@ -1923,7 +1924,7 @@
       '<div class="summary-table-scroll"><table class="summary-table"><thead><tr><th>'+escapeHtml(table.groupLabel||"Categoria")+'</th>'+
       columns.map(column=>'<th>'+escapeHtml(column.label||column.id||"Valor")+'</th>').join("")+
       '</tr></thead><tbody>'+
-      rows.map(row=>'<tr><td>'+escapeHtml(String(row.label??"—"))+'</td>'+
+      rows.map(row=>'<tr'+(drillable?' class="summary-table-row-drill" tabindex="0" role="button" aria-label="Detalhar '+escapeHtml(String(row.label??"categoria"))+'" data-summary-table="'+escapeHtml(table.id)+'" data-summary-key="'+escapeHtml(String(row.key??""))+'" data-summary-label="'+escapeHtml(String(row.label??""))+'"':'')+'><td>'+escapeHtml(String(row.label??"—"))+(drillable?'<i class="mdi mdi-chevron-right summary-row-arrow" aria-hidden="true"></i>':'')+'</td>'+
         (row.values||[]).map((value,index)=>'<td>'+summaryCellDisplay(value,columns[index]?.format||"number")+'</td>').join("")+
       '</tr>').join("")+
       '</tbody></table></div>';
@@ -3015,6 +3016,7 @@
   }
 
   const localSampleCache=new Map();
+  const localSampleDetailRowsByView=new Map();
 
   function localSampleWhere(rows,where) {
     if(!where||typeof where!=="object") return rows;
@@ -3106,6 +3108,7 @@
 
     const labelMap=tableDef.labelMap||{};
     let rowsOut=[...groups.entries()].map(([key,groupRows])=>({
+      key,
       label:Object.prototype.hasOwnProperty.call(labelMap,key)?labelMap[key]:key,
       values:columns.map(column=>localSampleAggregate(groupRows,{
         ...column,
@@ -3206,6 +3209,7 @@
       const periodRows=localSampleRowsForPeriod(allRows);
       const filterOptions=localSampleFilterOptions(periodRows,def.filters||[]);
       const rows=localSampleApplyDashboardFilters(periodRows,view);
+      localSampleDetailRowsByView.set(view,rows.slice());
       const kpis={};
       for(const kpi of def.kpis||[]) kpis[kpi.id]=localSampleAggregate(rows,kpi.sample||{agg:"count"});
       const charts={};
@@ -4179,6 +4183,67 @@
     }
   }
 
+  const localSampleDetailColumns={
+    contabil:[
+      ["data","Data"],["empenho","Empenho"],["unidade","Unidade"],["credor","Credor"],
+      ["natureza","Natureza"],["valorEmpenhado","Empenhado"],["valorLiquidado","Liquidado"],["valorPago","Pago"],["status","Situação"]
+    ],
+    compras:[
+      ["processo","Processo"],["modalidade","Modalidade"],["secretaria","Secretaria"],["fornecedor","Fornecedor"],
+      ["objeto","Objeto"],["valorEstimado","Estimado"],["valorHomologado","Homologado"],["status","Situação"]
+    ],
+    folha:[
+      ["servidor","Servidor"],["secretaria","Secretaria"],["vinculo","Vínculo"],["cargo","Cargo"],
+      ["bruto","Bruto"],["descontos","Descontos"],["liquido","Líquido"],["status","Situação"]
+    ]
+  };
+
+  function localSampleDetailValue(key,value) {
+    if(value===null||value===undefined||value==="") return "—";
+    if(["valorEmpenhado","valorLiquidado","valorPago","valorEstimado","valorHomologado","bruto","descontos","liquido","encargos","beneficioValor","receitaPrevista","receitaArrecadada","restosPagar"].includes(key)){
+      return formatValue(Number(value)||0,"currency");
+    }
+    if(/^\d{4}-\d{2}-\d{2}/.test(String(value))){
+      const date=new Date(String(value)+"T00:00:00");
+      if(!Number.isNaN(date.getTime())) return date.toLocaleDateString("pt-BR");
+    }
+    return String(value);
+  }
+
+  function localSampleDetailTable(rows,system) {
+    const configured=(localSampleDetailColumns[system]||[]).filter(([key])=>rows.some(row=>row?.[key]!==undefined));
+    const columns=configured.length?configured:[...new Set(rows.flatMap(row=>Object.keys(row)))].slice(0,8).map(key=>[key,key]);
+    return '<div class="detail-table-wrap"><table class="detail-table"><thead><tr>'+
+      columns.map(([,label])=>'<th>'+escapeHtml(label)+'</th>').join("")+
+      '</tr></thead><tbody>'+
+      rows.slice(0,100).map(row=>'<tr>'+
+        columns.map(([key])=>'<td>'+escapeHtml(localSampleDetailValue(key,row?.[key]))+'</td>').join("")+
+      '</tr>').join("")+
+      '</tbody></table></div>';
+  }
+
+  function openLocalSampleSummaryDetail(tableId,key,label) {
+    const def=dashboards[currentView];
+    if(!def?.localSample) return;
+    const tableDef=(def.summaryTables||[]).find(table=>String(table.id)===String(tableId));
+    if(!tableDef?.group) return;
+    const rows=(localSampleDetailRowsByView.get(currentView)||[])
+      .filter(row=>String(row?.[tableDef.group]??"Não informado")===String(key));
+    const activeSystem=currentSystemInfo();
+    openDrawer(tableDef.title||"Detalhamento",`
+      <section class="drawer-section detail-hero local-sample-detail-hero">
+        <small>AMOSTRA LOCAL · SEM CONSUMO DA API</small>
+        <strong class="detail-hero-value">${escapeHtml(label||key||"Categoria")}</strong>
+        <span>${rows.length.toLocaleString("pt-BR")} registro(s) neste agrupamento · filtros atuais preservados</span>
+      </section>
+      <section class="drawer-section">
+        <h3>Registros da amostra</h3>
+        <p>Detalhamento do agrupamento selecionado em ${escapeHtml(activeSystem?.name||currentSystemId)}.</p>
+        ${rows.length?localSampleDetailTable(rows,currentSystemId):'<div class="detail-empty-state compact"><strong>Nenhum registro</strong><span>Não há linhas para o recorte atual.</span></div>'}
+      </section>
+    `);
+  }
+
   function openKpiDetail(kpi) {
     const raw=currentPayload?.kpis?.[kpi.id];
     const composition=compositionForKpi(kpi);
@@ -4345,6 +4410,17 @@
       document.body.classList.remove("drawer-open");
     }
   }
+
+  const summaryTableGrid=document.getElementById("tableGrid");
+  const handleSummaryTableDrill=(event)=>{
+    const row=event.target.closest(".summary-table-row-drill");
+    if(!row) return;
+    if(event.type==="keydown"&&!["Enter"," "].includes(event.key)) return;
+    if(event.type==="keydown") event.preventDefault();
+    openLocalSampleSummaryDetail(row.dataset.summaryTable,row.dataset.summaryKey,row.dataset.summaryLabel);
+  };
+  summaryTableGrid?.addEventListener("click",handleSummaryTableDrill);
+  summaryTableGrid?.addEventListener("keydown",handleSummaryTableDrill);
 
   document.getElementById("drawerBody").addEventListener("click",(event)=>{
     const loadButton=event.target.closest("[data-load-detail]");
