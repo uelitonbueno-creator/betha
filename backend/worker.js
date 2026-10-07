@@ -5959,7 +5959,41 @@ const MCP_VIEW_LABELS = Object.freeze({
   territorio:"Território cadastral"
 });
 
-const MCP_PERMISSION_VIEW_MAP = Object.freeze({
+const BI_VIEW_LABELS = Object.freeze({
+  ...MCP_VIEW_LABELS,
+  "contabil-visao-geral":"Contabilidade · Visão geral",
+  "contabil-execucao-orcamentaria":"Contabilidade · Execução Orçamentária",
+  "contabil-receita":"Contabilidade · Receitas",
+  "contabil-despesa":"Contabilidade · Despesas",
+  "contabil-empenhos":"Contabilidade · Empenhos",
+  "contabil-movimentos":"Contabilidade · Movimentos Contábeis",
+  "contabil-restos":"Contabilidade · Restos a Pagar",
+  "contabil-credores":"Contabilidade · Credores",
+  "contabil-demonstrativos":"Contabilidade · Demonstrativos",
+  "contabil-relatorios":"Contabilidade · Relatórios / Balanços",
+  "contabil-controle":"Contabilidade · Controle",
+  "compras-visao-geral":"Compras · Visão geral",
+  "compras-processos":"Compras · Processos",
+  "compras-licitacoes":"Compras · Licitações",
+  "compras-contratos":"Compras · Contratos",
+  "compras-fornecedores":"Compras · Fornecedores",
+  "compras-atas":"Compras · Atas de Registro de Preço",
+  "compras-itens":"Compras · Catálogo de Itens",
+  "compras-controle":"Compras · Controle",
+  "folha-visao-geral":"Folha · Visão geral",
+  "folha-servidores":"Folha · Servidores",
+  "folha-vinculos":"Folha · Vínculos",
+  "folha-cargos":"Folha · Cargos",
+  "folha-departamentos":"Folha · Departamentos",
+  "folha-mensal":"Folha · Folha mensal",
+  "folha-eventos":"Folha · Eventos",
+  "folha-encargos":"Folha · Encargos",
+  "folha-beneficios":"Folha · Benefícios",
+  "folha-despesas":"Folha · Despesas",
+  "folha-controle":"Folha · Controle"
+});
+
+const BI_PERMISSION_VIEW_MAP = Object.freeze({
   BIVisaoGeralPage:"visao-geral",
   BIArrecadacaoPage:"arrecadacao",
   BIDebitosPage:"debitos",
@@ -5975,7 +6009,40 @@ const MCP_PERMISSION_VIEW_MAP = Object.freeze({
   BITerritorioPage:"territorio",
   BIObrasPage:"obras",
   BIITBIPage:"itbi",
-  BIQualidadePage:"qualidade"
+  BIQualidadePage:"qualidade",
+
+  BIContabilVisaoGeralPage:"contabil-visao-geral",
+  BIContabilExecucaoOrcamentariaPage:"contabil-execucao-orcamentaria",
+  BIContabilReceitaPage:"contabil-receita",
+  BIContabilDespesaPage:"contabil-despesa",
+  BIContabilEmpenhosPage:"contabil-empenhos",
+  BIContabilMovimentosPage:"contabil-movimentos",
+  BIContabilRestosPage:"contabil-restos",
+  BIContabilCredoresPage:"contabil-credores",
+  BIContabilDemonstrativosPage:"contabil-demonstrativos",
+  BIContabilRelatoriosPage:"contabil-relatorios",
+  BIContabilControlePage:"contabil-controle",
+
+  BIComprasVisaoGeralPage:"compras-visao-geral",
+  BIComprasProcessosPage:"compras-processos",
+  BIComprasLicitacoesPage:"compras-licitacoes",
+  BIComprasContratosPage:"compras-contratos",
+  BIComprasFornecedoresPage:"compras-fornecedores",
+  BIComprasAtasPage:"compras-atas",
+  BIComprasItensPage:"compras-itens",
+  BIComprasControlePage:"compras-controle",
+
+  BIFolhaVisaoGeralPage:"folha-visao-geral",
+  BIFolhaServidoresPage:"folha-servidores",
+  BIFolhaVinculosPage:"folha-vinculos",
+  BIFolhaCargosPage:"folha-cargos",
+  BIFolhaDepartamentosPage:"folha-departamentos",
+  BIFolhaMensalPage:"folha-mensal",
+  BIFolhaEventosPage:"folha-eventos",
+  BIFolhaEncargosPage:"folha-encargos",
+  BIFolhaBeneficiosPage:"folha-beneficios",
+  BIFolhaDespesasPage:"folha-despesas",
+  BIFolhaControlePage:"folha-controle"
 });
 
 function dashboardBuilder(view) {
@@ -6002,14 +6069,14 @@ function dashboardBuilder(view) {
 
 function permissionViewsForAccess(access) {
   if (access && (access.admin===true || access.technical===true)) {
-    return Object.keys(MCP_VIEW_LABELS);
+    return Object.keys(BI_VIEW_LABELS);
   }
 
   let serialized="";
   try { serialized=JSON.stringify(access||{}); } catch {}
 
   const out=[];
-  for (const [permissionId,view] of Object.entries(MCP_PERMISSION_VIEW_MAP)) {
+  for (const [permissionId,view] of Object.entries(BI_PERMISSION_VIEW_MAP)) {
     if (serialized.includes(permissionId)) out.push(view);
   }
 
@@ -6182,7 +6249,7 @@ async function buildGlobalSearch(env,tenant,auth,url) {
   const allowedViews=permissionViewsForAccess(auth&&auth.access);
   const normalizedQuery=normalizeGlobalSearch(query);
   const dashboardResults=allowedViews.map(view=>{
-    const title=MCP_VIEW_LABELS[view]||view;
+    const title=BI_VIEW_LABELS[view]||view;
     const normalizedTitle=normalizeGlobalSearch(title);
     const score=normalizedTitle===normalizedQuery ? 110 : normalizedTitle.startsWith(normalizedQuery) ? 94 : normalizedTitle.includes(normalizedQuery) ? 72 : 0;
     return {kind:"dashboard",category:"Painel",icon:"view-dashboard-outline",view,id:view,title,subtitle:"Abrir painel autorizado",score};
@@ -6553,7 +6620,7 @@ async function createMcpCredential(env,auth,tenant,{label="",ttlSeconds=8*60*60}
   const rawToken="bimcp_"+createSessionId();
   const hash=await sha256Hex(rawToken);
   const exp=Date.now()+ttl*1000;
-  const allowedViews=permissionViewsForAccess(auth.access);
+  const allowedViews=permissionViewsForAccess(auth.access).filter(view=>Boolean(dashboardBuilder(view)));
   const ownerHash=await mcpOwnerHash(auth);
   const ownerLabel=auditActorLabel(auth.access);
 
