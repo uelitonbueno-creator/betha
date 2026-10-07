@@ -2,148 +2,113 @@ name: MCP production watch
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+      - feature/mcp-sdk-v2-main
+    paths:
+      - "backend/worker.js"
+      - "config/page-mapping.json"
+      - "config/mcp-tools.generated.json"
+      - "scripts/generate-mcp-tools.mjs"
+      - "scripts/check-mcp-contract.mjs"
+      - "mcp/**"
+      - ".github/workflows/mcp-production-watch.yml"
+  pull_request:
+    paths:
+      - "backend/worker.js"
+      - "config/page-mapping.json"
+      - "config/mcp-tools.generated.json"
+      - "scripts/generate-mcp-tools.mjs"
+      - "scripts/check-mcp-contract.mjs"
+      - "mcp/**"
+      - ".github/workflows/mcp-production-watch.yml"
   schedule:
     - cron: "23 * * * *"
 
 permissions:
-  contents: write
+  contents: read
   issues: write
 
 concurrency:
-  group: mcp-production-watch
+  group: mcp-production-watch-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  watch:
+  validate:
     runs-on: ubuntu-latest
-    env:
-      REPO: ${{ github.repository }}
-      MCP_BRANCH: feature/mcp-bi-production
-      MCP_ISSUE: "1"
     steps:
-      - name: Resolve branch under production
-        id: target
-        shell: bash
-        run: |
-          if git ls-remote --exit-code --heads "https://github.com/${REPO}.git" "${MCP_BRANCH}" >/dev/null 2>&1; then
-            echo "ref=${MCP_BRANCH}" >> "$GITHUB_OUTPUT"
-          else
-            echo "ref=main" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Checkout MCP production branch
+      - name: Checkout current source
         uses: actions/checkout@v4
-        with:
-          ref: ${{ steps.target.outputs.ref }}
-          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: Detect MCP implementation
-        id: exists
-        shell: bash
-        run: |
-          if test -f scripts/generate-mcp-tools.mjs && test -f scripts/check-mcp-contract.mjs; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Regenerate MCP catalog
-        id: generate
-        if: steps.exists.outputs.ready == 'true'
-        shell: bash
-        run: |
-          set +e
-          node scripts/generate-mcp-tools.mjs
-          code=$?
-          echo "code=$code" >> "$GITHUB_OUTPUT"
-          exit 0
+        run: node scripts/generate-mcp-tools.mjs
+
+      - name: Verify catalog is synchronized
+        run: git diff --exit-code -- config/mcp-tools.generated.json
 
       - name: Validate MCP safety contract
-        id: contract
-        if: steps.exists.outputs.ready == 'true' && steps.generate.outputs.code == '0'
-        shell: bash
         run: node scripts/check-mcp-contract.mjs
 
-      - name: Auto-sync safe catalog drift
-        if: steps.exists.outputs.ready == 'true' && steps.generate.outputs.code == '0' && steps.target.outputs.ref == env.MCP_BRANCH
-        shell: bash
-        run: |
-          if git diff --quiet -- config/mcp-tools.generated.json; then
-            echo "Catalog already synchronized."
-            exit 0
-          fi
-          git config user.name "bi-mcp-production-bot"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add config/mcp-tools.generated.json
-          git commit -m "chore(mcp): sync tool catalog with BI panels"
-          git push origin "HEAD:${MCP_BRANCH}"
-
       - name: Install MCP Worker dependencies
-        if: steps.exists.outputs.ready == 'true' && hashFiles('mcp/package.json') != ''
-        shell: bash
         run: npm install --prefix mcp --ignore-scripts --no-audit --no-fund
 
-      - name: Build MCP Worker (dry-run)
-        if: steps.exists.outputs.ready == 'true' && hashFiles('mcp/package.json') != ''
-        shell: bash
+      - name: Build MCP Worker SDK v2 (dry-run)
         run: npm --prefix mcp run check
 
       - name: Check BI production health
-        id: health
-        shell: bash
         run: |
-          curl --fail --silent --show-error --max-time 20             https://betha-bi-api.ueliton-bueno.workers.dev/api/health             -o /tmp/bi-health.json
+          curl --fail --silent --show-error --max-time 20 \
+            https://betha-bi-api.ueliton-bueno.workers.dev/api/health \
+            -o /tmp/bi-health.json
           cat /tmp/bi-health.json
           node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("/tmp/bi-health.json","utf8"));if(!j.ok) process.exit(1);'
 
+      - name: Check legacy MCP route remains fail-closed for GET
+        run: |
+          code="$(curl --silent --show-error --max-time 20 -o /tmp/mcp-get.json -w '%{http_code}' \
+            https://betha-bi-api.ueliton-bueno.workers.dev/mcp)"
+          cat /tmp/mcp-get.json
+          test "$code" = "405"
+          node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("/tmp/mcp-get.json","utf8"));if(j.error!=="MCP_POST_REQUIRED") process.exit(1);'
+
+  report:
+    if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main')
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
       - name: Update production queue status
-        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-          GENERATOR_CODE: ${{ steps.generate.outputs.code }}
-          MCP_READY: ${{ steps.exists.outputs.ready }}
-          TARGET_REF: ${{ steps.target.outputs.ref }}
-          CONTRACT_OUTCOME: ${{ steps.contract.outcome }}
-          HEALTH_OUTCOME: ${{ steps.health.outcome }}
+          REPO: ${{ github.repository }}
+          RESULT: ${{ needs.validate.result }}
         shell: bash
         run: |
           marker='<!-- MCP_HOURLY_WATCH -->'
           now="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          if [ "${MCP_READY}" != "true" ]; then
-            state="AGUARDANDO_IMPLEMENTACAO"
-            detail="Arquivos do guard MCP ainda não estão disponíveis em ${TARGET_REF}."
-          elif [ "${GENERATOR_CODE}" != "0" ]; then
-            state="BLOQUEADO_PERMISSAO"
-            detail="O gerador detectou painel sem Page Mapping/permissão. Nenhuma autorização foi criada automaticamente."
-          elif [ "${CONTRACT_OUTCOME}" != "success" ]; then
-            state="FALHA_CONTRATO"
-            detail="O contrato read-only/tenant/permission falhou. Publicação permanece bloqueada."
-          elif [ "${HEALTH_OUTCOME}" != "success" ]; then
-            state="FALHA_HEALTH_BI"
-            detail="O health check do BI de produção falhou. Nenhuma alteração de runtime foi aplicada."
-          else
+          if [ "${RESULT}" = "success" ]; then
             state="OK"
-            detail="Catálogo e contrato MCP sincronizados; BI de produção saudável."
+            detail="SDK v2, catálogo, contrato e health do BI validados a partir da main."
+          else
+            state="FALHA_VALIDACAO"
+            detail="A validação canônica do MCP na main falhou; revisar o workflow antes de promover mudanças."
           fi
 
           body="${marker}
           **MCP production watch:** ${state}
           - Última verificação: ${now}
-          - Branch verificada: \`${TARGET_REF}\`
+          - Branch canônica: `main`
           - ${detail}"
 
-          comment_id="$(gh api "repos/${REPO}/issues/${MCP_ISSUE}/comments" --paginate             --jq ".[] | select(.body | startswith(\"${marker}\")) | .id" | head -n1)"
+          comment_id="$(gh api "repos/${REPO}/issues/1/comments" --paginate \
+            --jq ".[] | select(.body | startswith(\"${marker}\")) | .id" | head -n1)"
 
           if [ -n "${comment_id}" ]; then
             gh api --method PATCH "repos/${REPO}/issues/comments/${comment_id}" -f body="${body}" >/dev/null
           else
-            gh api --method POST "repos/${REPO}/issues/${MCP_ISSUE}/comments" -f body="${body}" >/dev/null
-          fi
-
-          if [ "${state}" != "OK" ] && [ "${state}" != "AGUARDANDO_IMPLEMENTACAO" ]; then
-            exit 1
+            gh api --method POST "repos/${REPO}/issues/1/comments" -f body="${body}" >/dev/null
           fi

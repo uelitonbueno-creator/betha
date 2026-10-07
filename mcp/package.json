@@ -1,0 +1,19 @@
+{
+  "name": "bi-vella-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "check": "wrangler deploy --dry-run --outdir .wrangler-dry-run",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
+    "agents": "0.26.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "wrangler": "4.146.0"
+  }
+}
