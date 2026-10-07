@@ -7304,3 +7304,10 @@ bth-app{--menu-bg-color:var(--vella-sidebar)}
     min-height:104px;
   }
 }
+
+
+/* === BI VELLA REDESIGN 2026-10-07 / ROUND 12 === */
+.global-search-status[data-state="sample"]{color:#8a6200;background:#fff7dc;border-color:#ecd28e}
+.global-search-preview.is-sample{border-top:3px solid #d9a51e}
+.global-search-preview.is-sample .global-search-preview-icon{background:#fff7dc;color:#8a6200}
+.global-search-preview.is-sample .global-search-security{border-color:#ecd28e;background:#fffaf0;color:#735300}
