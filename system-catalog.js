@@ -236,6 +236,132 @@
       ch("controle-folha-vinculo","Vínculos","bar",{group:"vinculo",field:"servidorId",agg:"distinct",format:"number"})
     ]);
 
+
+  add("contabil-empenhos","contabil","contabil-100.json","Empenhos","Acompanhamento dos empenhos por unidade, credor e situação.",
+    [
+      k("empenhado","Valor empenhado","currency",{agg:"sum",field:"valorEmpenhado"}),
+      k("liquidado","Valor liquidado","currency",{agg:"sum",field:"valorLiquidado"}),
+      k("pago","Valor pago","currency",{agg:"sum",field:"valorPago"}),
+      k("empenhos","Empenhos","number",{agg:"distinct",field:"empenho"})
+    ],
+    [
+      ch("empenhos-unidade","Empenhado por unidade","bar",{group:"unidade",field:"valorEmpenhado",agg:"sum",format:"currency"}),
+      ch("empenhos-credor","Empenhado por credor","bar",{group:"credor",field:"valorEmpenhado",agg:"sum",format:"currency"}),
+      ch("empenhos-status","Empenhos por situação","doughnut",{group:"status",field:"empenho",agg:"distinct",format:"number"})
+    ]);
+
+  add("contabil-restos","contabil","contabil-100.json","Restos a pagar","Saldo estimado entre empenhado e pago na amostra local.",
+    [
+      k("restos","Restos a pagar","currency",{agg:"sum",field:"restosPagar"}),
+      k("credores","Credores com saldo","number",{agg:"distinct",field:"credor"}),
+      k("empenhado","Empenhado","currency",{agg:"sum",field:"valorEmpenhado"}),
+      k("pago","Pago","currency",{agg:"sum",field:"valorPago"})
+    ],
+    [
+      ch("restos-credor","Restos por credor","bar",{group:"credor",field:"restosPagar",agg:"sum",format:"currency"}),
+      ch("restos-natureza","Restos por natureza","bar",{group:"natureza",field:"restosPagar",agg:"sum",format:"currency"}),
+      ch("restos-status","Registros por situação","doughnut",{group:"status",agg:"count",format:"number"})
+    ]);
+
+  add("contabil-demonstrativos","contabil","contabil-100.json","Demonstrativos","Síntese de receita e despesa para conferência executiva.",
+    [
+      k("receita-prevista","Receita prevista","currency",{agg:"sum",field:"receitaPrevista"}),
+      k("receita-arrecadada","Receita arrecadada","currency",{agg:"sum",field:"receitaArrecadada"}),
+      k("despesa-empenhada","Despesa empenhada","currency",{agg:"sum",field:"valorEmpenhado"}),
+      k("despesa-paga","Despesa paga","currency",{agg:"sum",field:"valorPago"})
+    ],
+    [
+      ch("demonstrativo-receita","Receita prevista × arrecadada","line",{group:"mes",fields:[{field:"receitaPrevista",label:"Prevista"},{field:"receitaArrecadada",label:"Arrecadada"}],agg:"sum",format:"currency"}),
+      ch("demonstrativo-despesa","Despesa empenhada × paga","line",{group:"mes",fields:[{field:"valorEmpenhado",label:"Empenhada"},{field:"valorPago",label:"Paga"}],agg:"sum",format:"currency"}),
+      ch("demonstrativo-fonte","Receita por fonte de recurso","bar",{group:"fonteRecurso",field:"receitaArrecadada",agg:"sum",format:"currency"})
+    ]);
+
+  add("compras-atas","compras","compras-100.json","Atas de Registro de Preço","Atas, valores homologados e distribuição por secretaria.",
+    [
+      k("atas","Atas ativas na amostra","number",{agg:"distinct",field:"ata",where:{ataRegistro:true}}),
+      k("valor","Valor homologado","currency",{agg:"sum",field:"valorHomologado",where:{ataRegistro:true}}),
+      k("fornecedores","Fornecedores","number",{agg:"distinct",field:"fornecedor",where:{ataRegistro:true}}),
+      k("itens","Itens vinculados","number",{agg:"sum",field:"quantidadeItens",where:{ataRegistro:true}})
+    ],
+    [
+      ch("atas-secretaria","Valor de atas por secretaria","bar",{group:"secretaria",field:"valorHomologado",agg:"sum",format:"currency",where:{ataRegistro:true}}),
+      ch("atas-fornecedor","Valor de atas por fornecedor","bar",{group:"fornecedor",field:"valorHomologado",agg:"sum",format:"currency",where:{ataRegistro:true}}),
+      ch("atas-modalidade","Atas por modalidade","doughnut",{group:"modalidade",agg:"count",format:"number",where:{ataRegistro:true}})
+    ]);
+
+  add("compras-itens","compras","compras-100.json","Catálogo de Itens","Itens e categorias observados nos processos de compra.",
+    [
+      k("itens","Quantidade de itens","number",{agg:"sum",field:"quantidadeItens"}),
+      k("categorias","Categorias","number",{agg:"distinct",field:"itemCategoria"}),
+      k("processos","Processos","number",{agg:"distinct",field:"processo"}),
+      k("valor","Valor homologado","currency",{agg:"sum",field:"valorHomologado"})
+    ],
+    [
+      ch("itens-categoria","Itens por categoria","bar",{group:"itemCategoria",field:"quantidadeItens",agg:"sum",format:"number"}),
+      ch("itens-secretaria","Itens por secretaria","bar",{group:"secretaria",field:"quantidadeItens",agg:"sum",format:"number"}),
+      ch("itens-modalidade","Categorias por modalidade","doughnut",{group:"modalidade",agg:"count",format:"number"})
+    ]);
+
+  add("folha-vinculos","folha","folha-100.json","Vínculos","Distribuição dos vínculos funcionais e seus custos.",
+    [
+      k("servidores","Servidores","number",{agg:"distinct",field:"servidorId"}),
+      k("vinculos","Tipos de vínculo","number",{agg:"distinct",field:"vinculo"}),
+      k("bruto","Folha bruta","currency",{agg:"sum",field:"bruto"}),
+      k("liquido","Folha líquida","currency",{agg:"sum",field:"liquido"})
+    ],
+    [
+      ch("vinculos-servidores","Servidores por vínculo","doughnut",{group:"vinculo",field:"servidorId",agg:"distinct",format:"number"}),
+      ch("vinculos-custo","Custo bruto por vínculo","bar",{group:"vinculo",field:"bruto",agg:"sum",format:"currency"})
+    ]);
+
+  add("folha-cargos","folha","folha-100.json","Cargos","Quadro de cargos e custo bruto associado.",
+    [
+      k("cargos","Cargos","number",{agg:"distinct",field:"cargo"}),
+      k("servidores","Servidores","number",{agg:"distinct",field:"servidorId"}),
+      k("bruto","Custo bruto","currency",{agg:"sum",field:"bruto"}),
+      k("encargos","Encargos","currency",{agg:"sum",field:"encargos"})
+    ],
+    [
+      ch("cargos-servidores","Servidores por cargo","bar",{group:"cargo",field:"servidorId",agg:"distinct",format:"number"}),
+      ch("cargos-custo","Custo bruto por cargo","bar",{group:"cargo",field:"bruto",agg:"sum",format:"currency"})
+    ]);
+
+  add("folha-departamentos","folha","folha-100.json","Departamentos","Distribuição funcional por secretaria e unidade de lotação.",
+    [
+      k("departamentos","Departamentos","number",{agg:"distinct",field:"departamento"}),
+      k("servidores","Servidores","number",{agg:"distinct",field:"servidorId"}),
+      k("bruto","Custo bruto","currency",{agg:"sum",field:"bruto"}),
+      k("encargos","Encargos","currency",{agg:"sum",field:"encargos"})
+    ],
+    [
+      ch("departamentos-servidores","Servidores por departamento","bar",{group:"departamento",field:"servidorId",agg:"distinct",format:"number"}),
+      ch("departamentos-custo","Custo por secretaria","bar",{group:"secretaria",field:"bruto",agg:"sum",format:"currency"})
+    ]);
+
+  add("folha-beneficios","folha","folha-100.json","Benefícios","Benefícios registrados na amostra e valores associados.",
+    [
+      k("beneficios","Tipos de benefício","number",{agg:"distinct",field:"beneficio"}),
+      k("valor","Valor de benefícios","currency",{agg:"sum",field:"beneficioValor"}),
+      k("servidores","Servidores","number",{agg:"distinct",field:"servidorId"}),
+      k("ativos","Ativos","number",{agg:"distinct",field:"servidorId",where:{status:"Ativo"}})
+    ],
+    [
+      ch("beneficios-tipo","Servidores por benefício","doughnut",{group:"beneficio",field:"servidorId",agg:"distinct",format:"number"}),
+      ch("beneficios-valor","Valor por benefício","bar",{group:"beneficio",field:"beneficioValor",agg:"sum",format:"currency"})
+    ]);
+
+  add("folha-despesas","folha","folha-100.json","Despesas da Folha","Composição financeira da folha por secretaria.",
+    [
+      k("bruto","Despesa bruta","currency",{agg:"sum",field:"bruto"}),
+      k("liquido","Despesa líquida","currency",{agg:"sum",field:"liquido"}),
+      k("encargos","Encargos","currency",{agg:"sum",field:"encargos"}),
+      k("descontos","Descontos","currency",{agg:"sum",field:"descontos"})
+    ],
+    [
+      ch("despesas-secretaria","Despesa bruta por secretaria","bar",{group:"secretaria",field:"bruto",agg:"sum",format:"currency"}),
+      ch("despesas-mes","Evolução das despesas","line",{group:"mes",fields:[{field:"bruto",label:"Bruto"},{field:"liquido",label:"Líquido"},{field:"encargos",label:"Encargos"}],agg:"sum",format:"currency"})
+    ]);
+
   const generic=(home,financeiro=[],operacoes=[],cadastros=[],controle=[])=>[
     {id:home,descricao:"Início",icone:"home-outline",rota:home,possuiPermissao:true},
     {id:"grupo-financeiro",descricao:"Financeiro",icone:"cash-multiple",possuiPermissao:true,submenus:financeiro},
@@ -254,29 +380,29 @@
   );
 
   const contabilMenu=generic("contabil-visao-geral",
-    [item("contabil-receita","Receita"),item("contabil-despesa","Despesa")],
-    [item("contabil-movimentos","Movimentos contábeis")],
-    [item("contabil-credores","Credores")],
-    [item("contabil-controle","Controle contábil")]
+    [item("contabil-receita","Receitas","cash-plus"),item("contabil-despesa","Despesas","cash-minus"),item("contabil-empenhos","Empenhos","file-sign"),item("contabil-restos","Restos a pagar","calendar-alert")],
+    [item("contabil-movimentos","Movimentos contábeis","swap-horizontal"),item("contabil-demonstrativos","Demonstrativos","file-chart-outline")],
+    [item("contabil-credores","Credores","account-cash-outline")],
+    [item("contabil-controle","Controle contábil","shield-check-outline")]
   );
   const comprasMenu=generic("compras-visao-geral",
-    [item("compras-contratos","Contratos")],
-    [item("compras-processos","Processos"),item("compras-licitacoes","Licitações")],
-    [item("compras-fornecedores","Fornecedores")],
-    [item("compras-controle","Prazos e situações")]
+    [item("compras-contratos","Contratos","file-sign")],
+    [item("compras-processos","Processos","clipboard-text-outline"),item("compras-licitacoes","Licitações","gavel"),item("compras-atas","Atas de Registro de Preço","file-certificate-outline")],
+    [item("compras-fornecedores","Fornecedores","truck-outline"),item("compras-itens","Catálogo de Itens","format-list-bulleted")],
+    [item("compras-controle","Controle","shield-check-outline")]
   );
   const folhaMenu=generic("folha-visao-geral",
-    [item("folha-mensal","Folha mensal"),item("folha-encargos","Encargos")],
-    [item("folha-eventos","Eventos")],
-    [item("folha-servidores","Servidores")],
-    [item("folha-controle","Situação funcional")]
+    [item("folha-mensal","Folha mensal","calendar-month-outline"),item("folha-despesas","Despesas","cash-multiple"),item("folha-encargos","Encargos","bank-transfer"),item("folha-beneficios","Benefícios","gift-outline")],
+    [item("folha-eventos","Eventos","format-list-checks")],
+    [item("folha-servidores","Servidores","account-group-outline"),item("folha-vinculos","Vínculos","account-switch-outline"),item("folha-cargos","Cargos","badge-account-outline"),item("folha-departamentos","Departamentos","office-building-outline")],
+    [item("folha-controle","Controle","shield-check-outline")]
   );
 
   window.BI_SYSTEMS=[
-    {id:"tributos",name:"Tributos",enabled:true,homeView:"visao-geral",menu:tributosMenu},
-    {id:"contabil",name:"Contábil",enabled:true,homeView:"contabil-visao-geral",menu:contabilMenu,sampleMode:true},
-    {id:"compras",name:"Compras",enabled:true,homeView:"compras-visao-geral",menu:comprasMenu,sampleMode:true},
-    {id:"folha",name:"Folha de pagamento",enabled:true,homeView:"folha-visao-geral",menu:folhaMenu,sampleMode:true}
+    {id:"tributos",name:"Tributos",icon:"bank-outline",enabled:true,homeView:"visao-geral",heading:"Arrecadação e Gestão Tributária",menu:tributosMenu},
+    {id:"contabil",name:"Contabilidade",icon:"calculator-variant-outline",enabled:true,homeView:"contabil-visao-geral",heading:"Execução Orçamentária",menu:contabilMenu,sampleMode:true},
+    {id:"compras",name:"Compras",icon:"cart-outline",enabled:true,homeView:"compras-visao-geral",heading:"Processos, Licitações e Contratos",menu:comprasMenu,sampleMode:true},
+    {id:"folha",name:"Folha de Pagamento",icon:"account-group-outline",enabled:true,homeView:"folha-visao-geral",heading:"Servidores, Vínculos e Custos",menu:folhaMenu,sampleMode:true}
   ];
   window.BI_MENU=tributosMenu;
 })();
