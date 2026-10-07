@@ -381,6 +381,36 @@ test("busca local só sugere painéis autorizados do sistema atual", () => {
   assert.match(search, /preferredLocalView\(row,query,context,config\)/);
 });
 
+test("todas as homes exibem leitura executiva e pontos de atenção contextuais", () => {
+  const app = fs.readFileSync(path.join(ROOT, "app.js"), "utf8");
+  const css = fs.readFileSync(path.join(ROOT, "style.css"), "utf8");
+
+  assert.match(app, /const SYSTEM_HOME_COPY=Object\.freeze/);
+  for (const system of ["tributos","contabil","compras","folha"]) {
+    assert.match(app, new RegExp(system+":\\{"));
+  }
+  assert.match(app, /if\(isCurrentSystemHome\(view\)\)/);
+  assert.match(app, /function renderOverviewAttention\(payload\)/);
+  assert.match(app, /if\(!isCurrentSystemHome\(\)\)/);
+  assert.match(app, /currentSystemId\)==="contabil"/);
+  assert.match(app, /currentSystemId\)==="compras"/);
+  assert.match(app, /currentSystemId\)==="folha"/);
+  assert.match(app, /AMOSTRA LOCAL/);
+  assert.match(css, /\.system-home-executive/);
+  assert.match(css, /\.overview-attention-mode/);
+});
+
+test("cobertura e badges distinguem amostra local de integração real", () => {
+  const app = fs.readFileSync(path.join(ROOT, "app.js"), "utf8");
+  const css = fs.readFileSync(path.join(ROOT, "style.css"), "utf8");
+  assert.match(app, /Cobertura da amostra local/);
+  assert.match(app, /0 chamadas à API/);
+  assert.match(app, /if\(value\.startsWith\("local:"\)\) return "sample"/);
+  assert.match(app, /if\(String\(source\)\.startsWith\("local:"\)\) return "AMOSTRA"/);
+  assert.match(css, /\.source-badge\.sample/);
+  assert.match(css, /\.integration-coverage\.is-sample/);
+});
+
 test("frontend não expõe User-Access ou access token em configuração pública", () => {
   const config = fs.readFileSync(path.join(ROOT, "config.js"), "utf8");
   assert.doesNotMatch(config, /User-Access\s*[:=]\s*["'][^"']+["']/i);
