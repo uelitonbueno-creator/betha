@@ -15,6 +15,7 @@ on:
       - "scripts/check-mcp-oauth.mjs"
       - "mcp/**"
       - ".github/workflows/mcp-production-watch.yml"
+      - ".github/workflows/mcp-sdk-v2-deploy.yml"
   pull_request:
     paths:
       - "backend/worker.js"
@@ -25,6 +26,7 @@ on:
       - "scripts/check-mcp-oauth.mjs"
       - "mcp/**"
       - ".github/workflows/mcp-production-watch.yml"
+      - ".github/workflows/mcp-sdk-v2-deploy.yml"
   schedule:
     - cron: "23 * * * *"
 
