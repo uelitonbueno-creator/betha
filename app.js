@@ -696,7 +696,8 @@
     const definitions=new Map(filterDefinitions(view).map(item=>[item.id,item]));
     for(const [key,value] of Object.entries(currentDashboardFilters(view))){
       const def=definitions.get(key);
-      items.push({kind:"advanced",key,label:def?.label||key,value});
+      const option=normalizeFilterOptions(def?.options||[]).find(item=>item.value===String(value));
+      items.push({kind:"advanced",key,label:def?.label||key,value:option?.label||value});
     }
     return items;
   }
@@ -3077,7 +3078,7 @@
   function localSampleFilterOptions(rows,filters=[]) {
     const result={};
     for(const filter of filters){
-      if(filter.type==="search") continue;
+      if(filter.type==="search"||filter.dynamic===false) continue;
       const field=filter.field||filter.id;
       result[filter.id]=[...new Set(rows
         .map(row=>row?.[field])
