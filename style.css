@@ -7869,3 +7869,46 @@ bth-app{--menu-bg-color:var(--vella-sidebar)}
 
 .summary-table-empty{display:flex;flex-direction:column;gap:5px;padding:16px;border:1px dashed var(--vella-border);border-radius:9px;background:#f8fbfd;color:var(--vella-muted);font-size:11px}
 .summary-table-empty strong{color:var(--vella-text);font-size:12px}
+
+/* Align the desktop navigation flush to the upper-left corner. */
+.context-bar{display:none!important}
+@media(min-width:1101px){
+  .workspace{
+    padding:45px 18px 40px 12px;
+    grid-template-columns:280px minmax(0,1fr);
+    column-gap:15px;
+  }
+  .desktop-sidebar{
+    top:-45px;
+    height:calc(100dvh - 12px);
+    min-height:0;
+    border-top:0;
+    border-left:0;
+    border-radius:0 0 12px 12px;
+  }
+  .sidebar-brand-panel{
+    min-height:62px;
+    padding:10px 12px;
+  }
+  .sidebar-brand-panel .menu-tools{
+    height:32px;
+    min-width:0;
+    gap:0;
+    margin-left:auto;
+    flex:0 0 auto;
+  }
+  .sidebar-brand-panel .tool-button{
+    width:20px;
+    min-width:20px;
+    height:30px;
+    padding:0;
+  }
+  .sidebar-brand-panel .tool-button i{font-size:14px}
+}
+@media(max-width:1250px) and (min-width:1101px){
+  .workspace{padding:45px 12px 40px}
+  .workspace{grid-template-columns:280px minmax(0,1fr)}
+}
+@media(max-width:460px){
+  .workspace{padding-top:12px!important}
+}
