@@ -284,10 +284,16 @@
   function positionSettingsUtilityMenu() {
     if(!settingsUtilityButton||!settingsUtilityMenu||settingsUtilityMenu.hidden) return;
     const rect=settingsUtilityButton.getBoundingClientRect();
-    const width=Math.min(360,window.innerWidth-16);
+    const width=Math.min(456,window.innerWidth-16);
     settingsUtilityMenu.style.width=width+"px";
     settingsUtilityMenu.style.left=Math.max(8,Math.min(rect.right-width,window.innerWidth-width-8))+"px";
-    settingsUtilityMenu.style.top=Math.min(rect.bottom+7,window.innerHeight-settingsUtilityMenu.offsetHeight-8)+"px";
+    settingsUtilityMenu.style.maxHeight=Math.max(120,window.innerHeight-16)+"px";
+    const height=settingsUtilityMenu.offsetHeight;
+    const below=rect.bottom+7;
+    const above=rect.top-height-7;
+    const top=below+height<=window.innerHeight-8?below:
+      above>=8?above:Math.max(8,Math.min(below,window.innerHeight-height-8));
+    settingsUtilityMenu.style.top=top+"px";
   }
 
   function closeSettingsUtilityMenu(restoreFocus=false) {
@@ -2797,6 +2803,7 @@
       if (!response.ok) {
         const error = new Error(body.error || ("HTTP " + response.status));
         error.status = response.status;
+        if (isAuthenticationFailure(error)) showAuthenticationRequired();
         throw error;
       }
       return body;
@@ -2810,6 +2817,28 @@
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  function isAuthenticationFailure(error) {
+    return error?.status === 401 || [
+      "USER_TOKEN_REQUIRED",
+      "APPLICATION_SESSION_INVALID",
+      "APPLICATION_SESSION_EXPIRED",
+      "PLATFORM_HTTP_401"
+    ].includes(error?.message);
+  }
+
+  function showAuthenticationRequired() {
+    window.BIAuth?.clear?.();
+    const note = document.querySelector("#authGate .auth-access-note");
+    if (note) note.textContent = "Sua sessão Betha expirou ou não está válida. Entre novamente para carregar os painéis.";
+
+    const button = document.getElementById("loginButton");
+    const base = String(cfg.BACKEND_URL || "").replace(/\/$/, "");
+    if (button && base) button.href = base + "/api/auth/login";
+
+    if (authGate) authGate.hidden = false;
+    if (bethaApp) bethaApp.style.display = "none";
   }
 
   function mergeDashboardPart(target, part) {

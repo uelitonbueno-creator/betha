@@ -2504,9 +2504,11 @@ async function loadDashboardSourceBatch(env,tenant,source,resource) {
   if (!manifest.complete && !manifest.truncated && manifest.pages===expected) {
     const plainEnv={...env};
     delete plainEnv.BI_DASHBOARD_LOAD;
-    plainEnv.BI_SOURCE_TIMEOUT_MS=12000;
+    // Fontes financeiras da Betha podem levar mais de 12s para 250 linhas.
+    // Buscar lotes menores e dar tempo ao gateway antes de marcar aborto.
+    plainEnv.BI_SOURCE_TIMEOUT_MS=30000;
     const chunk=await safeBethaRows(plainEnv,tenant,source,resource,{
-      limit:250,
+      limit:/pagamentos|dividas/.test(resource)?100:250,
       maxPages:1,
       startOffset:manifest.nextOffset,
       filter:load.sourceFilters?.[sourceKey]||null
