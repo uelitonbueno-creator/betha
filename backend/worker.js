@@ -1384,9 +1384,14 @@ async function persistSupabaseCache(env,body) {
 
 function corsHeaders(request, env) {
   const origin = request.headers.get("Origin") || "";
-  const raw = env.ALLOWED_ORIGINS || "https://uelitonbueno-creator.github.io";
-  const allowed = String(raw).split(",").map(v => v.trim()).filter(Boolean);
-  const allowOrigin = allowed.includes(origin) ? origin : "";
+  const raw = env.ALLOWED_ORIGINS || "";
+  const allowed = new Set(
+    String(raw).split(",").map(v => v.trim()).filter(Boolean)
+  );
+  // Production UI must remain allowed even when ALLOWED_ORIGINS is configured
+  // in Cloudflare with an older/stale value.
+  allowed.add("https://uelitonbueno-creator.github.io");
+  const allowOrigin = allowed.has(origin) ? origin : "";
   return {
     ...(allowOrigin ? {"Access-Control-Allow-Origin": allowOrigin} : {}),
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
@@ -7158,6 +7163,7 @@ function errorResponse(request,env,error) {
     DETAIL_RELATION_SOURCE_INCOMPLETE:503,
     TENANT_CONFIG_INVALID:400,
     TENANT_CONFIG_FORBIDDEN:403,
+    ORIGIN_FORBIDDEN:403,
     TENANT_CONFIG_KEY_REQUIRED:503,
     DETAIL_RESOURCE_NOT_ALLOWED:404,
     MCP_TOKEN_REQUIRED:401,
@@ -7182,7 +7188,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-07-tenant-config-admin-v87",
+        buildVersion:"2026-10-07-tenant-config-cors-v88",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
@@ -7559,7 +7565,7 @@ export default {
           return response;
         }
         const origin=request.headers.get("Origin");
-        if(origin&&!corsHeaders(request,env)["Access-Control-Allow-Origin"]) throw new Error("TENANT_CONFIG_FORBIDDEN");
+        if(origin&&!corsHeaders(request,env)["Access-Control-Allow-Origin"]) throw new Error("ORIGIN_FORBIDDEN");
         if(!/^application\/json(?:;|$)/i.test(request.headers.get("Content-Type")||"")) throw new Error("TENANT_CONFIG_INVALID");
         const text=await request.text();
         if(text.length>20000) throw new Error("TENANT_CONFIG_INVALID");
