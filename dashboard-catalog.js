@@ -495,9 +495,8 @@ Object.assign(window.BI_DASHBOARDS, {
 });
 
 window.BI_MENU = [
-  {id:"inicio",descricao:"Início",icone:"home-outline",rota:"inicio",possuiPermissao:true},
+  {id:"visao-geral",descricao:"Início",icone:"home-outline",rota:"visao-geral",possuiPermissao:true},
   { id:"grupo-executivo", descricao:"Executivo", icone:"view-dashboard-outline", possuiPermissao:true, submenus:[
-    {id:"visao-geral",descricao:"Visão geral",icone:"view-dashboard-outline",rota:"visao-geral",possuiPermissao:true},
     {id:"encerramento",descricao:"Encerramento mensal",icone:"calendar-month-outline",rota:"encerramento",possuiPermissao:true},
     {id:"qualidade",descricao:"Qualidade e auditoria",icone:"shield-check-outline",rota:"qualidade",possuiPermissao:true}
   ]},
