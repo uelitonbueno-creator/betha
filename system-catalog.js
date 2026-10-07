@@ -471,7 +471,7 @@
     item("folha-beneficios","Benefícios","gift-outline"),
     item("folha-despesas","Despesas","cash-multiple"),
     item("folha-controle","Controle","shield-check-outline")
-  );
+  ]);
 
   window.BI_SYSTEMS=[
     {id:"tributos",name:"Tributos",icon:"bank-outline",enabled:true,homeView:"visao-geral",heading:"Arrecadação, dívida, parcelamentos e situação dos contribuintes",menu:tributosMenu},
