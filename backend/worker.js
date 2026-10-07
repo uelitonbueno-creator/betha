@@ -2122,18 +2122,28 @@ async function authorizeTenant(request, env, tenant) {
     currentOAuthUserId(userToken)
   ]);
   const bethaAccess=matchAccess(accesses,context);
-  if (!bethaAccess) throw new Error("TENANT_ACCESS_DENIED");
-  if (bethaAccess.expiresIn && new Date(bethaAccess.expiresIn).getTime() < Date.now()) throw new Error("TENANT_ACCESS_EXPIRED");
+  if (bethaAccess && bethaAccess.expiresIn && new Date(bethaAccess.expiresIn).getTime() < Date.now()) {
+    throw new Error("TENANT_ACCESS_EXPIRED");
+  }
+
+  const aliases=biUserAliases(userId,accesses);
+  const tenantAdmin=!bethaAccess && await isBiTenantAdmin(env,tenant.id,aliases);
+  if (!bethaAccess && !tenantAdmin) throw new Error("TENANT_ACCESS_DENIED");
 
   const grant=userId?await getBiUserGrant(env,tenant.id,userId):null;
-  // Betha remains authoritative for identity/entity. Local BI grants only
-  // refine panels/profile. Existing Betha admin/technical users are bootstrap
-  // administrators so the BI cannot lock its own maintainers out.
-  if(!grant && bethaAccess.admin!==true && bethaAccess.technical!==true) {
+  if(bethaAccess && !grant && bethaAccess.admin!==true && bethaAccess.technical!==true) {
     throw new Error("BI_USER_NOT_AUTHORIZED");
   }
-  const access=applyBiGrantToAccess(bethaAccess,grant);
-  return {userToken,userId,access,bethaAccess,grant,context};
+
+  const baseAccess=bethaAccess || {
+    accepted:true,
+    admin:true,
+    technical:true,
+    user:userId||aliases[0]||"",
+    userName:userId||aliases[0]||""
+  };
+  const access=tenantAdmin ? baseAccess : applyBiGrantToAccess(baseAccess,grant);
+  return {userToken,userId,access,bethaAccess,grant,tenantAdmin,context};
 }
 
 function buildForwardedQuery(url) {
@@ -5370,6 +5380,50 @@ async function getBiUserGrant(env,tenantId,userId) {
   return biGrantActive(grant)?grant:null;
 }
 
+function biUserAliases(userId,accesses=[]) {
+  const aliases=new Set();
+  const add=value=>{
+    if(value===undefined||value===null) return;
+    const text=String(value).trim();
+    if(text) aliases.add(text);
+  };
+  add(userId);
+  for(const access of Array.isArray(accesses)?accesses:[]){
+    add(access&&access.user);
+    add(access&&access.userName);
+    add(access&&access.login);
+    add(access&&access.idUsuario);
+    add(access&&access.username);
+  }
+  return [...aliases];
+}
+
+async function isBiTenantAdmin(env,tenantId,aliases=[]) {
+  if(!env.AUTH_DB||!tenantId||!aliases.length) return false;
+  for(const alias of aliases){
+    const row=await env.AUTH_DB.prepare(
+      "SELECT 1 AS ok FROM bi_tenant_admins WHERE tenant_id=?1 AND lower(user_id)=lower(?2) LIMIT 1"
+    ).bind(String(tenantId),String(alias)).first();
+    if(row&&Number(row.ok)===1) return true;
+  }
+  return false;
+}
+
+async function rememberBiTenantAdmin(env,tenantId,auth) {
+  if(!env.AUTH_DB||!tenantId||!auth) return;
+  const aliases=new Set([
+    ...biUserAliases(auth.userId,[auth.access,auth.bethaAccess].filter(Boolean)),
+    auditActorLabel(auth.access)
+  ]);
+  const now=new Date().toISOString();
+  for(const alias of aliases){
+    if(!alias) continue;
+    await env.AUTH_DB.prepare(
+      "INSERT OR IGNORE INTO bi_tenant_admins (tenant_id,user_id,created_at) VALUES (?1,?2,?3)"
+    ).bind(String(tenantId),String(alias),now).run();
+  }
+}
+
 function applyBiGrantToAccess(access,grant) {
   if(!grant) return access;
   return {
@@ -7190,7 +7244,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-07-tenant-config-same-origin-v89",
+        buildVersion:"2026-10-07-tenant-selector-admin-v90",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
@@ -7584,6 +7638,7 @@ export default {
         if(url.pathname.endsWith("/test")) return json(request,env,200,{ok:true,message:"Conexão Betha validada."});
         config.updatedAt=new Date().toISOString();
         await persistTenantConfig(env,id,config);
+        await rememberBiTenantAdmin(env,id,auth);
         await writeAuditEvent(env,{tenantId:current.id,actor:auditActorLabel(auth.access),category:"configuration",action:"entity.save",subject:id,meta:{enabled:config.enabled,entityId:config.entityId,databaseId:config.databaseId}});
         return json(request,env,200,{ok:true,entity:publicTenantConfig(id,config,env)});
       } catch(error) {
@@ -7796,6 +7851,7 @@ export default {
         const registry=await tenantRegistry(env);
         const tenants=[];
         const tenantErrors=[];
+        const userAliases=biUserAliases(userId,accesses);
 
         for (const id of Object.keys(registry)) {
           try {
@@ -7809,17 +7865,25 @@ export default {
               count:contextMatches.length
             });
 
-            if (!access) {
+            const tenantAdmin=!access && await isBiTenantAdmin(env,tenant.id,userAliases);
+            if (!access && !tenantAdmin) {
               await authTrace(env,"TENANT_ACCESS_NOT_MATCHED",{tenant:id});
               continue;
             }
 
             const grant=userId?await getBiUserGrant(env,tenant.id,userId):null;
-            if(!grant && access.admin!==true && access.technical!==true){
+            if(access && !grant && access.admin!==true && access.technical!==true){
               await authTrace(env,"TENANT_BI_GRANT_MISSING",{tenant:id});
               continue;
             }
-            const effective=applyBiGrantToAccess(access,grant);
+            const baseAccess=access || {
+              accepted:true,
+              admin:true,
+              technical:true,
+              user:userId||userAliases[0]||"",
+              userName:userId||userAliases[0]||""
+            };
+            const effective=tenantAdmin ? baseAccess : applyBiGrantToAccess(baseAccess,grant);
             tenants.push({
               id:tenant.id,
               name:tenant.name,
@@ -7830,7 +7894,7 @@ export default {
               allowedViews:permissionViewsForAccess(effective),
               allowedAdminViews:adminViewsForAccess(effective)
             });
-            await authTrace(env,"TENANT_AUTHORIZED",{tenant:id,biManaged:Boolean(grant)});
+            await authTrace(env,"TENANT_AUTHORIZED",{tenant:id,biManaged:Boolean(grant),tenantAdmin});
           } catch(error) {
             await authTrace(env,"TENANT_VALIDATION_ERROR",{
               tenant:id,
