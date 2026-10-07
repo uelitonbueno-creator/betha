@@ -118,6 +118,20 @@ test("frontend registra interação acessível para drill-down das tabelas execu
   assert.match(app, /AMOSTRA LOCAL · SEM CONSUMO DA API/);
 });
 
+test("KPIs e gráficos das amostras usam drill-down local sem consultar detalhe remoto", () => {
+  const app = fs.readFileSync(path.join(ROOT, "app.js"), "utf8");
+  assert.match(app, /if\(def\.localSample\)\{openLocalSampleKpiDetail\(kpi\);return;\}/);
+  assert.match(app, /if\(dashboards\[currentView\]\?\.localSample\)\{openLocalSampleChartDetail\(chartDef,selected\);return;\}/);
+  const kpiStart = app.indexOf("function openLocalSampleKpiDetail");
+  const chartStart = app.indexOf("function openLocalSampleChartDetail");
+  const remoteStart = app.indexOf("function openKpiDetail");
+  assert.ok(kpiStart >= 0 && chartStart >= 0 && remoteStart > chartStart);
+  const localBlock = app.slice(kpiStart, remoteStart);
+  assert.doesNotMatch(localBlock, /loadDetailRecords\(/);
+  assert.match(localBlock, /localSampleDetailTable/);
+  assert.match(localBlock, /AMOSTRA LOCAL · SEM CONSUMO DA API/);
+});
+
 test("amostras locais continuam com exatamente 100 registros", () => {
   for (const file of ["contabil-100.json", "compras-100.json", "folha-100.json"]) {
     const doc = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "samples", file), "utf8"));
