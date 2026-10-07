@@ -6829,3 +6829,71 @@ button{touch-action:manipulation}
     height:240px!important;
   }
 }
+
+
+/* BI Vella · seletor de sistema no contexto */
+.system-control{
+  position:relative;
+  display:flex;
+  align-items:center;
+  min-width:0
+}
+.context-system-button{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  min-height:30px;
+  max-width:min(280px,34vw);
+  padding:0 8px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:#263246;
+  font:inherit;
+  font-size:10px;
+  font-weight:600;
+  cursor:pointer
+}
+.context-system-button:hover,
+.context-system-button[aria-expanded="true"]{
+  background:#f3f6f9
+}
+.context-system-button strong{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap
+}
+.context-system-button .mdi-application-cog-outline{
+  color:#657184;
+  font-size:15px
+}
+.context-system-button .mdi-chevron-down{
+  color:#8a95a3;
+  font-size:14px
+}
+.system-menu{
+  left:0;
+  right:auto;
+  min-width:220px
+}
+.system-option{
+  display:flex;
+  align-items:center;
+  gap:8px
+}
+.system-option .mdi{
+  color:#657184;
+  font-size:15px
+}
+@media(max-width:720px){
+  .context-bar{
+    overflow:visible
+  }
+  .context-system-button{
+    max-width:42vw;
+    padding:0 5px
+  }
+  .context-system-button .mdi-application-cog-outline{
+    display:none
+  }
+}
