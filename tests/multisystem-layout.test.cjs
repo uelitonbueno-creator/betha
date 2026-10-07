@@ -203,6 +203,7 @@ test("shell do layout possui contexto lateral, cabeçalho e tabelas analíticas"
   for (const id of [
     "sidebarEntityButton", "sidebarEntityList", "systemRailList",
     "systemHeaderContext", "sampleModeBadge", "primaryDynamicFilters", "tableSectionHeading", "tableGrid",
+    "sourceDisclosureTitle", "sourceDisclosureDescription", "sourceSummary",
     "mobileContextBar", "mobileEntitySelect", "mobileSystemSelect", "mobilePanelSelect"
   ]) {
     assert.match(html, new RegExp('id="' + id + '"'), "id ausente: " + id);
@@ -308,6 +309,30 @@ test("busca global preserva o sistema do painel encontrado", () => {
   assert.match(search, /window\.BI_DASHBOARDS\?\.\[view\]/);
   assert.match(search, /url\.searchParams\.set\("sistema",system\)/);
   assert.match(search, /url\.searchParams\.set\("view",view\)/);
+});
+
+test("proveniência diferencia AMOSTRA LOCAL de dados reais", () => {
+  const app = fs.readFileSync(path.join(ROOT, "app.js"), "utf8");
+  const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
+  assert.match(html, /id="sourceDisclosureTitle"/);
+  assert.match(html, /id="sourceDisclosureDescription"/);
+  assert.match(app, /function renderSourceProvenance\(/);
+  assert.match(app, /Dados sintéticos locais para validação visual e funcional\. Não representam dados de produção\./);
+  assert.match(app, /0 chamadas Cloudflare/);
+  assert.match(app, /AMOSTRA LOCAL · 0 API/);
+  assert.match(app, /na amostra/);
+  assert.doesNotMatch(app, /sampleMode[\s\S]{0,220}carregados \/ API/);
+});
+
+test("período Últimos 12 meses possui tratamento próprio nas amostras locais", () => {
+  const app = fs.readFileSync(path.join(ROOT, "app.js"), "utf8");
+  const start = app.indexOf("function localSampleRowsForPeriod");
+  const end = app.indexOf("function localSampleFilterOptions", start);
+  assert.ok(start >= 0 && end > start);
+  const block = app.slice(start, end);
+  assert.match(block, /if\(periodo==="12m"\)/);
+  assert.match(block, /anchor\.getMonth\(\)-11/);
+  assert.match(block, /key>=startKey&&key<=endKey/);
 });
 
 test("frontend não expõe User-Access ou access token em configuração pública", () => {
