@@ -5508,23 +5508,27 @@ async function listBiUserGrants(env,tenantId,{limit=100,offset=0}={}) {
   const rows=await env.AUTH_DB.prepare(
     "SELECT tenant_id,user_id,user_name,email,admin,technical,permissions,expires_in,created_at,updated_at,created_by FROM bi_user_grants WHERE tenant_id=?1 ORDER BY lower(user_name),lower(user_id) LIMIT ?2 OFFSET ?3"
   ).bind(String(tenantId),safeLimit,safeOffset).all();
-  const content=(rows.results||[]).map(row=>({
-    id:String(row.user_id),
-    accessId:String(row.user_id),
-    user:String(row.user_id),
-    userName:String(row.user_name||row.user_id),
-    email:String(row.email||""),
-    admin:Number(row.admin)===1,
-    technical:Number(row.technical)===1,
-    permissions:parseGrantPermissions(row.permissions),
-    expiresIn:row.expires_in?String(row.expires_in):null,
-    createAt:String(row.created_at||""),
-    updatedAt:String(row.updated_at||""),
-    totalRestrictions:0,
-    connected:false,
-    blocked:false,
-    source:"bi-local"
-  }));
+  const content=(rows.results||[]).map(row=>{
+    const permissions=parseGrantPermissions(row.permissions);
+    return {
+      id:String(row.user_id),
+      accessId:String(row.user_id),
+      user:String(row.user_id),
+      userName:String(row.user_name||row.user_id),
+      email:String(row.email||""),
+      admin:Number(row.admin)===1,
+      technical:Number(row.technical)===1,
+      permissions,
+      permissionCount:permissions.length,
+      expiresIn:row.expires_in?String(row.expires_in):null,
+      createAt:String(row.created_at||""),
+      updatedAt:String(row.updated_at||""),
+      totalRestrictions:0,
+      connected:false,
+      blocked:false,
+      source:"bi-local"
+    };
+  });
   return {content};
 }
 
