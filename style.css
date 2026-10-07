@@ -7205,3 +7205,9 @@ bth-app{--menu-bg-color:var(--vella-sidebar)}
   .source-summary{display:grid;grid-template-columns:1fr;gap:6px}
   .source-chip{white-space:normal;line-height:1.35}
 }
+
+
+/* === BI VELLA REDESIGN 2026-10-07 / ROUND 10 === */
+.coverage-item.is-sample{border-color:#efd18a;background:#fffaf0}
+.coverage-item.is-sample .coverage-source{color:#7a5a00}
+.coverage-item.is-sample small{color:#8a6200}
