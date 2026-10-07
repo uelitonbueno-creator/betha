@@ -4060,8 +4060,23 @@
 
   const entityButton = document.getElementById("entityButton");
   const entityMenu = document.getElementById("entityMenu");
-  entityButton.addEventListener("click", () => {
-    entityMenu.hidden = !entityMenu.hidden;
+  entityButton.addEventListener("click", async () => {
+    const opening=entityMenu.hidden;
+    entityMenu.hidden=!opening;
+    if(!opening) return;
+
+    entityButton.setAttribute("aria-busy","true");
+    try {
+      // Atualiza a lista na abertura para refletir prefeituras cadastradas
+      // ou permissões concedidas depois do login atual.
+      await loadTenants();
+      entityMenu.hidden=false;
+    } catch(error) {
+      console.warn("Falha ao atualizar lista de entidades:",error);
+      entityMenu.hidden=false;
+    } finally {
+      entityButton.removeAttribute("aria-busy");
+    }
   });
   document.addEventListener("click", (event) => {
     if (!event.target.closest(".entity-control")) entityMenu.hidden = true;
@@ -5237,6 +5252,7 @@
   function applyTenantInPlace(tenant, resumeView = false) {
     if (!tenant || !tenant.id) return false;
 
+    const previousTenantId=tenantId;
     if(tenantId!==tenant.id){chartDisplayStateByView.clear();filterStateByView.clear();restoredPreferenceScopes.clear();}
     tenantId = tenant.id;
     entityLabel = tenant.name || tenant.id;
@@ -5260,6 +5276,11 @@
       String(entityLabel).toUpperCase();
 
     renderAuthorizedTenantMenu();
+    if(entityMenu) entityMenu.hidden=true;
+
+    if(resumeView && previousTenantId && previousTenantId!==tenantId){
+      showToast("Prefeitura alterada para " + entityLabel + ".");
+    }
 
     if (resumeView) {
       if (currentView === "usuarios-admin") {
