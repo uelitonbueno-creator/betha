@@ -900,7 +900,7 @@
   }
 
   function renderDashboard(view) {
-    if(view===HOME_VIEW) view=DEFAULT_VIEW;
+    if(view===HOME_VIEW) view=currentSystemInfo()?.homeView||DEFAULT_VIEW;
     document.getElementById("syntheticHomeView").hidden=true;
     document.getElementById("dashboardView").hidden = false;
     document.getElementById("usersAdminView").hidden = true;
@@ -911,6 +911,20 @@
     const sourceChoice=document.getElementById("fontePreferencial")?.closest(".field");if(sourceChoice)sourceChoice.hidden=Boolean(def.apiSource||def.localSample);
     const dashboardView = document.getElementById("dashboardView");
     dashboardView.dataset.dashboard = view;
+    dashboardView.dataset.system = currentSystemId;
+    const systemInfo=currentSystemInfo();
+    const systemName=String(systemInfo?.name||systemInfo?.label||systemInfo?.id||"Tributos");
+    const systemHeaderContext=document.getElementById("systemHeaderContext");
+    if(systemHeaderContext) systemHeaderContext.textContent=systemName.toUpperCase();
+    document.title="BI Vella | "+systemName+" / "+(def?.title||"Painel");
+    const sampleModeBadge=document.getElementById("sampleModeBadge");
+    if(sampleModeBadge){
+      sampleModeBadge.hidden=!def?.localSample;
+      const sampleText=sampleModeBadge.querySelector("span");
+      if(sampleText&&def?.localSample) sampleText.textContent="Amostra de teste · sem consumo da API";
+    }
+    const tableGrid=document.getElementById("tableGrid");
+    if(tableGrid){tableGrid.innerHTML="";tableGrid.hidden=true;}
     document.getElementById("overviewExecutive")?.remove();
     document.getElementById("overviewAttention")?.remove();
     document.getElementById("overviewKpiHeading")?.remove();
@@ -963,7 +977,7 @@
     for (const kpi of def.kpis || []) {
       const el = document.createElement("article");
       const kpiFormat = kpi.format === "currency" ? "currency" : "number";
-      el.className = "kpi-card kpi-card-" + kpiFormat;
+      el.className = "kpi-card kpi-card-" + kpiFormat + " kpi-tone-" + ((def.kpis||[]).indexOf(kpi)%6);
       el.dataset.kpi = kpi.id;
       el.dataset.format = kpiFormat;
       el.innerHTML = `
@@ -1866,6 +1880,50 @@
     empty.hidden=false;
   }
 
+  function renderSummaryTables(payload) {
+    const host=document.getElementById("tableGrid");
+    if(!host) return;
+    host.innerHTML="";
+    const defs=dashboardCharts(currentView)
+      .map(chart=>displayChartDefinition(chart))
+      .filter((chart,index,array)=>array.findIndex(item=>item.id===chart.id)===index);
+    const charts=payload?.charts||{};
+    let rendered=0;
+    for(const chartDef of defs){
+      if(rendered>=2) break;
+      const data=charts[chartDef.id];
+      if(!data||!Array.isArray(data.labels)||!data.labels.length||!Array.isArray(data.datasets)||!data.datasets.length) continue;
+      const datasets=data.datasets.filter(ds=>Array.isArray(ds.data)).slice(0,3);
+      if(!datasets.length) continue;
+      const rows=data.labels.map((label,index)=>({
+        label,
+        values:datasets.map(ds=>ds.data[index])
+      })).filter(row=>row.values.some(value=>value!==null&&value!==undefined));
+      if(!rows.length) continue;
+      const visibleRows=rows.slice(0,10);
+      const format=data.format||chartDef?.sample?.format||"number";
+      const formatCell=value=>{
+        if(value===null||value===undefined||value==="") return "—";
+        const numeric=Number(value);
+        if(!Number.isFinite(numeric)) return escapeHtml(String(value));
+        if(format==="currency") return escapeHtml(formatValue(numeric,"currency"));
+        if(format==="percent") return escapeHtml(formatValue(numeric,"percent"));
+        return escapeHtml(formatValue(numeric,"number"));
+      };
+      const card=document.createElement("article");
+      card.className="summary-table-card";
+      card.innerHTML='<header><div><h3>'+escapeHtml(chartDef.title)+'</h3><span>Resumo analítico dos dados exibidos no gráfico</span></div><span>'+rows.length+' item(ns)</span></header>'+
+        '<div class="summary-table-scroll"><table class="summary-table"><thead><tr><th>Categoria</th>'+
+        datasets.map(ds=>'<th>'+escapeHtml(ds.label||"Valor")+'</th>').join("")+
+        '</tr></thead><tbody>'+
+        visibleRows.map(row=>'<tr><td>'+escapeHtml(String(row.label))+'</td>'+row.values.map(formatCell).map(value=>'<td>'+value+'</td>').join("")+'</tr>').join("")+
+        '</tbody></table></div>';
+      host.appendChild(card);
+      rendered++;
+    }
+    host.hidden=rendered===0;
+  }
+
   function renderPayload(payload) {
     currentPayload = payload || {};
     setDashboardLoading(false);
@@ -1892,6 +1950,7 @@
       if (hasData) renderChartData(chartDef,chartData);
       else renderChartEmptyState(chartDef,payload);
     }
+    renderSummaryTables(payload);
 
     const sourceRows = payload && payload.meta && payload.meta.sourceRows ? payload.meta.sourceRows : {};
     const sourceAudit = payload && payload.meta && payload.meta.sourceAudit ? payload.meta.sourceAudit : {};
@@ -3020,8 +3079,14 @@
         }
       };
       renderPayload(payload);
+      const sampleModeBadge=document.getElementById("sampleModeBadge");
+      if(sampleModeBadge){
+        sampleModeBadge.hidden=false;
+        const sampleText=sampleModeBadge.querySelector("span");
+        if(sampleText) sampleText.textContent=allRows.length+" registros · sem consumo da API / Cloudflare";
+      }
       setLastUpdated(doc?.generatedAt||new Date().toISOString(),"Amostra local");
-      setStatus("online","TESTE LOCAL · "+allRows.length+" registros disponíveis · 0 chamadas Cloudflare");
+      setStatus("online","AMOSTRA LOCAL · "+allRows.length+" registros · 0 chamadas Cloudflare");
     }catch(error){
       if(!active()) return;
       console.warn("Falha ao carregar amostra local:",error);
@@ -4212,6 +4277,10 @@
 
   const entityButton = document.getElementById("entityButton");
   const entityMenu = document.getElementById("entityMenu");
+  const sidebarEntityButton=document.getElementById("sidebarEntityButton");
+  const sidebarEntityMenu=document.getElementById("sidebarEntityMenu");
+  const sidebarEntityContext=document.getElementById("sidebarEntityContext");
+  const sidebarEntityList=document.getElementById("sidebarEntityList");
   entityButton.addEventListener("click", async () => {
     const opening=entityMenu.hidden;
     entityMenu.hidden=!opening;
@@ -4231,10 +4300,31 @@
     }
   });
 
+  sidebarEntityButton?.addEventListener("click",async event=>{
+    event.stopPropagation();
+    if(!sidebarEntityMenu) return;
+    const opening=sidebarEntityMenu.hidden;
+    sidebarEntityMenu.hidden=!opening;
+    sidebarEntityButton.setAttribute("aria-expanded",String(opening));
+    if(!opening) return;
+    sidebarEntityButton.setAttribute("aria-busy","true");
+    try{
+      await loadTenants();
+      sidebarEntityMenu.hidden=false;
+    }catch(error){
+      console.warn("Falha ao atualizar entidades no sidebar:",error);
+      sidebarEntityMenu.hidden=false;
+    }finally{
+      sidebarEntityButton.removeAttribute("aria-busy");
+    }
+  });
+
   const systemButton=document.getElementById("systemButton");
   const systemMenu=document.getElementById("systemMenu");
   const systemList=document.getElementById("systemList");
+  const systemRailList=document.getElementById("systemRailList");
   const systemContext=document.getElementById("systemContext");
+  const systemHeaderContext=document.getElementById("systemHeaderContext");
 
   function currentSystemInfo() {
     return systems.find(system=>String(system.id)===String(currentSystemId)) || systems[0] || null;
@@ -4242,16 +4332,30 @@
 
   function renderSystemSelector() {
     const active=currentSystemInfo();
-    if(systemContext) systemContext.textContent=String(active?.name||active?.label||active?.id||"Tributos").toUpperCase();
-    if(!systemList) return;
-    systemList.innerHTML="";
+    const activeName=String(active?.name||active?.label||active?.id||"Tributos");
+    if(systemContext) systemContext.textContent=activeName.toUpperCase();
+    if(systemHeaderContext) systemHeaderContext.textContent=activeName.toUpperCase();
+    const targets=[systemList,systemRailList].filter(Boolean);
+    for(const target of targets) target.innerHTML="";
     for(const system of systems){
-      const button=document.createElement("button");
-      button.type="button";
-      button.className="entity-option system-option"+(String(system.id)===String(currentSystemId)?" is-current":"");
-      button.innerHTML='<i class="mdi mdi-application-cog-outline"></i><span>'+escapeHtml(system.name||system.label||system.id)+'</span>';
-      button.addEventListener("click",()=>selectSystem(system));
-      systemList.appendChild(button);
+      const icon=String(system.icon||"application-cog-outline");
+      if(systemList){
+        const button=document.createElement("button");
+        button.type="button";
+        button.className="entity-option system-option"+(String(system.id)===String(currentSystemId)?" is-current":"");
+        button.innerHTML='<i class="mdi mdi-'+escapeHtml(icon)+'"></i><span>'+escapeHtml(system.name||system.label||system.id)+'</span>';
+        button.addEventListener("click",()=>selectSystem(system));
+        systemList.appendChild(button);
+      }
+      if(systemRailList){
+        const rail=document.createElement("button");
+        rail.type="button";
+        rail.className="system-rail-option"+(String(system.id)===String(currentSystemId)?" is-current":"");
+        rail.setAttribute("aria-current",String(system.id)===String(currentSystemId)?"page":"false");
+        rail.innerHTML='<i class="mdi mdi-'+escapeHtml(icon)+'" aria-hidden="true"></i><span>'+escapeHtml(system.name||system.label||system.id)+'</span>';
+        rail.addEventListener("click",()=>selectSystem(system));
+        systemRailList.appendChild(rail);
+      }
     }
   }
 
@@ -4297,6 +4401,10 @@
 
   document.addEventListener("click", (event) => {
     if (!event.target.closest(".entity-control") && entityMenu) entityMenu.hidden = true;
+    if (!event.target.closest(".vella-sidebar-brand") && sidebarEntityMenu) {
+      sidebarEntityMenu.hidden=true;
+      sidebarEntityButton?.setAttribute("aria-expanded","false");
+    }
     if (!event.target.closest(".system-control") && systemMenu) {
       systemMenu.hidden = true;
       systemButton?.setAttribute("aria-expanded","false");
@@ -5455,19 +5563,19 @@
   });
 
   function renderAuthorizedTenantMenu() {
-    const list = document.getElementById("entityList");
-    if (!list) return;
-
-    list.innerHTML = "";
-
+    const lists=[document.getElementById("entityList"),sidebarEntityList].filter(Boolean);
+    for(const list of lists) list.innerHTML="";
     for (const tenant of authorizedTenants) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "entity-option" + (tenant.id === tenantId ? " is-current" : "");
-      button.textContent = tenant.name || tenant.id;
-      button.addEventListener("click", () => applyTenantInPlace(tenant, true));
-      list.appendChild(button);
+      for(const list of lists){
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "entity-option" + (tenant.id === tenantId ? " is-current" : "");
+        button.textContent = tenant.name || tenant.id;
+        button.addEventListener("click", () => applyTenantInPlace(tenant, true));
+        list.appendChild(button);
+      }
     }
+    if(sidebarEntityContext) sidebarEntityContext.textContent=entityLabel||"Selecione a entidade";
   }
 
   function applyTenantInPlace(tenant, resumeView = false) {
@@ -5495,9 +5603,12 @@
 
     document.getElementById("entityContext").textContent =
       String(entityLabel).toUpperCase();
+    if(sidebarEntityContext) sidebarEntityContext.textContent=entityLabel;
 
     renderAuthorizedTenantMenu();
     if(entityMenu) entityMenu.hidden=true;
+    if(sidebarEntityMenu) sidebarEntityMenu.hidden=true;
+    sidebarEntityButton?.setAttribute("aria-expanded","false");
 
     if(resumeView && previousTenantId && previousTenantId!==tenantId){
       showToast("Prefeitura alterada para " + entityLabel + ".");
@@ -5562,7 +5673,9 @@
 
       if (!tenants.length) {
         document.getElementById("entityContext").textContent = "SEM ENTIDADE AUTORIZADA";
+        if(sidebarEntityContext) sidebarEntityContext.textContent="Sem entidade autorizada";
         list.innerHTML = '<div class="table-empty">Nenhuma entidade autorizada para este usuário.</div>';
+        if(sidebarEntityList) sidebarEntityList.innerHTML=list.innerHTML;
         showTenantSelector([], {
           title:"Nenhuma prefeitura disponível",
           message:"O login Betha foi concluído, mas nenhuma entidade configurada no BI corresponde aos acessos deste usuário.",
@@ -5611,7 +5724,9 @@
       const entityList = document.getElementById("entityList");
 
       if (entityContext) entityContext.textContent = "ACESSO BETHA NÃO VALIDADO";
+      if(sidebarEntityContext) sidebarEntityContext.textContent="Acesso não validado";
       if (entityList) entityList.innerHTML = '<div class="table-empty">' + escapeHtml(friendly) + '</div>';
+      if(sidebarEntityList) sidebarEntityList.innerHTML='<div class="table-empty">'+escapeHtml(friendly)+'</div>';
 
       showTenantSelector([], {
         title:"Não foi possível carregar as prefeituras",
