@@ -8,10 +8,32 @@
   const src=id=>"sample:"+id;
   const local=(system,file)=>({system,file:"data/samples/"+file,sourceKey:system,mode:"sample"});
 
-  function add(id,system,file,title,description,kpis,charts){
+  const systemFilters={
+    contabil:[
+      {id:"unidade",field:"unidade",label:"Unidade",type:"select"},
+      {id:"status",field:"status",label:"Situação",type:"select"},
+      {id:"fonteRecurso",field:"fonteRecurso",label:"Fonte de recurso",type:"select"},
+      {id:"credor",field:"credor",label:"Credor",type:"select"}
+    ],
+    compras:[
+      {id:"secretaria",field:"secretaria",label:"Secretaria",type:"select"},
+      {id:"modalidade",field:"modalidade",label:"Modalidade",type:"select"},
+      {id:"status",field:"status",label:"Situação",type:"select"},
+      {id:"fornecedor",field:"fornecedor",label:"Fornecedor",type:"select"}
+    ],
+    folha:[
+      {id:"secretaria",field:"secretaria",label:"Secretaria",type:"select"},
+      {id:"vinculo",field:"vinculo",label:"Vínculo",type:"select"},
+      {id:"status",field:"status",label:"Situação",type:"select"},
+      {id:"cargo",field:"cargo",label:"Cargo",type:"select"}
+    ]
+  };
+
+  function add(id,system,file,title,description,kpis,charts,options={}){
     dashboards[id]={
       title,description,level:"macro-micro",system,
       localSample:local(system,file),
+      filters:Array.isArray(options.filters)?options.filters:(systemFilters[system]||[]),
       kpis:kpis.map(k=>({...k,source:src(system)})),
       charts:charts.map(c=>({...c,source:src(system)}))
     };
@@ -237,6 +259,35 @@
     ]);
 
 
+  add("contabil-execucao-orcamentaria","contabil","contabil-100.json","Execução Orçamentária","Acompanhe a execução da receita e da despesa, do orçamento previsto ao pagamento.",
+    [
+      k("receita-prevista","Receita prevista","currency",{agg:"sum",field:"receitaPrevista"}),
+      k("receita-arrecadada","Receita arrecadada","currency",{agg:"sum",field:"receitaArrecadada"}),
+      k("despesa-empenhada","Despesa empenhada","currency",{agg:"sum",field:"valorEmpenhado"}),
+      k("despesa-liquidada","Despesa liquidada","currency",{agg:"sum",field:"valorLiquidado"}),
+      k("despesa-paga","Despesa paga","currency",{agg:"sum",field:"valorPago"}),
+      k("resultado","Resultado arrecadado - pago","currency",{agg:"difference",minuend:"receitaArrecadada",subtrahend:"valorPago"})
+    ],
+    [
+      ch("execucao-receita-despesa","Receita arrecadada × despesa paga","line",{group:"mes",fields:[{field:"receitaArrecadada",label:"Receita arrecadada"},{field:"valorPago",label:"Despesa paga"}],agg:"sum",format:"currency"}),
+      ch("execucao-estagios-despesa","Empenhado × liquidado × pago","bar",{group:"mes",fields:[{field:"valorEmpenhado",label:"Empenhado"},{field:"valorLiquidado",label:"Liquidado"},{field:"valorPago",label:"Pago"}],agg:"sum",format:"currency"}),
+      ch("execucao-unidade","Despesa empenhada por unidade","bar",{group:"unidade",field:"valorEmpenhado",agg:"sum",format:"currency"}),
+      ch("execucao-fonte","Receita arrecadada por fonte","doughnut",{group:"fonteRecurso",field:"receitaArrecadada",agg:"sum",format:"currency"})
+    ]);
+
+  add("contabil-relatorios","contabil","contabil-100.json","Relatórios e Balanços","Visão consolidada para conferência e preparação de relatórios contábeis.",
+    [
+      k("receita","Receita arrecadada","currency",{agg:"sum",field:"receitaArrecadada"}),
+      k("empenhado","Despesa empenhada","currency",{agg:"sum",field:"valorEmpenhado"}),
+      k("liquidado","Despesa liquidada","currency",{agg:"sum",field:"valorLiquidado"}),
+      k("pago","Despesa paga","currency",{agg:"sum",field:"valorPago"})
+    ],
+    [
+      ch("relatorio-receita-unidade","Receita por unidade","bar",{group:"unidade",field:"receitaArrecadada",agg:"sum",format:"currency"}),
+      ch("relatorio-despesa-natureza","Despesa por natureza","bar",{group:"natureza",field:"valorEmpenhado",agg:"sum",format:"currency"}),
+      ch("relatorio-resultado-mensal","Receita × pagamento por mês","line",{group:"mes",fields:[{field:"receitaArrecadada",label:"Receita"},{field:"valorPago",label:"Pago"}],agg:"sum",format:"currency"})
+    ]);
+
   add("contabil-empenhos","contabil","contabil-100.json","Empenhos","Acompanhamento dos empenhos por unidade, credor e situação.",
     [
       k("empenhado","Valor empenhado","currency",{agg:"sum",field:"valorEmpenhado"}),
@@ -362,47 +413,71 @@
       ch("despesas-mes","Evolução das despesas","line",{group:"mes",fields:[{field:"bruto",label:"Bruto"},{field:"liquido",label:"Líquido"},{field:"encargos",label:"Encargos"}],agg:"sum",format:"currency"})
     ]);
 
-  const generic=(home,financeiro=[],operacoes=[],cadastros=[],controle=[])=>[
+  const item=(id,descricao,icone="chart-box-outline")=>({id,descricao,icone,rota:id,possuiPermissao:true});
+  const directMenu=(home,items=[])=>[
     {id:home,descricao:"Início",icone:"home-outline",rota:home,possuiPermissao:true},
-    {id:"grupo-financeiro",descricao:"Financeiro",icone:"cash-multiple",possuiPermissao:true,submenus:financeiro},
-    {id:"grupo-operacoes",descricao:"Operações",icone:"view-dashboard-outline",possuiPermissao:true,submenus:operacoes},
-    {id:"grupo-cadastros",descricao:"Cadastros",icone:"database-outline",possuiPermissao:true,submenus:cadastros},
-    {id:"grupo-controle",descricao:"Controle",icone:"shield-check-outline",possuiPermissao:true,submenus:controle}
+    ...items
   ];
 
-  const item=(id,descricao,icone="chart-box-outline")=>({id,descricao,icone,rota:id,possuiPermissao:true});
+  const tributosMenu=directMenu("visao-geral",[
+    item("arrecadacao","Arrecadação","chart-line"),
+    item("divida","Dívida ativa","bank-outline"),
+    item("parcelamentos","Parcelamentos","calendar-check-outline"),
+    item("guias","Guias e boletos","receipt"),
+    item("contribuintes","Contribuintes","account-group-outline"),
+    item("imobiliario","Imóveis","home-city-outline"),
+    item("economicos","Econômicos e ISS","storefront-outline"),
+    item("receitas-creditos","Receitas e créditos","cash-multiple"),
+    item("debitos","Lançamentos e débitos","file-document-edit-outline"),
+    item("itbi","Transferências e ITBI","home-switch-outline"),
+    item("encerramento","Encerramento mensal","calendar-month-outline"),
+    item("obras","Obras","hammer-wrench"),
+    item("territorio","Território cadastral","map-marker-outline"),
+    item("indexadores","Indexadores","chart-timeline-variant"),
+    item("qualidade","Qualidade e auditoria","shield-check-outline")
+  ]);
 
-  const tributosMenu=generic("visao-geral",
-    [item("arrecadacao","Arrecadação","chart-line"),item("debitos","Lançamentos e débitos","file-document-edit-outline"),item("divida","Dívida ativa","bank-outline"),item("parcelamentos","Parcelamentos","calendar-check-outline"),item("receitas-creditos","Receitas e créditos","cash-multiple"),item("guias","Guias e documentos","receipt")],
-    [item("encerramento","Encerramento mensal","calendar-month-outline"),item("itbi","Transferências e ITBI","home-switch-outline"),item("obras","Obras","hammer-wrench")],
-    [item("contribuintes","Contribuintes","account-group-outline"),item("economicos","Econômicos e ISS","storefront-outline"),item("imobiliario","Imobiliário e IPTU","home-city-outline"),item("territorio","Território cadastral","map-marker-outline"),item("indexadores","Indexadores","chart-timeline-variant")],
-    [item("qualidade","Qualidade e auditoria","shield-check-outline")]
-  );
+  const contabilMenu=directMenu("contabil-visao-geral",[
+    item("contabil-execucao-orcamentaria","Execução Orçamentária","chart-areaspline"),
+    item("contabil-receita","Receitas","cash-plus"),
+    item("contabil-despesa","Despesas","cash-minus"),
+    item("contabil-empenhos","Empenhos","file-sign"),
+    item("contabil-movimentos","Movimentos Contábeis","swap-horizontal"),
+    item("contabil-restos","Restos a Pagar","calendar-alert"),
+    item("contabil-credores","Credores","account-cash-outline"),
+    item("contabil-demonstrativos","Demonstrativos","file-chart-outline"),
+    item("contabil-relatorios","Relatórios / Balanços","file-document-multiple-outline"),
+    item("contabil-controle","Controle","shield-check-outline")
+  ]);
 
-  const contabilMenu=generic("contabil-visao-geral",
-    [item("contabil-receita","Receitas","cash-plus"),item("contabil-despesa","Despesas","cash-minus"),item("contabil-empenhos","Empenhos","file-sign"),item("contabil-restos","Restos a pagar","calendar-alert")],
-    [item("contabil-movimentos","Movimentos contábeis","swap-horizontal"),item("contabil-demonstrativos","Demonstrativos","file-chart-outline")],
-    [item("contabil-credores","Credores","account-cash-outline")],
-    [item("contabil-controle","Controle contábil","shield-check-outline")]
-  );
-  const comprasMenu=generic("compras-visao-geral",
-    [item("compras-contratos","Contratos","file-sign")],
-    [item("compras-processos","Processos","clipboard-text-outline"),item("compras-licitacoes","Licitações","gavel"),item("compras-atas","Atas de Registro de Preço","file-certificate-outline")],
-    [item("compras-fornecedores","Fornecedores","truck-outline"),item("compras-itens","Catálogo de Itens","format-list-bulleted")],
-    [item("compras-controle","Controle","shield-check-outline")]
-  );
-  const folhaMenu=generic("folha-visao-geral",
-    [item("folha-mensal","Folha mensal","calendar-month-outline"),item("folha-despesas","Despesas","cash-multiple"),item("folha-encargos","Encargos","bank-transfer"),item("folha-beneficios","Benefícios","gift-outline")],
-    [item("folha-eventos","Eventos","format-list-checks")],
-    [item("folha-servidores","Servidores","account-group-outline"),item("folha-vinculos","Vínculos","account-switch-outline"),item("folha-cargos","Cargos","badge-account-outline"),item("folha-departamentos","Departamentos","office-building-outline")],
-    [item("folha-controle","Controle","shield-check-outline")]
+  const comprasMenu=directMenu("compras-visao-geral",[
+    item("compras-processos","Processos","clipboard-text-outline"),
+    item("compras-licitacoes","Licitações","gavel"),
+    item("compras-contratos","Contratos","file-sign"),
+    item("compras-fornecedores","Fornecedores","truck-outline"),
+    item("compras-atas","Atas de Registro de Preço","file-certificate-outline"),
+    item("compras-itens","Catálogo de Itens","format-list-bulleted"),
+    item("compras-controle","Controle","shield-check-outline")
+  ]);
+
+  const folhaMenu=directMenu("folha-visao-geral",[
+    item("folha-servidores","Servidores","account-group-outline"),
+    item("folha-vinculos","Vínculos","account-switch-outline"),
+    item("folha-cargos","Cargos","badge-account-outline"),
+    item("folha-departamentos","Departamentos","office-building-outline"),
+    item("folha-mensal","Folha mensal","calendar-month-outline"),
+    item("folha-eventos","Eventos","format-list-checks"),
+    item("folha-encargos","Encargos","bank-transfer"),
+    item("folha-beneficios","Benefícios","gift-outline"),
+    item("folha-despesas","Despesas","cash-multiple"),
+    item("folha-controle","Controle","shield-check-outline")
   );
 
   window.BI_SYSTEMS=[
-    {id:"tributos",name:"Tributos",icon:"bank-outline",enabled:true,homeView:"visao-geral",heading:"Arrecadação e Gestão Tributária",menu:tributosMenu},
-    {id:"contabil",name:"Contabilidade",icon:"calculator-variant-outline",enabled:true,homeView:"contabil-visao-geral",heading:"Execução Orçamentária",menu:contabilMenu,sampleMode:true},
-    {id:"compras",name:"Compras",icon:"cart-outline",enabled:true,homeView:"compras-visao-geral",heading:"Processos, Licitações e Contratos",menu:comprasMenu,sampleMode:true},
-    {id:"folha",name:"Folha de Pagamento",icon:"account-group-outline",enabled:true,homeView:"folha-visao-geral",heading:"Servidores, Vínculos e Custos",menu:folhaMenu,sampleMode:true}
+    {id:"tributos",name:"Tributos",icon:"bank-outline",enabled:true,homeView:"visao-geral",heading:"Arrecadação, dívida, parcelamentos e situação dos contribuintes",menu:tributosMenu},
+    {id:"contabil",name:"Contabilidade",icon:"calculator-variant-outline",enabled:true,homeView:"contabil-visao-geral",heading:"Receitas, despesas, execução orçamentária e resultados fiscais",menu:contabilMenu,sampleMode:true},
+    {id:"compras",name:"Compras",icon:"cart-outline",enabled:true,homeView:"compras-visao-geral",heading:"Processos, licitações, contratos e fornecedores",menu:comprasMenu,sampleMode:true},
+    {id:"folha",name:"Folha de Pagamento",icon:"account-group-outline",enabled:true,homeView:"folha-visao-geral",heading:"Servidores, vínculos, cargos e custos da folha",menu:folhaMenu,sampleMode:true}
   ];
   window.BI_MENU=tributosMenu;
 })();
