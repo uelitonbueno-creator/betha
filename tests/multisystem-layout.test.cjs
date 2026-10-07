@@ -411,6 +411,30 @@ test("cobertura e badges distinguem amostra local de integração real", () => {
   assert.match(css, /\.integration-coverage\.is-sample/);
 });
 
+test("drawers analíticos são modais acessíveis com foco e Escape", () => {
+  const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
+  const app = fs.readFileSync(path.join(ROOT, "app.js"), "utf8");
+
+  assert.match(html, /id="detailDrawer"[^>]*role="dialog"[^>]*aria-modal="true"[^>]*aria-labelledby="drawerTitle"/);
+  assert.match(html, /id="userDrawer"[^>]*role="dialog"[^>]*aria-modal="true"[^>]*aria-labelledby="userDrawerTitle"/);
+  assert.match(html, /id="integrationDrawer"[^>]*role="dialog"[^>]*aria-modal="true"[^>]*aria-labelledby="integrationDrawerTitle"/);
+  assert.match(app, /const drawerFocusReturn=new Map\(\)/);
+  assert.match(app, /function activateDrawer\(/);
+  assert.match(app, /function drawerFocusable\(/);
+  assert.match(app, /if\(event\.key==="Escape"\)/);
+  assert.match(app, /if\(event\.key!=="Tab"\) return/);
+  assert.match(app, /previous\.focus\?\.\(\{preventScroll:true\}\)/);
+});
+
+test("drill-down móvel ocupa a tela e mantém tabela horizontal utilizável", () => {
+  const css = fs.readFileSync(path.join(ROOT, "style.css"), "utf8");
+  assert.match(css, /@media\(max-width:768px\)[\s\S]*?#detailDrawer\.detail-drawer[\s\S]*?width:100vw/);
+  assert.match(css, /height:100dvh/);
+  assert.match(css, /\.detail-table-wrap[\s\S]*?overflow:auto/);
+  assert.match(css, /\.detail-table-wrap \.detail-table th:first-child[\s\S]*?position:sticky/);
+  assert.match(css, /#detailDrawer \.drawer-export-btn span\{display:none\}/);
+});
+
 test("frontend não expõe User-Access ou access token em configuração pública", () => {
   const config = fs.readFileSync(path.join(ROOT, "config.js"), "utf8");
   assert.doesNotMatch(config, /User-Access\s*[:=]\s*["'][^"']+["']/i);
