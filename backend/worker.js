@@ -6570,7 +6570,7 @@ function mcpOAuthMetadata(request,env) {
     token_endpoint_auth_methods_supported:["none"],
     scopes_supported:[MCP_OAUTH_SCOPE],
     client_id_metadata_document_supported:false,
-    authorization_response_iss_parameter_supported:false
+    authorization_response_iss_parameter_supported:true
   };
 }
 
@@ -6666,6 +6666,7 @@ async function mcpOAuthIssueAuthorizationCode(env,flow,userToken) {
       codeChallenge:flow.codeChallenge,
       resource:flow.resource,
       scope:flow.scope,
+      tenantId:String(flow.tenantId||""),
       userToken,
       exp:Date.now()+ttl*1000
     }),
@@ -6680,6 +6681,7 @@ function mcpOAuthClientRedirect(flow,params={}) {
     if(value!==undefined && value!==null && String(value)!=="") target.searchParams.set(key,String(value));
   }
   if(flow.clientState) target.searchParams.set("state",String(flow.clientState));
+  if(flow.issuer) target.searchParams.set("iss",String(flow.issuer));
   return target.toString();
 }
 
@@ -6723,6 +6725,7 @@ async function mcpOAuthAuthorize(request,env) {
     resource,
     scope,
     clientState,
+    issuer:mcpOAuthIssuer(request,env),
     createdAt:new Date().toISOString()
   };
   await mcpOAuthStore(env).put(MCP_OAUTH_FLOW_PREFIX+flowId,JSON.stringify(flow),{expirationTtl:10*60});
@@ -6730,9 +6733,7 @@ async function mcpOAuthAuthorize(request,env) {
   const existing=await readStoredSession(request,env);
   if(existing&&existing.accessToken) {
     try {
-      const code=await mcpOAuthIssueAuthorizationCode(env,flow,existing.accessToken);
-      await mcpOAuthStore(env).delete(MCP_OAUTH_FLOW_PREFIX+flowId);
-      return Response.redirect(mcpOAuthClientRedirect(flow,{code}),302);
+      return await mcpOAuthContinueAuthorization(request,env,flowId,existing.accessToken);
     } catch {}
   }
 
@@ -6755,6 +6756,130 @@ async function mcpOAuthAuthorize(request,env) {
     status:302,
     headers:{"Location":authorize.toString(),"Cache-Control":"no-store"}
   });
+}
+
+
+function mcpOAuthEscapeHtml(value) {
+  return String(value||"")
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#39;");
+}
+
+async function mcpOAuthContinueAuthorization(request,env,flowId,userToken) {
+  const store=mcpOAuthStore(env);
+  const raw=await store.get(MCP_OAUTH_FLOW_PREFIX+String(flowId||""));
+  let flow=null;
+  try { flow=raw?JSON.parse(raw):null; } catch {}
+  if(!flow || flow.kind!=="mcp-oauth-flow") throw new Error("MCP_OAUTH_FLOW_EXPIRED");
+
+  const tenants=await mcpAuthorizedTenantGrants(env,userToken);
+  if(!tenants.length) throw new Error("MCP_NO_AUTHORIZED_TENANT");
+
+  if(tenants.length===1) {
+    flow.tenantId=String(tenants[0].id);
+    const code=await mcpOAuthIssueAuthorizationCode(env,flow,userToken);
+    await store.delete(MCP_OAUTH_FLOW_PREFIX+String(flowId));
+    return Response.redirect(mcpOAuthClientRedirect(flow,{code}),302);
+  }
+
+  flow.userToken=userToken;
+  flow.tenantChoices=tenants.map(tenant=>({
+    id:String(tenant.id),
+    name:String(tenant.name||tenant.id),
+    entityId:String(tenant.entityId||""),
+    databaseId:String(tenant.databaseId||"")
+  }));
+  await store.put(
+    MCP_OAUTH_FLOW_PREFIX+String(flowId),
+    JSON.stringify(flow),
+    {expirationTtl:10*60}
+  );
+
+  const target=new URL("/oauth/tenant-select",request.url);
+  target.searchParams.set("flow",String(flowId));
+  return Response.redirect(target.toString(),302);
+}
+
+async function mcpOAuthTenantSelectPage(request,env) {
+  const url=new URL(request.url);
+  const flowId=String(url.searchParams.get("flow")||"");
+  if(!flowId) return json(request,env,400,{error:"invalid_request"});
+
+  const raw=await mcpOAuthStore(env).get(MCP_OAUTH_FLOW_PREFIX+flowId);
+  let flow=null;
+  try { flow=raw?JSON.parse(raw):null; } catch {}
+  if(!flow || flow.kind!=="mcp-oauth-flow" || !flow.userToken) {
+    return json(request,env,400,{error:"MCP_OAUTH_FLOW_EXPIRED"});
+  }
+
+  const current=await mcpAuthorizedTenantGrants(env,flow.userToken);
+  const allowed=new Map(current.map(tenant=>[String(tenant.id),tenant]));
+  const choices=(Array.isArray(flow.tenantChoices)?flow.tenantChoices:[])
+    .filter(choice=>allowed.has(String(choice.id)));
+
+  if(!choices.length) return json(request,env,403,{error:"MCP_NO_AUTHORIZED_TENANT"});
+
+  const options=choices.map(choice=>
+    '<option value="'+mcpOAuthEscapeHtml(choice.id)+'">'+
+    mcpOAuthEscapeHtml(choice.name)+
+    '</option>'
+  ).join("");
+
+  const html='<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">'+
+    '<meta name="viewport" content="width=device-width,initial-scale=1">'+
+    '<title>BI Vella · Selecionar entidade</title>'+
+    '<style>body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;display:grid;place-items:center;min-height:100vh;margin:0}'+
+    '.card{width:min(520px,calc(100% - 32px));background:#111827;border:1px solid #334155;border-radius:16px;padding:24px;box-sizing:border-box}'+
+    'h1{font-size:20px;margin:0 0 8px}p{color:#94a3b8;line-height:1.5}label{display:block;margin:20px 0 8px;font-weight:600}'+
+    'select,button{width:100%;box-sizing:border-box;border-radius:10px;padding:12px;font-size:15px}select{background:#0f172a;color:#e2e8f0;border:1px solid #475569}'+
+    'button{margin-top:14px;border:0;background:#2563eb;color:white;font-weight:700;cursor:pointer}</style></head><body>'+
+    '<main class="card"><h1>BI Vella</h1><p>Selecione a entidade que o ChatGPT poderá consultar nesta conexão.</p>'+
+    '<form method="post" action="/oauth/tenant-select"><input type="hidden" name="flow" value="'+mcpOAuthEscapeHtml(flowId)+'">'+
+    '<label for="tenant">Entidade</label><select id="tenant" name="tenant_id" required>'+options+'</select>'+
+    '<button type="submit">Continuar</button></form></main></body></html>';
+
+  return new Response(html,{
+    status:200,
+    headers:{
+      "Content-Type":"text/html; charset=utf-8",
+      "Cache-Control":"no-store",
+      "Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+      "X-Frame-Options":"DENY"
+    }
+  });
+}
+
+async function mcpOAuthTenantSelectSubmit(request,env) {
+  const contentType=String(request.headers.get("Content-Type")||"").toLowerCase();
+  if(!contentType.includes("application/x-www-form-urlencoded")) {
+    return json(request,env,400,{error:"invalid_request"});
+  }
+
+  const form=new URLSearchParams(await request.text());
+  const flowId=String(form.get("flow")||"");
+  const tenantId=String(form.get("tenant_id")||"");
+  if(!flowId || !tenantId) return json(request,env,400,{error:"invalid_request"});
+
+  const store=mcpOAuthStore(env);
+  const raw=await store.get(MCP_OAUTH_FLOW_PREFIX+flowId);
+  let flow=null;
+  try { flow=raw?JSON.parse(raw):null; } catch {}
+  if(!flow || flow.kind!=="mcp-oauth-flow" || !flow.userToken) {
+    return json(request,env,400,{error:"MCP_OAUTH_FLOW_EXPIRED"});
+  }
+
+  const tenants=await mcpAuthorizedTenantGrants(env,flow.userToken);
+  const selected=tenants.find(tenant=>String(tenant.id)===tenantId);
+  if(!selected) return json(request,env,403,{error:"MCP_TENANT_ACCESS_DENIED"});
+
+  flow.tenantId=tenantId;
+  delete flow.tenantChoices;
+  const code=await mcpOAuthIssueAuthorizationCode(env,flow,flow.userToken);
+  await store.delete(MCP_OAUTH_FLOW_PREFIX+flowId);
+  return Response.redirect(mcpOAuthClientRedirect(flow,{code}),302);
 }
 
 async function mcpOAuthPkceMatches(verifier,challenge) {
@@ -6819,6 +6944,7 @@ async function mcpOAuthToken(request,env) {
       clientId,
       resource,
       scope:grant.scope||MCP_OAUTH_SCOPE,
+      tenantId:String(grant.tenantId||""),
       userToken:grant.userToken,
       createdAt:new Date().toISOString(),
       exp:Date.now()+ttl*1000
@@ -6910,9 +7036,10 @@ async function mcpOAuthIntrospect(request,env) {
   }
 
   const userId=await currentOAuthUserId(token.userToken);
-  const tenants=await mcpAuthorizedTenantGrants(env,token.userToken);
+  const authorizedTenants=await mcpAuthorizedTenantGrants(env,token.userToken);
+  const tenants=authorizedTenants.filter(tenant=>String(tenant.id)===String(token.tenantId||""));
   if(!tenants.length) {
-    return json(request,env,403,{active:false,error:"MCP_NO_AUTHORIZED_TENANT"});
+    return json(request,env,403,{active:false,error:"MCP_TENANT_ACCESS_DENIED"});
   }
 
   const remaining=Math.max(60,Math.min(15*60,Math.floor((Number(token.exp)-Date.now())/1000)));
@@ -7290,6 +7417,71 @@ async function readMcpCredential(request,env) {
   };
 }
 
+
+async function readMcpOAuthCredential(request,env) {
+  const header=String(request.headers.get("Authorization")||"");
+  const match=header.match(/^Bearer\s+(mcpat_[A-Za-z0-9_-]+)$/i);
+  if(!match) throw new Error("MCP_TOKEN_REQUIRED");
+
+  const rawToken=match[1];
+  const hash=await sha256Hex(rawToken);
+  const raw=await mcpOAuthStore(env).get(MCP_OAUTH_ACCESS_PREFIX+hash);
+  if(!raw) throw new Error("MCP_TOKEN_INVALID");
+
+  let token=null;
+  try { token=JSON.parse(raw); } catch {}
+  if(!token || token.kind!=="mcp-oauth-access" || !token.userToken || !token.tenantId) {
+    throw new Error("MCP_TOKEN_INVALID");
+  }
+  if(!token.exp || Date.now()>=Number(token.exp)) throw new Error("MCP_TOKEN_EXPIRED");
+
+  const resource=new URL(request.url);
+  resource.search="";
+  resource.hash="";
+  if(String(token.resource||"")!==resource.toString()) throw new Error("MCP_TOKEN_RESOURCE_MISMATCH");
+
+  const scopes=String(token.scope||"").split(/\s+/).filter(Boolean);
+  if(!scopes.includes(MCP_OAUTH_SCOPE)) throw new Error("MCP_SCOPE_REQUIRED");
+
+  const tenant=await resolveTenant(env,String(token.tenantId));
+  const internalRequest=new Request("https://internal.bi-vella.invalid/",{
+    headers:{"Authorization":"Bearer "+token.userToken}
+  });
+  const auth=await authorizeTenant(internalRequest,env,tenant);
+  const allowedViews=permissionViewsForAccess(auth.access).filter(view=>Boolean(dashboardBuilder(view)));
+
+  return {
+    authKind:"oauth2",
+    tokenId:hash.slice(0,16),
+    tenant,
+    context:auth.context,
+    access:auth.access,
+    userToken:token.userToken,
+    allowedViews,
+    exp:Number(token.exp),
+    label:"OAuth "+String(token.clientId||"client").slice(0,60)
+  };
+}
+
+async function readAnyMcpCredential(request,env) {
+  const header=String(request.headers.get("Authorization")||"");
+  if(/^Bearer\s+mcpat_/i.test(header)) return readMcpOAuthCredential(request,env);
+  const legacy=await readMcpCredential(request,env);
+  return {...legacy,authKind:"legacy"};
+}
+
+function mcpToolSecurity(tool) {
+  return {
+    ...tool,
+    securitySchemes:[{type:"oauth2",scopes:[MCP_OAUTH_SCOPE]}],
+    annotations:{
+      readOnlyHint:true,
+      destructiveHint:false,
+      openWorldHint:false
+    }
+  };
+}
+
 function mcpToolDefinitions(credential) {
   const tools=[
     {
@@ -7395,7 +7587,7 @@ function mcpToolDefinitions(credential) {
     });
   }
 
-  return tools;
+  return tools.map(mcpToolSecurity);
 }
 
 function mcpJsonRpc(request,env,id,result,status=200,extraHeaders={}) {
@@ -7751,14 +7943,14 @@ async function handleMcpRequest(request,env) {
 
   let credential;
   try {
-    credential=await readMcpCredential(request,env);
+    credential=await readAnyMcpCredential(request,env);
   } catch(error) {
     const code=error&&error.message?error.message:"MCP_TOKEN_INVALID";
     return new Response(JSON.stringify({error:code}),{
       status:401,
       headers:{
         "Content-Type":"application/json; charset=utf-8",
-        "WWW-Authenticate":'Bearer realm="BI Vella MCP"',
+        "WWW-Authenticate":'Bearer realm="BI Vella MCP", resource_metadata="'+new URL("/.well-known/oauth-protected-resource",request.url).toString()+'", scope="'+MCP_OAUTH_SCOPE+'", error="invalid_token"',
         ...corsHeaders(request,env)
       }
     });
@@ -7797,8 +7989,8 @@ async function handleMcpRequest(request,env) {
       result:{
         protocolVersion,
         capabilities:{tools:{listChanged:false}},
-        serverInfo:{name:"BI Vella MCP",version:"1.0.0"},
-        instructions:"Servidor somente leitura. As respostas respeitam prefeitura, tenant e permissões vinculadas à credencial MCP."
+        serverInfo:{name:"BI Vella MCP",version:"1.1.0"},
+        instructions:"Servidor somente leitura com OAuth 2.1. A entidade é escolhida durante a autorização e todas as ferramentas respeitam as permissões do usuário nessa prefeitura."
       }
     }),{
       status:200,
@@ -7971,6 +8163,22 @@ export default {
       try { return await mcpOAuthToken(request,env); }
       catch(error) {
         console.error("mcp oauth token",error);
+        return json(request,env,400,{error:"server_error"});
+      }
+    }
+
+    if (url.pathname==="/oauth/tenant-select" && request.method==="GET") {
+      try { return await mcpOAuthTenantSelectPage(request,env); }
+      catch(error) {
+        console.error("mcp oauth tenant page",error);
+        return json(request,env,400,{error:"server_error"});
+      }
+    }
+
+    if (url.pathname==="/oauth/tenant-select" && request.method==="POST") {
+      try { return await mcpOAuthTenantSelectSubmit(request,env); }
+      catch(error) {
+        console.error("mcp oauth tenant select",error);
         return json(request,env,400,{error:"server_error"});
       }
     }
@@ -8199,17 +8407,11 @@ export default {
           try { flow=flowRaw?JSON.parse(flowRaw):null; } catch {}
           if(!flow || flow.kind!=="mcp-oauth-flow") throw new Error("MCP_OAUTH_FLOW_EXPIRED");
 
-          const mcpCode=await mcpOAuthIssueAuthorizationCode(env,flow,parsed.body.access_token);
-          await mcpOAuthStore(env).delete(MCP_OAUTH_FLOW_PREFIX+flowId);
           const storedMcpSession=await createStoredSession(env,parsed.body.access_token,sessionSeconds);
-          return new Response(null,{
-            status:302,
-            headers:{
-              "Location":mcpOAuthClientRedirect(flow,{code:mcpCode}),
-              "Set-Cookie":sessionCookieHeader(storedMcpSession.sid,storedMcpSession.ttl),
-              "Cache-Control":"no-store"
-            }
-          });
+          const next=await mcpOAuthContinueAuthorization(request,env,flowId,parsed.body.access_token);
+          const headers=new Headers(next.headers);
+          headers.set("Set-Cookie",sessionCookieHeader(storedMcpSession.sid,storedMcpSession.ttl));
+          return new Response(next.body,{status:next.status,statusText:next.statusText,headers});
         }
 
         const stored=await createStoredSession(

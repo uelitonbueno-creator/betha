@@ -20,6 +20,14 @@ requireText(worker,'MCP_OAUTH_CODE_PREFIX',"MCP_ONE_TIME_CODE_STORE_MISSING");
 requireText(worker,'MCP_OAUTH_ACCESS_PREFIX',"MCP_ACCESS_TOKEN_STORE_MISSING");
 requireText(worker,'/api/mcp/introspect',"MCP_INTROSPECTION_ENDPOINT_MISSING");
 requireText(worker,'permissions',"MCP_TENANT_PERMISSIONS_MISSING");
+requireText(worker,'readMcpOAuthCredential',"MCP_PRODUCTION_OAUTH_BRIDGE_MISSING");
+requireText(worker,'readAnyMcpCredential',"MCP_PRODUCTION_DUAL_AUTH_MISSING");
+requireText(worker,'mcpOAuthTenantSelectPage',"MCP_TENANT_SELECTION_UI_MISSING");
+requireText(worker,'mcpOAuthTenantSelectSubmit',"MCP_TENANT_SELECTION_SUBMIT_MISSING");
+requireText(worker,'authorization_response_iss_parameter_supported:true',"MCP_RFC9207_ISSUER_SIGNAL_MISSING");
+requireText(worker,'securitySchemes:[{type:"oauth2",scopes:[MCP_OAUTH_SCOPE]}]',"MCP_PRODUCTION_TOOL_SECURITY_SCHEME_MISSING");
+requireText(worker,'resource_metadata=',"MCP_PRODUCTION_WWW_AUTHENTICATE_METADATA_MISSING");
+requireText(worker,'credential=await readAnyMcpCredential(request,env);',"MCP_PRODUCTION_ENDPOINT_OAUTH_DISABLED");
 
 requireText(mcp,'securitySchemes: [{ type: "oauth2", scopes: ["bi:read"] }]',"MCP_TOOL_SECURITY_SCHEME_MISSING");
 requireText(mcp,'readOnlyHint: true',"MCP_READ_ONLY_HINT_MISSING");
@@ -38,4 +46,4 @@ if(errors.length){
   process.exit(1);
 }
 
-console.log("MCP OAuth 2.1 contract OK: discovery, DCR, PKCE S256, resource binding, introspection and tenant-scoped tool authorization present.");
+console.log("MCP OAuth 2.1 contract OK: discovery, DCR, PKCE S256, RFC9207 issuer signal, tenant selection, production OAuth bridge, resource binding and tool authorization present.");
