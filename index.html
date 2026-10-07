@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261006-contribuintes-v1">
+  <link rel="stylesheet" href="style.css?v=20261007-settings-utility1">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -65,6 +65,7 @@
       <button class="tool-button" id="globalSearchButton" type="button" title="Busca global (Ctrl+K)" aria-label="Abrir busca global"><i class="mdi mdi-magnify"></i></button>
       <button class="tool-button" type="button" title="Aplicações"><i class="mdi mdi-view-grid"></i></button>
       <button class="tool-button" id="integrationButton" type="button" title="Integração"><i class="mdi mdi-connection"></i></button>
+      <button class="tool-button settings-utility-trigger" id="settingsUtilityButton" type="button" title="Configurações" aria-label="Abrir utilitários e configurações" aria-haspopup="menu" aria-expanded="false" aria-controls="settingsUtilityMenu"><i class="mdi mdi-cog"></i></button>
       <button class="tool-button" id="logoutButton" type="button" title="Sair"><i class="mdi mdi-logout"></i></button>
       <button class="tool-button" type="button" title="Ajuda"><i class="mdi mdi-help-circle"></i></button>
     </div>
@@ -558,6 +559,20 @@
     </main>
   </bth-app>
 
+  <section id="settingsUtilityMenu" class="settings-utility-menu" role="menu" aria-label="Utilitários de configuração" hidden>
+    <div class="settings-utility-title">Utilitários</div>
+    <div class="settings-utility-grid">
+      <button type="button" class="settings-utility-card" role="menuitem" data-settings-view="configuracoes-admin">
+        <i class="mdi mdi-cogs"></i>
+        <span>Configurações<br>do BI</span>
+      </button>
+      <button type="button" class="settings-utility-card" role="menuitem" data-settings-view="usuarios-admin">
+        <i class="mdi mdi-account-cog-outline"></i>
+        <span>Usuários<br>e acessos</span>
+      </button>
+    </div>
+  </section>
+
   <div id="globalSearchOverlay" class="global-search-overlay" hidden>
     <section class="global-search-dialog" role="dialog" aria-modal="true" aria-labelledby="globalSearchTitle">
       <header class="global-search-header">
@@ -692,7 +707,7 @@
   <script src="dashboard-catalog.js?v=20261006-chart-visible9"></script>
   <div id="uiToast" class="ui-toast" role="status" aria-live="polite" aria-atomic="true"></div>
   <script src="api-panel-catalog.js?v=20261006-chart-visible9"></script>
-  <script src="app.js?v=20261007-tenant-config-fix2"></script>
+  <script src="app.js?v=20261007-settings-utility1"></script>
   <script src="global-search.js?v=20261005-1"></script>
 </body>
 </html>
