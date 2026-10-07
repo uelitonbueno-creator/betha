@@ -6524,6 +6524,416 @@ async function sha256Hex(value) {
     .join("");
 }
 
+const MCP_OAUTH_SCOPE="bi:read";
+const MCP_OAUTH_CLIENT_PREFIX="mcp-oauth-client:";
+const MCP_OAUTH_FLOW_PREFIX="mcp-oauth-flow:";
+const MCP_OAUTH_LOGIN_STATE_PREFIX="mcp-oauth-login-state:";
+const MCP_OAUTH_CODE_PREFIX="mcp-oauth-code:";
+const MCP_OAUTH_ACCESS_PREFIX="mcp-oauth-access:";
+const MCP_SDK_RESOURCE_DEFAULT="https://bi-vella-mcp.ueliton-bueno.workers.dev/mcp";
+
+function mcpOAuthStore(env) {
+  const store=env.BI_SESSIONS || env.AUTH_SESSIONS;
+  if(!store) throw new Error("SESSION_STORE_NOT_CONFIGURED");
+  return store;
+}
+
+function mcpOAuthIssuer(request,env) {
+  const configured=String(env.MCP_AUTH_ISSUER||"").trim();
+  return configured ? configured.replace(/\/$/,"") : new URL(request.url).origin;
+}
+
+function mcpOAuthAllowedResources(request,env) {
+  const values=[
+    new URL("/mcp",request.url).toString(),
+    MCP_SDK_RESOURCE_DEFAULT,
+    String(env.MCP_RESOURCE_URL||"").trim(),
+    ...String(env.MCP_RESOURCE_URLS||"").split(",").map(v=>v.trim())
+  ].filter(Boolean);
+  return [...new Set(values)];
+}
+
+function mcpOAuthResourceAllowed(request,env,resource) {
+  return mcpOAuthAllowedResources(request,env).includes(String(resource||"").trim());
+}
+
+function mcpOAuthMetadata(request,env) {
+  const issuer=mcpOAuthIssuer(request,env);
+  return {
+    issuer,
+    authorization_endpoint:issuer+"/oauth/authorize",
+    token_endpoint:issuer+"/oauth/token",
+    registration_endpoint:issuer+"/oauth/register",
+    response_types_supported:["code"],
+    grant_types_supported:["authorization_code"],
+    code_challenge_methods_supported:["S256"],
+    token_endpoint_auth_methods_supported:["none"],
+    scopes_supported:[MCP_OAUTH_SCOPE],
+    client_id_metadata_document_supported:false,
+    authorization_response_iss_parameter_supported:false
+  };
+}
+
+function mcpOAuthNormalizeScope(scope) {
+  const requested=String(scope||"").split(/\s+/).filter(Boolean);
+  if(!requested.length) return MCP_OAUTH_SCOPE;
+  if(requested.some(item=>item!==MCP_OAUTH_SCOPE)) throw new Error("MCP_OAUTH_SCOPE_INVALID");
+  return MCP_OAUTH_SCOPE;
+}
+
+function mcpOAuthValidRedirectUri(value) {
+  try {
+    const url=new URL(String(value||""));
+    return url.protocol==="https:" && !url.username && !url.password;
+  } catch { return false; }
+}
+
+async function mcpOAuthReadClient(env,clientId) {
+  const raw=await mcpOAuthStore(env).get(MCP_OAUTH_CLIENT_PREFIX+String(clientId||""));
+  if(!raw) return null;
+  try {
+    const parsed=JSON.parse(raw);
+    return parsed&&parsed.kind==="mcp-oauth-client" ? parsed : null;
+  } catch { return null; }
+}
+
+async function mcpOAuthRegisterClient(request,env) {
+  const body=await request.json().catch(()=>null);
+  if(!body || typeof body!=="object" || Array.isArray(body)) {
+    return json(request,env,400,{error:"invalid_client_metadata"});
+  }
+
+  const redirectUris=Array.isArray(body.redirect_uris)
+    ? [...new Set(body.redirect_uris.map(v=>String(v||"").trim()).filter(Boolean))]
+    : [];
+  if(!redirectUris.length || redirectUris.length>10 || redirectUris.some(uri=>!mcpOAuthValidRedirectUri(uri))) {
+    return json(request,env,400,{error:"invalid_redirect_uri"});
+  }
+
+  const authMethod=String(body.token_endpoint_auth_method||"none");
+  if(authMethod!=="none") {
+    return json(request,env,400,{error:"invalid_client_metadata",error_description:"Only public PKCE clients are supported."});
+  }
+
+  const grantTypes=Array.isArray(body.grant_types)?body.grant_types.map(String):["authorization_code"];
+  const responseTypes=Array.isArray(body.response_types)?body.response_types.map(String):["code"];
+  if(!grantTypes.includes("authorization_code") || !responseTypes.includes("code")) {
+    return json(request,env,400,{error:"invalid_client_metadata"});
+  }
+
+  const clientId="mcpclient_"+createSessionId();
+  const now=Math.floor(Date.now()/1000);
+  const record={
+    kind:"mcp-oauth-client",
+    clientId,
+    clientName:String(body.client_name||"MCP client").slice(0,120),
+    redirectUris,
+    tokenEndpointAuthMethod:"none",
+    grantTypes:["authorization_code"],
+    responseTypes:["code"],
+    createdAt:new Date().toISOString()
+  };
+  await mcpOAuthStore(env).put(
+    MCP_OAUTH_CLIENT_PREFIX+clientId,
+    JSON.stringify(record),
+    {expirationTtl:90*24*60*60}
+  );
+
+  return json(request,env,201,{
+    client_id:clientId,
+    client_id_issued_at:now,
+    client_name:record.clientName,
+    redirect_uris:record.redirectUris,
+    token_endpoint_auth_method:"none",
+    grant_types:["authorization_code"],
+    response_types:["code"]
+  });
+}
+
+async function mcpOAuthIssueAuthorizationCode(env,flow,userToken) {
+  if(!userToken) throw new Error("USER_TOKEN_REQUIRED");
+  await currentOAuthUserId(userToken);
+
+  const code="mcpcode_"+createSessionId();
+  const hash=await sha256Hex(code);
+  const ttl=5*60;
+  await mcpOAuthStore(env).put(
+    MCP_OAUTH_CODE_PREFIX+hash,
+    JSON.stringify({
+      kind:"mcp-oauth-code",
+      clientId:flow.clientId,
+      redirectUri:flow.redirectUri,
+      codeChallenge:flow.codeChallenge,
+      resource:flow.resource,
+      scope:flow.scope,
+      userToken,
+      exp:Date.now()+ttl*1000
+    }),
+    {expirationTtl:ttl}
+  );
+  return code;
+}
+
+function mcpOAuthClientRedirect(flow,params={}) {
+  const target=new URL(flow.redirectUri);
+  for(const [key,value] of Object.entries(params)) {
+    if(value!==undefined && value!==null && String(value)!=="") target.searchParams.set(key,String(value));
+  }
+  if(flow.clientState) target.searchParams.set("state",String(flow.clientState));
+  return target.toString();
+}
+
+async function mcpOAuthAuthorize(request,env) {
+  if(!env.BETHA_LOGIN_CLIENT_ID || !env.BETHA_LOGIN_CLIENT_SECRET) {
+    return json(request,env,503,{error:"temporarily_unavailable",error_description:"BI login is not configured."});
+  }
+
+  const url=new URL(request.url);
+  const responseType=String(url.searchParams.get("response_type")||"");
+  const clientId=String(url.searchParams.get("client_id")||"");
+  const redirectUri=String(url.searchParams.get("redirect_uri")||"");
+  const codeChallenge=String(url.searchParams.get("code_challenge")||"");
+  const codeChallengeMethod=String(url.searchParams.get("code_challenge_method")||"");
+  const clientState=String(url.searchParams.get("state")||"");
+  const resource=String(url.searchParams.get("resource")||"");
+  let scope;
+
+  try { scope=mcpOAuthNormalizeScope(url.searchParams.get("scope")||MCP_OAUTH_SCOPE); }
+  catch { return json(request,env,400,{error:"invalid_scope"}); }
+
+  if(responseType!=="code" || !clientId || !redirectUri || !codeChallenge || codeChallengeMethod!=="S256") {
+    return json(request,env,400,{error:"invalid_request",error_description:"Authorization code with PKCE S256 is required."});
+  }
+  if(!mcpOAuthResourceAllowed(request,env,resource)) {
+    return json(request,env,400,{error:"invalid_target",error_description:"Unknown MCP resource."});
+  }
+
+  const client=await mcpOAuthReadClient(env,clientId);
+  if(!client) return json(request,env,400,{error:"invalid_client"});
+  if(!client.redirectUris.includes(redirectUri)) {
+    return json(request,env,400,{error:"invalid_redirect_uri"});
+  }
+
+  const flowId=createSessionId();
+  const flow={
+    kind:"mcp-oauth-flow",
+    clientId,
+    redirectUri,
+    codeChallenge,
+    resource,
+    scope,
+    clientState,
+    createdAt:new Date().toISOString()
+  };
+  await mcpOAuthStore(env).put(MCP_OAUTH_FLOW_PREFIX+flowId,JSON.stringify(flow),{expirationTtl:10*60});
+
+  const existing=await readStoredSession(request,env);
+  if(existing&&existing.accessToken) {
+    try {
+      const code=await mcpOAuthIssueAuthorizationCode(env,flow,existing.accessToken);
+      await mcpOAuthStore(env).delete(MCP_OAUTH_FLOW_PREFIX+flowId);
+      return Response.redirect(mcpOAuthClientRedirect(flow,{code}),302);
+    } catch {}
+  }
+
+  const bethaState=await createOAuthState(env.BETHA_LOGIN_CLIENT_SECRET);
+  await mcpOAuthStore(env).put(
+    MCP_OAUTH_LOGIN_STATE_PREFIX+bethaState,
+    JSON.stringify({kind:"mcp-oauth-login-state",flowId}),
+    {expirationTtl:10*60}
+  );
+
+  const authorize=new URL(OAUTH_AUTHORIZE_URL);
+  authorize.searchParams.set("response_type","code");
+  authorize.searchParams.set("client_id",env.BETHA_LOGIN_CLIENT_ID);
+  authorize.searchParams.set("redirect_uri",env.BETHA_LOGIN_REDIRECT_URI || LOGIN_REDIRECT_DEFAULT);
+  const requestedScopes=String(env.BETHA_LOGIN_SCOPES || "").trim();
+  if(requestedScopes) authorize.searchParams.set("scopes",requestedScopes);
+  authorize.searchParams.set("state",bethaState);
+
+  return new Response(null,{
+    status:302,
+    headers:{"Location":authorize.toString(),"Cache-Control":"no-store"}
+  });
+}
+
+async function mcpOAuthPkceMatches(verifier,challenge) {
+  const value=String(verifier||"");
+  if(value.length<43 || value.length>128) return false;
+  const digest=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value));
+  return bytesToBase64Url(new Uint8Array(digest))===String(challenge||"");
+}
+
+async function mcpOAuthToken(request,env) {
+  const contentType=String(request.headers.get("Content-Type")||"").toLowerCase();
+  if(!contentType.includes("application/x-www-form-urlencoded")) {
+    return json(request,env,400,{error:"invalid_request",error_description:"Form encoded token request required."});
+  }
+
+  const form=new URLSearchParams(await request.text());
+  if(String(form.get("grant_type")||"")!=="authorization_code") {
+    return json(request,env,400,{error:"unsupported_grant_type"});
+  }
+
+  const clientId=String(form.get("client_id")||"");
+  const code=String(form.get("code")||"");
+  const redirectUri=String(form.get("redirect_uri")||"");
+  const verifier=String(form.get("code_verifier")||"");
+  const resource=String(form.get("resource")||"");
+  if(!clientId || !code || !redirectUri || !verifier || !resource) {
+    return json(request,env,400,{error:"invalid_request"});
+  }
+
+  const client=await mcpOAuthReadClient(env,clientId);
+  if(!client) return json(request,env,401,{error:"invalid_client"});
+  if(!client.redirectUris.includes(redirectUri)) {
+    return json(request,env,400,{error:"invalid_grant"});
+  }
+
+  const codeHash=await sha256Hex(code);
+  const store=mcpOAuthStore(env);
+  const raw=await store.get(MCP_OAUTH_CODE_PREFIX+codeHash);
+  if(!raw) return json(request,env,400,{error:"invalid_grant"});
+
+  let grant=null;
+  try { grant=JSON.parse(raw); } catch {}
+  await store.delete(MCP_OAUTH_CODE_PREFIX+codeHash);
+
+  if(!grant || grant.kind!=="mcp-oauth-code" || !grant.userToken || Date.now()>=Number(grant.exp||0)) {
+    return json(request,env,400,{error:"invalid_grant"});
+  }
+  if(grant.clientId!==clientId || grant.redirectUri!==redirectUri || grant.resource!==resource) {
+    return json(request,env,400,{error:"invalid_grant"});
+  }
+  if(!(await mcpOAuthPkceMatches(verifier,grant.codeChallenge))) {
+    return json(request,env,400,{error:"invalid_grant"});
+  }
+
+  const accessToken="mcpat_"+createSessionId();
+  const accessHash=await sha256Hex(accessToken);
+  const ttl=60*60;
+  await store.put(
+    MCP_OAUTH_ACCESS_PREFIX+accessHash,
+    JSON.stringify({
+      kind:"mcp-oauth-access",
+      clientId,
+      resource,
+      scope:grant.scope||MCP_OAUTH_SCOPE,
+      userToken:grant.userToken,
+      createdAt:new Date().toISOString(),
+      exp:Date.now()+ttl*1000
+    }),
+    {expirationTtl:ttl}
+  );
+
+  return json(request,env,200,{
+    access_token:accessToken,
+    token_type:"Bearer",
+    expires_in:ttl,
+    scope:grant.scope||MCP_OAUTH_SCOPE,
+    resource
+  });
+}
+
+function mcpPermissionIdForView(view) {
+  const needle="/api/dashboard/"+String(view||"");
+  const constraints=(BI_PAGE_MAPPING[0]&&BI_PAGE_MAPPING[0].constraints)||[];
+  const found=constraints.find(item=>
+    Array.isArray(item.resources) &&
+    item.resources.some(resource=>
+      String(resource.urlPattern||"")===needle ||
+      String(resource.urlPattern||"").startsWith(needle+"/")
+    )
+  );
+  return found ? String(found.id||"") : "";
+}
+
+async function mcpAuthorizedTenantGrants(env,userToken) {
+  const registry=await tenantRegistry(env);
+  const internalRequest=new Request("https://internal.bi-vella.invalid/",{
+    headers:{"Authorization":"Bearer "+userToken}
+  });
+  const tenants=[];
+
+  for(const id of Object.keys(registry)) {
+    try {
+      const tenant=await resolveTenant(env,id);
+      const auth=await authorizeTenant(internalRequest,env,tenant);
+      const allowedViews=permissionViewsForAccess(auth.access).filter(view=>Boolean(dashboardBuilder(view)));
+      const permissions=[...new Set(allowedViews.map(mcpPermissionIdForView).filter(Boolean))];
+      tenants.push({
+        id:tenant.id,
+        name:tenant.name,
+        entityId:auth.context.entity,
+        databaseId:auth.context.database,
+        permissions
+      });
+    } catch(error) {
+      const code=error&&error.message?error.message:"";
+      if([
+        "TENANT_ACCESS_DENIED","TENANT_ACCESS_EXPIRED","BI_USER_NOT_AUTHORIZED",
+        "PAGE_PERMISSION_DENIED","TENANT_CONTEXT_UNRESOLVED"
+      ].includes(code)) continue;
+      console.warn("mcp tenant introspection",id,code);
+    }
+  }
+
+  tenants.sort((a,b)=>String(a.name||a.id).localeCompare(String(b.name||b.id),"pt-BR"));
+  return tenants;
+}
+
+async function mcpOAuthIntrospect(request,env) {
+  const header=String(request.headers.get("Authorization")||"");
+  const match=header.match(/^Bearer\s+(mcpat_[A-Za-z0-9_-]+)$/i);
+  if(!match) {
+    return json(request,env,401,{active:false,error:"invalid_token"});
+  }
+
+  const body=await request.json().catch(()=>({}));
+  const expectedAudience=String(body.audience||"");
+  const requestedResource=String(body.resource||"");
+  if(expectedAudience && expectedAudience!=="bi-vella-mcp") {
+    return json(request,env,401,{active:false,error:"invalid_token"});
+  }
+
+  const hash=await sha256Hex(match[1]);
+  const raw=await mcpOAuthStore(env).get(MCP_OAUTH_ACCESS_PREFIX+hash);
+  if(!raw) return json(request,env,401,{active:false,error:"invalid_token"});
+
+  let token=null;
+  try { token=JSON.parse(raw); } catch {}
+  if(!token || token.kind!=="mcp-oauth-access" || !token.userToken || Date.now()>=Number(token.exp||0)) {
+    return json(request,env,401,{active:false,error:"invalid_token"});
+  }
+  if(requestedResource && token.resource!==requestedResource) {
+    return json(request,env,401,{active:false,error:"invalid_token"});
+  }
+
+  const userId=await currentOAuthUserId(token.userToken);
+  const tenants=await mcpAuthorizedTenantGrants(env,token.userToken);
+  if(!tenants.length) {
+    return json(request,env,403,{active:false,error:"MCP_NO_AUTHORIZED_TENANT"});
+  }
+
+  const remaining=Math.max(60,Math.min(15*60,Math.floor((Number(token.exp)-Date.now())/1000)));
+  const biSession=await sealSession({
+    kind:"user-session",
+    accessToken:token.userToken,
+    exp:Date.now()+remaining*1000
+  },env.BETHA_LOGIN_CLIENT_SECRET);
+
+  return json(request,env,200,{
+    active:true,
+    subject:String(userId||""),
+    clientId:String(token.clientId||""),
+    scopes:String(token.scope||MCP_OAUTH_SCOPE).split(/\s+/).filter(Boolean),
+    permissions:[],
+    tenants,
+    biSession,
+    expiresAt:Number(token.exp)
+  });
+}
+
 
 function auditActorLabel(access) {
   const candidates=[
@@ -7529,6 +7939,50 @@ export default {
     const url=new URL(request.url);
     if (request.method==="OPTIONS") return new Response(null,{status:204,headers:corsHeaders(request,env)});
 
+    if (url.pathname==="/.well-known/oauth-authorization-server" && request.method==="GET") {
+      return json(request,env,200,mcpOAuthMetadata(request,env));
+    }
+
+    if (url.pathname==="/.well-known/oauth-protected-resource" && request.method==="GET") {
+      const resource=new URL("/mcp",request.url).toString();
+      return json(request,env,200,{
+        resource,
+        authorization_servers:[mcpOAuthIssuer(request,env)],
+        scopes_supported:[MCP_OAUTH_SCOPE],
+        bearer_methods_supported:["header"],
+        resource_documentation:"https://github.com/uelitonbueno-creator/betha/blob/main/docs/mcp-production.md"
+      });
+    }
+
+    if (url.pathname==="/oauth/register" && request.method==="POST") {
+      try { return await mcpOAuthRegisterClient(request,env); }
+      catch(error) { return errorResponse(request,env,error); }
+    }
+
+    if (url.pathname==="/oauth/authorize" && request.method==="GET") {
+      try { return await mcpOAuthAuthorize(request,env); }
+      catch(error) {
+        console.error("mcp oauth authorize",error);
+        return json(request,env,400,{error:"server_error"});
+      }
+    }
+
+    if (url.pathname==="/oauth/token" && request.method==="POST") {
+      try { return await mcpOAuthToken(request,env); }
+      catch(error) {
+        console.error("mcp oauth token",error);
+        return json(request,env,400,{error:"server_error"});
+      }
+    }
+
+    if (url.pathname==="/api/mcp/introspect" && request.method==="POST") {
+      try { return await mcpOAuthIntrospect(request,env); }
+      catch(error) {
+        console.error("mcp introspection",error);
+        return json(request,env,401,{active:false,error:"invalid_token"});
+      }
+    }
+
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
@@ -7558,7 +8012,14 @@ export default {
         devLoginConfigured:Boolean(env.BI_DEV_LOGIN_USER && env.BI_DEV_LOGIN_PASSWORD),
         mcpEnabled:true,
         mcpEndpoint:"/mcp",
-        mcpAuthentication:"opaque-bearer"
+        mcpAuthentication:"oauth2.1+legacy-opaque-bearer",
+        mcpOAuthIssuer:mcpOAuthIssuer(request,env),
+        mcpOAuthDiscovery:"/.well-known/oauth-authorization-server",
+        mcpProtectedResourceDiscovery:"/.well-known/oauth-protected-resource",
+        mcpRegistrationEndpoint:"/oauth/register",
+        mcpAuthorizationEndpoint:"/oauth/authorize",
+        mcpTokenEndpoint:"/oauth/token",
+        mcpIntrospectionEndpoint:"/api/mcp/introspect"
       });
     }
 
@@ -7724,6 +8185,32 @@ export default {
 
         const oauthSeconds=Number(parsed.body.expires_in || parsed.body.expires || 0);
         const sessionSeconds=oauthSeconds>0 ? Math.min(oauthSeconds,8*60*60) : 8*60*60;
+
+        const mcpLoginStateRaw=(env.BI_SESSIONS||env.AUTH_SESSIONS)
+          ? await mcpOAuthStore(env).get(MCP_OAUTH_LOGIN_STATE_PREFIX+state)
+          : null;
+        if(mcpLoginStateRaw){
+          let mcpLoginState=null;
+          try { mcpLoginState=JSON.parse(mcpLoginStateRaw); } catch {}
+          await mcpOAuthStore(env).delete(MCP_OAUTH_LOGIN_STATE_PREFIX+state);
+          const flowId=mcpLoginState&&mcpLoginState.flowId ? String(mcpLoginState.flowId) : "";
+          const flowRaw=flowId ? await mcpOAuthStore(env).get(MCP_OAUTH_FLOW_PREFIX+flowId) : null;
+          let flow=null;
+          try { flow=flowRaw?JSON.parse(flowRaw):null; } catch {}
+          if(!flow || flow.kind!=="mcp-oauth-flow") throw new Error("MCP_OAUTH_FLOW_EXPIRED");
+
+          const mcpCode=await mcpOAuthIssueAuthorizationCode(env,flow,parsed.body.access_token);
+          await mcpOAuthStore(env).delete(MCP_OAUTH_FLOW_PREFIX+flowId);
+          const storedMcpSession=await createStoredSession(env,parsed.body.access_token,sessionSeconds);
+          return new Response(null,{
+            status:302,
+            headers:{
+              "Location":mcpOAuthClientRedirect(flow,{code:mcpCode}),
+              "Set-Cookie":sessionCookieHeader(storedMcpSession.sid,storedMcpSession.ttl),
+              "Cache-Control":"no-store"
+            }
+          });
+        }
 
         const stored=await createStoredSession(
           env,
