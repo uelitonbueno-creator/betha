@@ -129,6 +129,29 @@ test("homes de Contabilidade, Compras e Folha possuem duas tabelas executivas", 
   }
 });
 
+test("todos os painéis locais possuem tabelas analíticas configuradas para drill-down", () => {
+  const window = loadCatalogs();
+  const samples = {
+    contabil: JSON.parse(fs.readFileSync(path.join(ROOT, "data", "samples", "contabil-100.json"), "utf8")),
+    compras: JSON.parse(fs.readFileSync(path.join(ROOT, "data", "samples", "compras-100.json"), "utf8")),
+    folha: JSON.parse(fs.readFileSync(path.join(ROOT, "data", "samples", "folha-100.json"), "utf8"))
+  };
+
+  for (const [id, dashboard] of Object.entries(window.BI_DASHBOARDS)) {
+    if (!samples[dashboard.system]) continue;
+    assert.ok(Array.isArray(dashboard.summaryTables) && dashboard.summaryTables.length >= 1, id + " sem tabela analítica");
+    assert.ok(dashboard.summaryTables.length <= 2, id + " deve manter no máximo duas tabelas executivas");
+    const keys = new Set(Object.keys(samples[dashboard.system].rows[0] || {}));
+    for (const table of dashboard.summaryTables) {
+      assert.ok(keys.has(table.group), id + " usa agrupamento inexistente: " + table.group);
+      assert.ok(Array.isArray(table.columns) && table.columns.length >= 1, id + " possui tabela sem colunas");
+      for (const column of table.columns) {
+        if (column.field) assert.ok(keys.has(column.field), id + " usa coluna inexistente: " + column.field);
+      }
+    }
+  }
+});
+
 test("tabelas executivas locais mantêm chave de agrupamento para drill-down", () => {
   const window = loadCatalogs();
   const samples = {
@@ -179,7 +202,7 @@ test("shell do layout possui contexto lateral, cabeçalho e tabelas analíticas"
   const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
   for (const id of [
     "sidebarEntityButton", "sidebarEntityList", "systemRailList",
-    "systemHeaderContext", "sampleModeBadge", "primaryDynamicFilters", "tableGrid",
+    "systemHeaderContext", "sampleModeBadge", "primaryDynamicFilters", "tableSectionHeading", "tableGrid",
     "mobileContextBar", "mobileEntitySelect", "mobileSystemSelect", "mobilePanelSelect"
   ]) {
     assert.match(html, new RegExp('id="' + id + '"'), "id ausente: " + id);
