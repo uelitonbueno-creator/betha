@@ -187,12 +187,25 @@
       home;
   }
 
+  function suppressNativeHorizontalMenu() {
+    const root=bethaApp?.shadowRoot;
+    if(!root) return;
+    let style=root.getElementById("bi-vella-hide-native-horizontal-items");
+    if(!style){
+      style=document.createElement("style");
+      style.id="bi-vella-hide-native-horizontal-items";
+      style.textContent="bth-menu-horizontal-item{display:none!important;width:0!important;min-width:0!important;overflow:hidden!important}";
+      root.appendChild(style);
+    }
+  }
+
   function applyNavigationPermissions(tenant) {
     const menu=menuForTenant(tenant);
     currentNavigationMenu=menu;
     // O menu nativo do bth-app é horizontal. O BI Vella usa navegação lateral
     // para evitar sobreposição/corte e manter Entidade → Sistema → Painel.
     bethaApp.opcoes=[];
+    suppressNativeHorizontalMenu();
     if(typeof closeGroupNavigation==="function")closeGroupNavigation();
     if(typeof syncSettingsUtilityPermissions==="function")syncSettingsUtilityPermissions();
 
@@ -208,6 +221,8 @@
 
   currentNavigationMenu=(systems.find(item=>String(item.id)===String(currentSystemId))?.menu) || window.BI_MENU || [];
   bethaApp.opcoes=[];
+  suppressNativeHorizontalMenu();
+  requestAnimationFrame(suppressNativeHorizontalMenu);
 
   const groupNavigationMenu=document.createElement('nav');
   groupNavigationMenu.className='group-navigation-menu';
@@ -6825,6 +6840,7 @@
     currentAllowedAdminViews = new Set(ADMIN_VIEWS);
     currentNavigationMenu=(currentSystemInfo()?.menu)||window.BI_MENU||[];
     bethaApp.opcoes=[];
+    suppressNativeHorizontalMenu();
     renderSidebarPanelMenu();
   }
 
