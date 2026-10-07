@@ -4815,6 +4815,30 @@
     `;
   }
 
+  const drawerFocusReturn=new Map();
+
+  function drawerFocusable(drawer) {
+    if(!drawer) return [];
+    return [...drawer.querySelectorAll(
+      'button:not([disabled]):not([hidden]),a[href],input:not([disabled]):not([hidden]),select:not([disabled]):not([hidden]),textarea:not([disabled]):not([hidden]),[tabindex]:not([tabindex="-1"]):not([hidden])'
+    )].filter(element=>element.getClientRects().length>0);
+  }
+
+  function activateDrawer(id,preferredSelector="") {
+    const drawer=document.getElementById(id);
+    if(!drawer) return;
+    if(!drawer.classList.contains("open")) drawerFocusReturn.set(id,document.activeElement);
+    drawer.classList.add("open");
+    drawer.setAttribute("aria-hidden","false");
+    document.getElementById("drawerBackdrop").hidden=false;
+    document.body.classList.add("drawer-open");
+    requestAnimationFrame(()=>{
+      const preferred=preferredSelector?drawer.querySelector(preferredSelector):null;
+      const first=preferred||drawerFocusable(drawer)[0]||drawer;
+      first?.focus?.({preventScroll:true});
+    });
+  }
+
   function openDrawer(title, html) {
     detailLoadGeneration++;
     detailQuerySnapshot="";
@@ -4829,25 +4853,61 @@
     const drawerContext=document.getElementById("drawerContext");
     if(drawerContext){
       const context=exportContextLabel();
-      drawerContext.textContent=[entityLabel||tenantId||"Entidade",context.period,context.exercise].filter(Boolean).join(" · ");
+      const systemName=currentSystemInfo()?.name||currentSystemId;
+      drawerContext.textContent=[entityLabel||tenantId||"Entidade",systemName,context.period,context.exercise].filter(Boolean).join(" · ");
     }
     document.getElementById("drawerBody").innerHTML = html;
-    document.getElementById("detailDrawer").classList.add("open");
-    document.getElementById("detailDrawer").setAttribute("aria-hidden","false");
-    document.getElementById("drawerBackdrop").hidden = false;
-    document.body.classList.add("drawer-open");
+    activateDrawer("detailDrawer","#closeDrawer");
   }
 
   function closeDrawer(id) {
+    const drawer=document.getElementById(id);
+    if(!drawer||!drawer.classList.contains("open")) return;
     if(id==="detailDrawer") detailLoadGeneration++;
-    document.getElementById(id).classList.remove("open");
-    document.getElementById(id).setAttribute("aria-hidden","true");
+    drawer.classList.remove("open");
+    drawer.setAttribute("aria-hidden","true");
     const anyOpen = document.querySelector(".detail-drawer.open");
     if (!anyOpen) {
       document.getElementById("drawerBackdrop").hidden = true;
       document.body.classList.remove("drawer-open");
     }
+    const previous=drawerFocusReturn.get(id);
+    drawerFocusReturn.delete(id);
+    if(previous&&document.contains(previous)){
+      requestAnimationFrame(()=>previous.focus?.({preventScroll:true}));
+    }
   }
+
+  document.addEventListener("keydown",event=>{
+    const openDrawers=[...document.querySelectorAll(".detail-drawer.open")];
+    const drawer=openDrawers.at(-1);
+    if(!drawer) return;
+    if(event.key==="Escape"){
+      event.preventDefault();
+      event.stopPropagation();
+      closeDrawer(drawer.id);
+      return;
+    }
+    if(event.key!=="Tab") return;
+    const focusable=drawerFocusable(drawer);
+    if(!focusable.length){
+      event.preventDefault();
+      drawer.focus();
+      return;
+    }
+    const first=focusable[0];
+    const last=focusable[focusable.length-1];
+    if(event.shiftKey&&document.activeElement===first){
+      event.preventDefault();
+      last.focus();
+    }else if(!event.shiftKey&&document.activeElement===last){
+      event.preventDefault();
+      first.focus();
+    }else if(!drawer.contains(document.activeElement)){
+      event.preventDefault();
+      first.focus();
+    }
+  },true);
 
   const summaryTableGrid=document.getElementById("tableGrid");
   const handleSummaryTableDrill=(event)=>{
@@ -4893,9 +4953,9 @@
   document.getElementById("closeUserDrawer").addEventListener("click", () => closeDrawer("userDrawer"));
   document.getElementById("logoutButton").addEventListener("click", () => BIAuth.logout());
   document.getElementById("drawerBackdrop").addEventListener("click", () => {
-    closeDrawer("detailDrawer");
-    closeDrawer("integrationDrawer");
-    closeDrawer("userDrawer");
+    const openDrawers=[...document.querySelectorAll(".detail-drawer.open")];
+    const drawer=openDrawers.at(-1);
+    if(drawer) closeDrawer(drawer.id);
   });
 
   const context = {
@@ -4910,10 +4970,7 @@
   document.getElementById("contextOutput").textContent = JSON.stringify(context,null,2);
 
   document.getElementById("integrationButton").addEventListener("click", async () => {
-    document.getElementById("integrationDrawer").classList.add("open");
-    document.getElementById("integrationDrawer").setAttribute("aria-hidden","false");
-    document.getElementById("drawerBackdrop").hidden = false;
-    document.body.classList.add("drawer-open");
+    activateDrawer("integrationDrawer","#closeIntegration");
 
     const state = document.getElementById("integrationState");
     if (!cfg.BACKEND_URL) {
@@ -6105,10 +6162,7 @@
     const defaultProfile=document.querySelector('input[name="biGroup"][value="consulta"]');
     if(defaultProfile) defaultProfile.checked=true;
     setWizardStep(1);
-    document.getElementById("userDrawer").classList.add("open");
-    document.getElementById("userDrawer").setAttribute("aria-hidden","false");
-    document.getElementById("drawerBackdrop").hidden = false;
-    document.body.classList.add("drawer-open");
+    activateDrawer("userDrawer","#centralUserSearch");
   }
 
   function setWizardStep(step) {
