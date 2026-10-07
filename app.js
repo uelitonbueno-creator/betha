@@ -373,12 +373,15 @@
   }
 
   function sourceClass(source) {
-    return String(source || "").startsWith("base:") ? "base" : "";
+    const value=String(source||"");
+    if(value.startsWith("local:")) return "sample";
+    return value.startsWith("base:") ? "base" : "";
   }
 
   function sourceLabel(source) {
     if (!source) return "Fonte";
     if (source.includes("|")) return "MÚLTIPLAS";
+    if(String(source).startsWith("local:")) return "AMOSTRA";
     return source.startsWith("base:") ? "DADOS" : "BI";
   }
 
@@ -716,6 +719,45 @@
 
   function isCurrentSystemHome(view=currentView) {
     return String(view||"")===String(currentSystemInfo()?.homeView||DEFAULT_VIEW);
+  }
+
+  const SYSTEM_HOME_COPY=Object.freeze({
+    tributos:{
+      kpiEyebrow:"RESUMO DO PERÍODO",
+      kpiTitle:"Indicadores principais",
+      kpiText:"Uma leitura rápida da arrecadação, carteira e base cadastral.",
+      chartEyebrow:"ANÁLISES COMPLEMENTARES",
+      chartTitle:"Composição e evolução",
+      chartText:"Aprofunde a leitura pelos principais recortes tributários."
+    },
+    contabil:{
+      kpiEyebrow:"EXECUÇÃO ORÇAMENTÁRIA",
+      kpiTitle:"Indicadores principais",
+      kpiText:"Empenho, liquidação, pagamento, receita arrecadada e concentração de credores.",
+      chartEyebrow:"EVOLUÇÃO E COMPOSIÇÃO",
+      chartTitle:"Execução e resultado",
+      chartText:"Compare a execução mensal, a despesa por função e o comportamento da receita."
+    },
+    compras:{
+      kpiEyebrow:"COMPRAS E CONTRATAÇÕES",
+      kpiTitle:"Indicadores principais",
+      kpiText:"Volume de processos, valores estimados e homologados, economia e fornecedores.",
+      chartEyebrow:"ANÁLISES DE COMPRAS",
+      chartTitle:"Valores, modalidades e secretarias",
+      chartText:"Acompanhe a evolução das contratações e a distribuição por modalidade e área demandante."
+    },
+    folha:{
+      kpiEyebrow:"FOLHA E QUADRO FUNCIONAL",
+      kpiTitle:"Indicadores principais",
+      kpiText:"Pessoas, folha bruta e líquida, descontos e encargos do recorte selecionado.",
+      chartEyebrow:"ANÁLISES DA FOLHA",
+      chartTitle:"Evolução, secretarias e vínculos",
+      chartText:"Compare a evolução da folha com a distribuição do custo e do quadro funcional."
+    }
+  });
+
+  function currentSystemHomeCopy() {
+    return SYSTEM_HOME_COPY[String(currentSystemId)]||SYSTEM_HOME_COPY.tributos;
   }
 
   function isPersonalizationViewAllowed(view) {
@@ -1139,11 +1181,12 @@
     }
     updateKpiFavoriteButtons();
 
-    if(view==="visao-geral"){
+    if(isCurrentSystemHome(view)){
+      const copy=currentSystemHomeCopy();
       const kpiHeading=document.createElement("div");
       kpiHeading.id="overviewKpiHeading";
-      kpiHeading.className="overview-section-heading overview-kpi-heading";
-      kpiHeading.innerHTML='<div><span>RESUMO DO PERÍODO</span><h2>Indicadores principais</h2></div><p>Uma leitura rápida da arrecadação, carteira e base cadastral.</p>';
+      kpiHeading.className="overview-section-heading overview-kpi-heading system-home-section-heading";
+      kpiHeading.innerHTML='<div><span>'+escapeHtml(copy.kpiEyebrow)+'</span><h2>'+escapeHtml(copy.kpiTitle)+'</h2></div><p>'+escapeHtml(copy.kpiText)+'</p>';
       kpiGrid.insertAdjacentElement("beforebegin",kpiHeading);
     }
 
@@ -1218,13 +1261,15 @@
       coverage.className = "integration-coverage";
       kpiGrid.insertAdjacentElement("afterend", coverage);
     }
+    const sampleCoverage=Boolean(def.localSample);
+    coverage.classList.toggle("is-sample",sampleCoverage);
     coverage.innerHTML = `
       <div class="coverage-title">
-        <strong>Cobertura da integração</strong>
-        <span>Registros efetivamente lidos da Betha nesta carga.</span>
+        <strong>${sampleCoverage?"Cobertura da amostra local":"Cobertura da integração"}</strong>
+        <span>${sampleCoverage?"Registros sintéticos efetivamente usados no recorte atual · 0 chamadas à API.":"Registros efetivamente lidos das fontes autorizadas nesta carga."}</span>
       </div>
       <div id="coverageItems" class="coverage-items">
-        <span class="coverage-loading">Carregando fontes...</span>
+        <span class="coverage-loading">${sampleCoverage?"Preparando amostra local...":"Carregando fontes..."}</span>
       </div>
     `;
 
@@ -1282,11 +1327,12 @@
       else additionalBody.appendChild(card);
     });
 
-    if(view==="visao-geral"){
+    if(isCurrentSystemHome(view)){
+      const copy=currentSystemHomeCopy();
       const secondaryHeading=document.createElement("div");
       secondaryHeading.id="overviewSecondaryHeading";
-      secondaryHeading.className="overview-section-heading overview-secondary-heading";
-      secondaryHeading.innerHTML='<div><span>ANÁLISES COMPLEMENTARES</span><h2>Composição e evolução</h2></div><p>Aprofunde a leitura pelos principais recortes tributários.</p>';
+      secondaryHeading.className="overview-section-heading overview-secondary-heading system-home-section-heading";
+      secondaryHeading.innerHTML='<div><span>'+escapeHtml(copy.chartEyebrow)+'</span><h2>'+escapeHtml(copy.chartTitle)+'</h2></div><p>'+escapeHtml(copy.chartText)+'</p>';
       chartGrid.insertAdjacentElement("beforebegin",secondaryHeading);
 
       const personalHome=document.getElementById("personalHome");
@@ -1846,75 +1892,175 @@
 
   function renderOverviewAttention(payload) {
     let panel=document.getElementById("overviewAttention");
-    if(currentView!=="visao-geral"){
+    if(!isCurrentSystemHome()){
       if(panel) panel.remove();
+      document.getElementById("overviewExecutive")?.remove();
       return;
     }
 
     if(!panel){
       panel=document.createElement("section");
       panel.id="overviewAttention";
-      panel.className="overview-attention";
+      panel.className="overview-attention system-home-attention";
     }
 
     let executive=document.getElementById("overviewExecutive");
     if(!executive){
       executive=document.createElement("section");
       executive.id="overviewExecutive";
-      executive.className="overview-executive";
+      executive.className="overview-executive system-home-executive";
       const secondaryHeading=document.getElementById("overviewSecondaryHeading");
       const chartGrid=document.getElementById("chartGrid");
       if(secondaryHeading) secondaryHeading.insertAdjacentElement("beforebegin",executive);
       else if(chartGrid) chartGrid.insertAdjacentElement("beforebegin",executive);
     }
 
-    const revenueCard=document.querySelector('#chartGrid [data-chart="receita-mensal"]');
-    if(revenueCard && revenueCard.parentElement!==executive){
-      revenueCard.classList.add("overview-executive-chart");
-      executive.appendChild(revenueCard);
+    const primaryChartId=String(dashboards[currentView]?.charts?.[0]?.id||"");
+    const primaryCard=primaryChartId
+      ? document.querySelector('#chartGrid [data-chart="'+cssEscape(primaryChartId)+'"]')
+      : null;
+    if(primaryCard && primaryCard.parentElement!==executive){
+      primaryCard.classList.add("overview-executive-chart");
+      executive.appendChild(primaryCard);
     }
     if(panel.parentElement!==executive) executive.appendChild(panel);
 
     const kpis=payload?.kpis||{};
     const warnings=Array.isArray(payload?.meta?.warnings)?payload.meta.warnings:[];
+    const sampleMode=Boolean(payload?.meta?.sampleMode||dashboards[currentView]?.localSample);
     const items=[];
-    const debt=Number(kpis.divida);
-    const installments=Number(kpis.parcelado);
-    const launched=Number(kpis.lancado);
-    const collected=Number(kpis.arrecadado);
 
-    if(Number.isFinite(debt)){
-      items.push({
-        icon:"bank-outline",
-        title:"Saldo da dívida ativa",
-        detail:"Estoque informado pela fonte de dívida ativa.",
-        value:formatValue(debt,"currency"),
-        route:"divida"
-      });
+    if(String(currentSystemId)==="tributos"){
+      const debt=Number(kpis.divida);
+      const installments=Number(kpis.parcelado);
+      const launched=Number(kpis.lancado);
+      const collected=Number(kpis.arrecadado);
+
+      if(Number.isFinite(debt)){
+        items.push({
+          icon:"bank-outline",
+          title:"Saldo da dívida ativa",
+          detail:"Estoque informado pela fonte de dívida ativa.",
+          value:formatValue(debt,"currency"),
+          route:"divida"
+        });
+      }
+      if(Number.isFinite(installments)){
+        items.push({
+          icon:"calendar-check-outline",
+          title:"Parcelamentos no período",
+          detail:"Quantidade retornada para o período selecionado.",
+          value:formatValue(installments,"number"),
+          route:"parcelamentos"
+        });
+      }
+      if(Number.isFinite(launched)&&Number.isFinite(collected)){
+        items.push({
+          icon:"compare-horizontal",
+          title:"Diferença lançado × arrecadado",
+          detail:"Comparação simples do período; não representa inadimplência.",
+          value:formatValue(launched-collected,"currency"),
+          route:"debitos"
+        });
+      }
+    }else if(String(currentSystemId)==="contabil"){
+      const empenhado=Number(kpis.empenhado);
+      const pago=Number(kpis.pago);
+      const arrecadado=Number(kpis.arrecadado);
+      if(Number.isFinite(empenhado)&&Number.isFinite(pago)){
+        const saldo=Math.max(0,empenhado-pago);
+        const execucao=empenhado?Math.min(100,(pago/empenhado)*100):0;
+        items.push({
+          icon:"cash-clock",
+          title:"Saldo empenhado ainda não pago",
+          detail:"Diferença entre o valor empenhado e o efetivamente pago na amostra.",
+          value:formatValue(saldo,"currency"),
+          route:"contabil-despesa"
+        });
+        items.push({
+          icon:"progress-check",
+          title:"Execução financeira da despesa",
+          detail:"Percentual pago em relação ao total empenhado no recorte.",
+          value:formatValue(execucao,"percent"),
+          route:"contabil-execucao-orcamentaria"
+        });
+      }
+      if(Number.isFinite(arrecadado)&&Number.isFinite(pago)){
+        items.push({
+          icon:"scale-balance",
+          title:"Receita arrecadada × despesa paga",
+          detail:"Saldo simples do recorte; indicador gerencial da amostra, não resultado contábil oficial.",
+          value:formatValue(arrecadado-pago,"currency"),
+          route:"contabil-execucao-orcamentaria"
+        });
+      }
+    }else if(String(currentSystemId)==="compras"){
+      const processos=Number(kpis.processos);
+      const estimado=Number(kpis.estimado);
+      const homologado=Number(kpis.homologado);
+      const economia=Number(kpis.economia);
+      if(Number.isFinite(economia)){
+        items.push({
+          icon:"cash-check",
+          title:"Economia estimada",
+          detail:"Diferença acumulada entre valores estimados e homologados na amostra.",
+          value:formatValue(economia,"currency"),
+          route:"compras-licitacoes"
+        });
+      }
+      if(Number.isFinite(estimado)&&Number.isFinite(economia)){
+        items.push({
+          icon:"percent-outline",
+          title:"Economia sobre o estimado",
+          detail:"Percentual gerencial de economia em relação ao valor inicialmente estimado.",
+          value:formatValue(estimado?(economia/estimado)*100:0,"percent"),
+          route:"compras-licitacoes"
+        });
+      }
+      if(Number.isFinite(processos)&&Number.isFinite(homologado)){
+        items.push({
+          icon:"clipboard-check-outline",
+          title:"Valor homologado por processo",
+          detail:"Média simples do valor homologado entre os processos do recorte.",
+          value:formatValue(processos?homologado/processos:0,"currency"),
+          route:"compras-processos"
+        });
+      }
+    }else if(String(currentSystemId)==="folha"){
+      const bruto=Number(kpis.bruto);
+      const liquido=Number(kpis.liquido);
+      const descontos=Number(kpis.descontos);
+      const encargos=Number(kpis.encargos);
+      if(Number.isFinite(bruto)&&Number.isFinite(encargos)){
+        items.push({
+          icon:"bank-transfer",
+          title:"Encargos sobre a folha bruta",
+          detail:"Participação dos encargos sobre o valor bruto do recorte.",
+          value:formatValue(bruto?(encargos/bruto)*100:0,"percent"),
+          route:"folha-encargos"
+        });
+      }
+      if(Number.isFinite(bruto)&&Number.isFinite(descontos)){
+        items.push({
+          icon:"cash-minus",
+          title:"Descontos sobre a folha bruta",
+          detail:"Participação dos descontos sobre a folha bruta da amostra.",
+          value:formatValue(bruto?(descontos/bruto)*100:0,"percent"),
+          route:"folha-mensal"
+        });
+      }
+      if(Number.isFinite(bruto)&&Number.isFinite(encargos)&&Number.isFinite(liquido)){
+        items.push({
+          icon:"calculator-variant-outline",
+          title:"Custo bruto + encargos",
+          detail:"Soma gerencial da folha bruta e dos encargos do recorte atual.",
+          value:formatValue(bruto+encargos,"currency"),
+          route:"folha-despesas"
+        });
+      }
     }
 
-    if(Number.isFinite(installments)){
-      items.push({
-        icon:"calendar-check-outline",
-        title:"Parcelamentos no período",
-        detail:"Quantidade real retornada para o período selecionado.",
-        value:formatValue(installments,"number"),
-        route:"parcelamentos"
-      });
-    }
-
-    if(Number.isFinite(launched)&&Number.isFinite(collected)){
-      const difference=launched-collected;
-      items.push({
-        icon:"compare-horizontal",
-        title:"Diferença lançado × arrecadado",
-        detail:"Comparação simples do período; não representa inadimplência.",
-        value:formatValue(difference,"currency"),
-        route:"debitos"
-      });
-    }
-
-    if(warnings.length){
+    if(warnings.length&&!sampleMode){
       items.unshift({
         icon:"alert-circle-outline",
         title:"Fontes que exigem atenção",
@@ -1929,8 +2075,11 @@
       <div class="overview-attention-header">
         <div>
           <h2>Pontos de atenção</h2>
-          <p>Indicadores calculados somente com os dados reais desta carga.</p>
+          <p>${escapeHtml(sampleMode
+            ?"Indicadores gerenciais calculados somente sobre a AMOSTRA LOCAL; não representam produção."
+            :"Indicadores calculados somente com os dados autorizados desta carga.")}</p>
         </div>
+        ${sampleMode?'<span class="overview-attention-mode"><i class="mdi mdi-flask-outline"></i> AMOSTRA LOCAL</span>':""}
       </div>
       <div class="overview-attention-list">
         ${visible.length?visible.map((item,index)=>`
@@ -1943,7 +2092,7 @@
             <b>${escapeHtml(item.value)}</b>
             <i class="mdi mdi-chevron-right overview-attention-arrow"></i>
           </button>
-        `).join(""):'<div class="overview-attention-empty">Sem indicadores suficientes para compor os pontos de atenção nesta carga.</div>'}
+        `).join(""):'<div class="overview-attention-empty">Sem indicadores suficientes para compor os pontos de atenção neste recorte.</div>'}
       </div>
     `;
 
