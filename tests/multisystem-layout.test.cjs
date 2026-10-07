@@ -311,6 +311,33 @@ test("busca global preserva o sistema do painel encontrado", () => {
   assert.match(search, /url\.searchParams\.set\("view",view\)/);
 });
 
+test("Minha Home funciona nos quatro sistemas e respeita escopo e permissões", () => {
+  const app = fs.readFileSync(path.join(ROOT, "app.js"), "utf8");
+  assert.match(app, /function isCurrentSystemHome\(/);
+  assert.match(app, /currentSystemInfo\(\)\?\.homeView\|\|DEFAULT_VIEW/);
+  assert.match(app, /function isPersonalizationViewAllowed\(/);
+  assert.match(app, /dashboardSystemId\(view\)===String\(currentSystemId\)/);
+  assert.match(app, /isViewAllowed\(view\)/);
+  assert.match(app, /item\.view!==homeView&&isPersonalizationViewAllowed\(item\.view\)/);
+  assert.match(app, /MINHA HOME · /);
+});
+
+test("personalização mantém capacidade suficiente para quatro sistemas", () => {
+  const app = fs.readFileSync(path.join(ROOT, "app.js"), "utf8");
+  assert.match(app, /recentViews=\[[\s\S]*?\]\.slice\(0,24\)/);
+  assert.match(app, /favoriteDashboards=\[\.\.\.set\]\.slice\(0,24\)/);
+  assert.match(app, /favoriteKpis[\s\S]*?slice\(0,32\)/);
+});
+
+test("homes de Contabilidade, Compras e Folha usam hierarquia executiva própria", () => {
+  const css = fs.readFileSync(path.join(ROOT, "style.css"), "utf8");
+  assert.match(css, /#dashboardView\[data-dashboard\$="-visao-geral"\] \.kpi-grid/);
+  assert.match(css, /grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/);
+  assert.match(css, /#dashboardView\[data-dashboard\$="-visao-geral"\] #chartGrid/);
+  assert.match(css, /#dashboardView\[data-dashboard\$="-visao-geral"\] #chartGrid \.chart-card:nth-child\(3\)/);
+  assert.match(css, /@media\(max-width:480px\)[\s\S]*?#dashboardView\[data-dashboard\$="-visao-geral"\] \.kpi-grid/);
+});
+
 test("proveniência diferencia AMOSTRA LOCAL de dados reais", () => {
   const app = fs.readFileSync(path.join(ROOT, "app.js"), "utf8");
   const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
