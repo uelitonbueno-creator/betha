@@ -67,6 +67,9 @@
   function navigate(view){
     if(!view) return;
     const url=new URL(location.href);
+    const def=window.BI_DASHBOARDS?.[view];
+    const system=String(def?.system||"tributos");
+    url.searchParams.set("sistema",system);
     url.searchParams.set("view",view);
     location.assign(url.toString());
   }
