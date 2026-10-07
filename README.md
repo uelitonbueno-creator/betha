@@ -1,12 +1,12 @@
 # BI Vella — Betha
 
-Front-end de BI tributário no padrão visual Betha, preparado para operar de forma **multi-entidade** e navegar sempre do **macro para o micro**.
+Front-end corporativo do **BI Vella**, preparado para operar de forma **multi-entidade + multi-sistema** e navegar sempre do **macro para o micro**.
 
 ## Estado atual
 
-- 16 visões analíticas.
-- 55 KPIs.
-- 95 gráficos/visualizações cadastradas.
+- 46 dashboards/visões cadastrados no catálogo unificado.
+- 4 sistemas ativos no seletor: Tributos, Contabilidade, Compras e Folha de Pagamento.
+- Tributos usa as fontes reais existentes; os demais módulos permanecem em amostra local enquanto a integração real é validada.
 - Drill-down preparado: visão geral → composição → registros → detalhe individual.
 - Front único para várias prefeituras.
 - Tenant lógico enviado pelo front; `User-Access` permanece no backend.
@@ -125,16 +125,38 @@ O analítico oferece busca, filtro por campos efetivamente presentes na fonte e 
 
 ## Seletor de sistemas
 
-O BI Vella separa a marca da aplicação do sistema de origem. O contexto do usuário segue o padrão **Entidade → Sistema → Painel**. Atualmente o sistema registrado é **Tributos**; novos sistemas podem ser adicionados ao catálogo público `window.BI_SYSTEMS`, preservando o tenant e redirecionando para a aplicação/rota configurada.
+O BI Vella separa a marca da aplicação do sistema de origem. O contexto do usuário segue o padrão **Entidade → Sistema → Painel**. O catálogo `window.BI_SYSTEMS` concentra os quatro sistemas atuais e permite adicionar novos módulos sem duplicar a aplicação, preservando tenant, autenticação e permissões.
 
 
 ## Sistemas no BI Vella
 
-O seletor de sistema mantém o contexto da prefeitura e troca o catálogo de navegação. Os grupos principais são genéricos em todos os módulos: **Início, Financeiro, Operações, Cadastros e Controle**.
+O seletor de sistema mantém o contexto da prefeitura e troca o catálogo de navegação. Cada módulo começa em **Início** e apresenta diretamente os painéis específicos do sistema, evitando duplicar uma segunda opção de “Visão Geral”.
 
 - **Tributos**: dados reais pelo backend existente.
-- **Contábil**: painéis iniciais de visão geral, receita, despesa, movimentos, credores e controle.
-- **Compras**: painéis iniciais de visão geral, processos, licitações, contratos, fornecedores e controle.
-- **Folha de pagamento**: painéis iniciais de visão geral, folha mensal, servidores, eventos, encargos e controle.
+- **Contabilidade**: visão geral, execução orçamentária, receitas, despesas, empenhos, movimentos, restos a pagar, credores, demonstrativos, relatórios/balanços e controle.
+- **Compras**: visão geral, processos, licitações, contratos, fornecedores, atas de registro de preço, catálogo de itens e controle.
+- **Folha de pagamento**: visão geral, servidores, vínculos, cargos, departamentos, folha mensal, eventos, encargos, benefícios, despesas e controle.
 
 Enquanto a cota do Worker estiver indisponível, Contábil, Compras e Folha usam amostras locais de 100 registros por sistema. Essas amostras são sintéticas e servem somente para validar interface e análise. A coleta real sem Worker pode ser feita por `scripts/import-betha-samples.mjs` em um ambiente seguro com as credenciais Betha.
+
+
+## Redesign BI Vella
+
+O layout atual segue o padrão aprovado do BI Vella:
+
+- sidebar azul-marinho integrada ao cabeçalho;
+- entidade e sistemas no contexto lateral;
+- título dinâmico `BI VELLA | PAINEL [SISTEMA]`;
+- menus contextuais diretos por sistema;
+- KPIs coloridos, gráficos e tabelas-resumo;
+- filtros persistentes e filtros contextuais por módulo;
+- responsividade para desktop, tablet e celular;
+- indicação explícita de **AMOSTRA LOCAL** quando os dados não são de produção.
+
+Para Contabilidade, Compras e Folha, os filtros são calculados sobre as próprias amostras locais e não geram chamadas ao Worker/Cloudflare. As três fixtures permanecem com exatamente 100 registros.
+
+Validação estrutural principal:
+
+```bash
+node --test tests/multisystem-layout.test.cjs
+```
