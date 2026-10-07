@@ -100,7 +100,11 @@
 
   function isViewAllowed(view) {
     if(view===HOME_VIEW) view=currentSystemInfo()?.homeView||DEFAULT_VIEW;
-    if(dashboards[view]?.localSample) return String(dashboards[view].system||"")===String(currentSystemId);
+    if(dashboards[view]?.localSample){
+      const tenant=currentTenantInfo();
+      const privileged=Boolean(tenant&&(tenant.admin===true||tenant.technical===true));
+      return String(dashboards[view].system||"")===String(currentSystemId) && (privileged||currentAllowedViews.has(view));
+    }
     if (dashboards[view]?.apiSource) return (dashboards[view].permissionViews||[]).some(v=>currentAllowedViews.has(v));
     if (dashboards[view]) return currentAllowedViews.has(view);
     if (ADMIN_VIEWS.has(view)) return currentAllowedAdminViews.has(view);
@@ -123,7 +127,10 @@
     const allowed=item=>{
       const view=item?.rota||item?.id;
       const normalizedView=view===HOME_VIEW?(system?.homeView||DEFAULT_VIEW):view;
-      if(dashboards[normalizedView]?.localSample) return String(dashboards[normalizedView].system||"")===String(currentSystemId);
+      if(dashboards[normalizedView]?.localSample){
+        const privileged=Boolean(tenant&&(tenant.admin===true||tenant.technical===true));
+        return String(dashboards[normalizedView].system||"")===String(currentSystemId) && (privileged||allowedViews.has(normalizedView));
+      }
       return dashboards[normalizedView] ? allowedViews.has(normalizedView) :
         (ADMIN_VIEWS.has(normalizedView) ? allowedAdminViews.has(normalizedView) : false);
     };
@@ -4819,6 +4826,40 @@
     obras:"BIObrasPage",
     itbi:"BIITBIPage",
     qualidade:"BIQualidadePage",
+
+    "contabil-visao-geral":"BIContabilVisaoGeralPage",
+    "contabil-execucao-orcamentaria":"BIContabilExecucaoOrcamentariaPage",
+    "contabil-receita":"BIContabilReceitaPage",
+    "contabil-despesa":"BIContabilDespesaPage",
+    "contabil-empenhos":"BIContabilEmpenhosPage",
+    "contabil-movimentos":"BIContabilMovimentosPage",
+    "contabil-restos":"BIContabilRestosPage",
+    "contabil-credores":"BIContabilCredoresPage",
+    "contabil-demonstrativos":"BIContabilDemonstrativosPage",
+    "contabil-relatorios":"BIContabilRelatoriosPage",
+    "contabil-controle":"BIContabilControlePage",
+
+    "compras-visao-geral":"BIComprasVisaoGeralPage",
+    "compras-processos":"BIComprasProcessosPage",
+    "compras-licitacoes":"BIComprasLicitacoesPage",
+    "compras-contratos":"BIComprasContratosPage",
+    "compras-fornecedores":"BIComprasFornecedoresPage",
+    "compras-atas":"BIComprasAtasPage",
+    "compras-itens":"BIComprasItensPage",
+    "compras-controle":"BIComprasControlePage",
+
+    "folha-visao-geral":"BIFolhaVisaoGeralPage",
+    "folha-servidores":"BIFolhaServidoresPage",
+    "folha-vinculos":"BIFolhaVinculosPage",
+    "folha-cargos":"BIFolhaCargosPage",
+    "folha-departamentos":"BIFolhaDepartamentosPage",
+    "folha-mensal":"BIFolhaMensalPage",
+    "folha-eventos":"BIFolhaEventosPage",
+    "folha-encargos":"BIFolhaEncargosPage",
+    "folha-beneficios":"BIFolhaBeneficiosPage",
+    "folha-despesas":"BIFolhaDespesasPage",
+    "folha-controle":"BIFolhaControlePage",
+
     "usuarios-admin":"BIUsuariosPage",
     "configuracoes-admin":"BIConfiguracoesPage"
   });
