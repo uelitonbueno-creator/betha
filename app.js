@@ -3,7 +3,12 @@
   const SUPABASE_URL = "https://mliurxyjznxoafkwwtae.supabase.co";
   const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1saXVyeHlqem54b2Fma3d3dGFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA5NjA2MjMsImV4cCI6MjEwNjUzNjYyM30.bxZPsSSLpiZTFvXD2yZjtuc-5sniwDfV5D7UMAsB9ec";
   const dashboards = window.BI_DASHBOARDS || {};
+  const systems = (Array.isArray(window.BI_SYSTEMS) && window.BI_SYSTEMS.length
+    ? window.BI_SYSTEMS
+    : [{id:"tributos",name:"Tributos",enabled:true,homeView:"visao-geral"}])
+    .filter(system=>system && system.enabled!==false);
   const HOME_VIEW="inicio";
+  const DEFAULT_VIEW="visao-geral";
   const ADMIN_VIEWS = new Set(["usuarios-admin","configuracoes-admin"]);
   const bethaApp = document.getElementById("bethaApp");
   const authGate = document.getElementById("authGate");
@@ -59,7 +64,11 @@
   const chartDisplayStateByView = new Map();
   const restoredPreferenceScopes = new Set();
   let toastTimer = null;
-  let currentView = query.view===HOME_VIEW?HOME_VIEW:ADMIN_VIEWS.has(query.view)?query.view:(query.view&&dashboards[query.view]?query.view:HOME_VIEW);
+  let currentView = query.view===HOME_VIEW
+    ? DEFAULT_VIEW
+    : ADMIN_VIEWS.has(query.view)
+      ? query.view
+      : (query.view&&dashboards[query.view]?query.view:DEFAULT_VIEW);
   let currentPayload = null;
   let dashboardLoadGeneration = 0;
   let currentDetailPayload = null;
@@ -71,6 +80,7 @@
 
   let tenantId = query.tenant || query.entidadeId || query.entityId || "";
   let entityLabel = query.entidade || query.entity || query.entidadeNome || "ENTIDADE NÃO IDENTIFICADA";
+  let currentSystemId = query.sistema || cfg.DEFAULT_SYSTEM || systems[0]?.id || "tributos";
 
   document.getElementById("entityContext").textContent = String(entityLabel).toUpperCase();
 
@@ -84,7 +94,7 @@
   }
 
   function isViewAllowed(view) {
-    if(view===HOME_VIEW) return true;
+    if(view===HOME_VIEW) view=DEFAULT_VIEW;
     if (dashboards[view]?.apiSource) return (dashboards[view].permissionViews||[]).some(v=>currentAllowedViews.has(v));
     if (dashboards[view]) return currentAllowedViews.has(view);
     if (ADMIN_VIEWS.has(view)) return currentAllowedAdminViews.has(view);
@@ -105,8 +115,9 @@
 
     const allowed=item=>{
       const view=item?.rota||item?.id;
-      return view===HOME_VIEW?true:dashboards[view] ? allowedViews.has(view) :
-        (ADMIN_VIEWS.has(view) ? allowedAdminViews.has(view) : false);
+      const normalizedView=view===HOME_VIEW?DEFAULT_VIEW:view;
+      return dashboards[normalizedView] ? allowedViews.has(normalizedView) :
+        (ADMIN_VIEWS.has(normalizedView) ? allowedAdminViews.has(normalizedView) : false);
     };
 
     return raw.map(item=>{
@@ -120,7 +131,10 @@
   }
 
   function firstAllowedView() {
-    return HOME_VIEW;
+    if(currentAllowedViews.has(DEFAULT_VIEW)) return DEFAULT_VIEW;
+    return Object.keys(dashboards).find(view=>currentAllowedViews.has(view)) ||
+      [...currentAllowedAdminViews][0] ||
+      DEFAULT_VIEW;
   }
 
   function applyNavigationPermissions(tenant) {
@@ -282,6 +296,7 @@
   });
 
   function navigate(view) {
+    if(view===HOME_VIEW) view=DEFAULT_VIEW;
     if (!isViewAllowed(view)) {
       showToast("Este painel não está liberado para o seu acesso.");
       return;
@@ -875,7 +890,7 @@
   }
 
   function renderDashboard(view) {
-    if(view===HOME_VIEW){renderSyntheticHome();return;}
+    if(view===HOME_VIEW) view=DEFAULT_VIEW;
     document.getElementById("syntheticHomeView").hidden=true;
     document.getElementById("dashboardView").hidden = false;
     document.getElementById("usersAdminView").hidden = true;
@@ -925,9 +940,6 @@
     restoreViewPreferencesOnce(view);
     renderDashboardFilters(def);
 
-    if(!document.getElementById("backToSyntheticHome")) {
-      const button=document.createElement("button");button.id="backToSyntheticHome";button.className="btn-secondary-betha";button.type="button";button.textContent="VOLTAR AOS RESUMOS";button.addEventListener("click",()=>navigate(HOME_VIEW));document.querySelector("#dashboardView .page-actions").prepend(button);
-    }
     document.getElementById("pageTitle").textContent = def.title;
     document.getElementById("pageDescription").textContent = def.description;
     document.getElementById("pageContext").textContent = def.title.toUpperCase();
@@ -2883,7 +2895,7 @@
   }
 
   async function loadDashboardData(view, options = {}) {
-    if(view===HOME_VIEW) return loadSyntheticHome();
+    if(view===HOME_VIEW) view=DEFAULT_VIEW;
     if(dashboards[view]?.apiSource) return loadApiPanelDashboard(view);
     const generation=++dashboardLoadGeneration;
     const requestedTenant=tenantId;
@@ -3530,7 +3542,7 @@
 
       const drawHeader=(pageNo)=>{
         pdf.setFontSize(13);
-        pdf.text(String(dashboards[currentView]?.title||"BI Tributos"),margin,8);
+        pdf.text(String(dashboards[currentView]?.title||"BI Vella"),margin,8);
         pdf.setFontSize(8);
         pdf.text(String(entityLabel||tenantId||"Entidade"),margin,13);
         pdf.setTextColor(90);
@@ -3565,7 +3577,7 @@
         while(yOffset<imgHeight && p<=20){
           if(p>1) longPdf.addPage();
           longPdf.setFontSize(13);
-          longPdf.text(String(dashboards[currentView]?.title||"BI Tributos"),margin,8);
+          longPdf.text(String(dashboards[currentView]?.title||"BI Vella"),margin,8);
           longPdf.setFontSize(8);
           longPdf.text(String(entityLabel||tenantId||"Entidade"),margin,13);
           longPdf.setTextColor(90);
@@ -3624,7 +3636,7 @@
       const payload=await fetchDetailExport(currentDetailResource,10000);
       const context=detailExportContext();
       const meta=[
-        "BI Tributos",
+        "BI Vella",
         "Entidade: "+(entityLabel||tenantId||""),
         "Detalhamento: "+currentDetailTitle,
         "Período/Filtros: "+(context.summary||""),
@@ -4078,8 +4090,65 @@
       entityButton.removeAttribute("aria-busy");
     }
   });
+
+  const systemButton=document.getElementById("systemButton");
+  const systemMenu=document.getElementById("systemMenu");
+  const systemList=document.getElementById("systemList");
+  const systemContext=document.getElementById("systemContext");
+
+  function currentSystemInfo() {
+    return systems.find(system=>String(system.id)===String(currentSystemId)) || systems[0] || null;
+  }
+
+  function renderSystemSelector() {
+    const active=currentSystemInfo();
+    if(systemContext) systemContext.textContent=String(active?.name||active?.label||active?.id||"Tributos").toUpperCase();
+    if(!systemList) return;
+    systemList.innerHTML="";
+    for(const system of systems){
+      const button=document.createElement("button");
+      button.type="button";
+      button.className="entity-option system-option"+(String(system.id)===String(currentSystemId)?" is-current":"");
+      button.innerHTML='<i class="mdi mdi-application-cog-outline"></i><span>'+escapeHtml(system.name||system.label||system.id)+'</span>';
+      button.addEventListener("click",()=>selectSystem(system));
+      systemList.appendChild(button);
+    }
+  }
+
+  function selectSystem(system) {
+    if(!system||!system.id) return;
+    const previous=String(currentSystemId||"");
+    currentSystemId=String(system.id);
+    renderSystemSelector();
+    if(systemMenu) systemMenu.hidden=true;
+
+    const target=String(system.href||system.url||"").trim();
+    if(target && previous!==currentSystemId){
+      const next=new URL(target,location.href);
+      if(tenantId) next.searchParams.set("tenant",tenantId);
+      if(entityLabel) next.searchParams.set("entidade",entityLabel);
+      next.searchParams.set("sistema",currentSystemId);
+      location.assign(next.toString());
+      return;
+    }
+
+    const url=new URL(location.href);
+    url.searchParams.set("sistema",currentSystemId);
+    history.replaceState({},"",url);
+    if(previous && previous!==currentSystemId) showToast("Sistema alterado para "+(system.name||system.id)+".");
+  }
+
+  renderSystemSelector();
+
+  systemButton?.addEventListener("click",event=>{
+    event.stopPropagation();
+    if(entityMenu) entityMenu.hidden=true;
+    if(systemMenu) systemMenu.hidden=!systemMenu.hidden;
+  });
+
   document.addEventListener("click", (event) => {
-    if (!event.target.closest(".entity-control")) entityMenu.hidden = true;
+    if (!event.target.closest(".entity-control") && entityMenu) entityMenu.hidden = true;
+    if (!event.target.closest(".system-control") && systemMenu) systemMenu.hidden = true;
   });
 
   let selectedCentralUser = null;
@@ -4182,7 +4251,7 @@
         method:"POST",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({
-          label:"BI Tributos",
+          label:"BI Vella",
           ttlHours:8
         })
       });
@@ -4333,7 +4402,7 @@
       text:String(auditFilterState.text||"").trim()||"Sem busca textual"
     };
     const meta=[
-      ["BI Tributos - Auditoria"],
+      ["BI Vella - Auditoria"],
       ["Entidade",entityLabel||tenantId||"Entidade"],
       ["Período",filterLabels.period],
       ["Categoria",filterLabels.category],
