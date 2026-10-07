@@ -2078,6 +2078,8 @@
     const warningBySource = new Map(warnings.map(w => [String(w.source), w]));
     const coverageItems = document.getElementById("coverageItems");
     if (coverageItems) {
+      const sampleMode=Boolean(payload?.meta?.sampleMode);
+      const sampleSystemName=currentSystemInfo()?.name||currentSystemId;
       coverageItems.innerHTML = Object.entries(sourceRows).map(([key,raw]) => {
         const value = Number(raw || 0);
         const audit = sourceAudit[key] || {};
@@ -2091,22 +2093,28 @@
         const errorStatus = audit.errorStatus || (warning && warning.errorStatus) || "";
         const errorDetail = audit.errorDetail || (warning && warning.errorDetail) || "";
         const stateClass = error ? "error" : (mismatch ? "warn" : (complete ? "ok" : "warn"));
-        const status = error ? "ERRO" : (mismatch ? "DIVERGÊNCIA" : (complete ? "COMPLETO" : "PARCIAL"));
-        const countText = reported !== null
-          ? value.toLocaleString("pt-BR") + " carregados / API " + reported.toLocaleString("pt-BR")
-          : value.toLocaleString("pt-BR") + " carregados";
+        const status = sampleMode ? "AMOSTRA LOCAL" : (error ? "ERRO" : (mismatch ? "DIVERGÊNCIA" : (complete ? "COMPLETO" : "PARCIAL")));
+        const countText = sampleMode
+          ? value.toLocaleString("pt-BR") + " no recorte / " + Number(reported??value).toLocaleString("pt-BR") + " na amostra"
+          : (reported !== null
+            ? value.toLocaleString("pt-BR") + " carregados / API " + reported.toLocaleString("pt-BR")
+            : value.toLocaleString("pt-BR") + " carregados");
         const pages = Number(audit.pages || 0);
-        const title = error
-          ? "Falha: " + error + (errorStatus ? " (HTTP " + errorStatus + ")" : "") + (errorDetail ? " · " + errorDetail : "")
-          : (mismatch
-            ? "Total informado pela API diverge do total carregado"
-            : status + " · " + pages + " página(s)");
-        const detailText = error
-          ? [errorStatus ? "HTTP " + errorStatus : error, errorDetail].filter(Boolean).join(" · ")
-          : (status + (pages ? " · " + pages + " pág." : ""));
-        return `<div class="coverage-item coverage-audit" title="${escapeHtml(title)}">
+        const title = sampleMode
+          ? "Dados sintéticos locais · 0 chamadas à API / Cloudflare"
+          : (error
+            ? "Falha: " + error + (errorStatus ? " (HTTP " + errorStatus + ")" : "") + (errorDetail ? " · " + errorDetail : "")
+            : (mismatch
+              ? "Total informado pela API diverge do total carregado"
+              : status + " · " + pages + " página(s)"));
+        const detailText = sampleMode
+          ? "AMOSTRA LOCAL · 0 API"
+          : (error
+            ? [errorStatus ? "HTTP " + errorStatus : error, errorDetail].filter(Boolean).join(" · ")
+            : (status + (pages ? " · " + pages + " pág." : "")));
+        return `<div class="coverage-item coverage-audit${sampleMode?" is-sample":""}" title="${escapeHtml(title)}">
           <span class="coverage-dot ${stateClass}"></span>
-          <span class="coverage-source">${escapeHtml(labelMap[key] || key)}</span>
+          <span class="coverage-source">${escapeHtml(sampleMode?sampleSystemName:(labelMap[key] || key))}</span>
           <strong>${escapeHtml(countText)}</strong>
           <small>${escapeHtml(detailText)}</small>
         </div>`;
