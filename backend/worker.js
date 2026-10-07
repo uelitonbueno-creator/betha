@@ -1031,10 +1031,48 @@ async function panelLoadScope(tenant,auth,key,loadId) {
  const scope=await sha256Hex(JSON.stringify([tenant.id,tenant.userAccess,tenant.accessToken,auth.userToken||'',auth.context?.entity,auth.context?.database,key]));
  return 'api-panels:v1:'+scope+':'+loadId;
 }
+const DASHBOARD_CACHE_BLOCK_PAGES=5;
+
+async function dashboardTempGetJson(env,key) {
+  if(env.AUTH_DB){
+    try{
+      const row=await env.AUTH_DB.prepare(
+        "SELECT payload,expires_at FROM bi_temp_cache WHERE cache_key=?1 LIMIT 1"
+      ).bind(String(key)).first();
+      if(row&&Number(row.expires_at)>Date.now()){
+        return JSON.parse(String(row.payload));
+      }
+      if(row){
+        await env.AUTH_DB.prepare("DELETE FROM bi_temp_cache WHERE cache_key=?1").bind(String(key)).run().catch(()=>{});
+      }
+    }catch{}
+  }
+  if(env.BI_SESSIONS){
+    try{return await env.BI_SESSIONS.get(key,'json');}catch{}
+  }
+  return null;
+}
+
+async function dashboardTempPutJson(env,key,value,ttlSeconds=3600) {
+  const payload=JSON.stringify(value);
+  if(env.AUTH_DB){
+    const expiresAt=Date.now()+Math.max(60,Number(ttlSeconds)||3600)*1000;
+    await env.AUTH_DB.prepare(
+      "INSERT INTO bi_temp_cache (cache_key,payload,expires_at,updated_at) VALUES (?1,?2,?3,?4) ON CONFLICT(cache_key) DO UPDATE SET payload=excluded.payload,expires_at=excluded.expires_at,updated_at=excluded.updated_at"
+    ).bind(String(key),payload,expiresAt,new Date().toISOString()).run();
+    return;
+  }
+  if(env.BI_SESSIONS){
+    await env.BI_SESSIONS.put(key,payload,{expirationTtl:Math.max(60,Number(ttlSeconds)||3600)});
+    return;
+  }
+  throw new Error('SESSION_STORE_NOT_CONFIGURED');
+}
+
 async function readPanelSnapshot(env,key,sourceKey,pages) {
- const prefix=key+':'+sourceKey;const manifest=await env.BI_SESSIONS.get(prefix+':manifest','json');
+ const prefix=key+':'+sourceKey;const manifest=await dashboardTempGetJson(env,prefix+':manifest');
  if(!manifest||manifest.pages<pages)throw new Error('DASHBOARD_BATCH_PENDING');
- const chunks=[];for(let i=0;i<Math.ceil(pages/20);i++){const block=await env.BI_SESSIONS.get(prefix+':block:'+i,'json');if(!block)throw new Error('DASHBOARD_BATCH_PENDING');chunks.push(...block);}
+ const chunks=[];for(let i=0;i<Math.ceil(pages/DASHBOARD_CACHE_BLOCK_PAGES);i++){const block=await dashboardTempGetJson(env,prefix+':block:'+i);if(!block)throw new Error('DASHBOARD_BATCH_PENDING');chunks.push(...block);}
  chunks.length=pages;const seen=new Set(),rows=[];for(const c of chunks)for(const r of c.rows){const id=panelValue(r,['id','codigo','idIntegracao','uuid']);if(id!=null){if(seen.has(String(id)))continue;seen.add(String(id));}rows.push(r);}
  return {rows,loaded:rows.length,complete:manifest.complete&&manifest.pages===pages,error:null,pages};
 }
@@ -2216,7 +2254,7 @@ function payloadPageMeta(payload, requestedOffset, requestedLimit, rowCount) {
   };
 }
 
-async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=null,startOffset=0}={}) {
+async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=null,startOffset=0,filter=null}={}) {
   const rows=[];
   const seenIds=new Set();
   const seenFingerprints=new Set();
@@ -2239,9 +2277,10 @@ async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=nu
     // The additional-fields source refuses an unbounded request. Betha's BI
     // guidance uses an id criterion for initial loads, so keep the request broad
     // but explicit and ask the platform to include custom fields.
+    if(filter) requestQuery.set("filter",String(filter));
     if(resource==="imoveis-campos-adicionais"){
       requestQuery.set("cpaFields","true");
-      requestQuery.set("filter","id > 0");
+      requestQuery.set("filter",filter ? "("+String(filter)+") and id > 0" : "id > 0");
     }
     const body=await bethaGet(env,tenant,source,resource,requestQuery.toString());
     pages++;
@@ -2428,7 +2467,7 @@ async function loadDashboardSourceBatch(env,tenant,source,resource) {
   const sourceKey=source+":"+resource;
   const prefix=load.prefix+":"+sourceKey;
   const manifestKey=prefix+":manifest";
-  let manifest=await env.BI_SESSIONS.get(manifestKey,"json");
+  let manifest=await dashboardTempGetJson(env,manifestKey);
   const expected=Number(load.expected[sourceKey]||0);
   if ((!manifest && expected>0) || (manifest && manifest.pages<expected)) {
     throw new Error("DASHBOARD_BATCH_PENDING");
@@ -2436,10 +2475,10 @@ async function loadDashboardSourceBatch(env,tenant,source,resource) {
   manifest=manifest||{pages:0,nextOffset:0,complete:false,truncated:false};
   const chunks=[];
   // Bound concurrent KV reads as well as Betha requests.
-  const blockCount=Math.ceil(manifest.pages/20);
+  const blockCount=Math.ceil(manifest.pages/DASHBOARD_CACHE_BLOCK_PAGES);
   for (let start=0;start<blockCount;start+=10) {
     const batch=await Promise.all(Array.from({length:Math.min(10,blockCount-start)},(_,i)=>
-      env.BI_SESSIONS.get(prefix+":block:"+(start+i),"json")));
+      dashboardTempGetJson(env,prefix+":block:"+(start+i))));
     if (batch.some(chunk=>!chunk)) throw new Error("DASHBOARD_BATCH_PENDING");
     chunks.push(...batch.flat());
   }
@@ -2450,7 +2489,10 @@ async function loadDashboardSourceBatch(env,tenant,source,resource) {
     delete plainEnv.BI_DASHBOARD_LOAD;
     plainEnv.BI_SOURCE_TIMEOUT_MS=12000;
     const chunk=await safeBethaRows(plainEnv,tenant,source,resource,{
-      limit:250,maxPages:1,startOffset:manifest.nextOffset
+      limit:250,
+      maxPages:1,
+      startOffset:manifest.nextOffset,
+      filter:load.sourceFilters?.[sourceKey]||null
     });
     if (chunk.error) {
       // Preserve prior rows, while explicitly reporting an interrupted source.
@@ -2464,11 +2506,11 @@ async function loadDashboardSourceBatch(env,tenant,source,resource) {
       chunk.hasMore=!chunk.complete&&!chunk.truncated;
       if (repeated) chunk.rows=[];
       chunks.push(chunk);
-      const block=Math.floor(manifest.pages/20);
-      await env.BI_SESSIONS.put(prefix+":block:"+block,JSON.stringify(chunks.slice(block*20)),{expirationTtl:3600});
+      const block=Math.floor(manifest.pages/DASHBOARD_CACHE_BLOCK_PAGES);
+      await dashboardTempPutJson(env,prefix+":block:"+block,chunks.slice(block*DASHBOARD_CACHE_BLOCK_PAGES),3600);
       manifest={pages:manifest.pages+1,nextOffset:chunk.nextOffset,
         complete:chunk.complete,truncated:chunk.truncated};
-      await env.BI_SESSIONS.put(manifestKey,JSON.stringify(manifest),{expirationTtl:3600});
+      await dashboardTempPutJson(env,manifestKey,manifest,3600);
     }
   }
   const seen=new Set();
@@ -7140,7 +7182,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-06-tenant-config-d1-v85",
+        buildVersion:"2026-10-07-debitos-current-period-d1-v86",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
@@ -7613,7 +7655,7 @@ export default {
 
         let dashboardEnv=env;
         if (url.searchParams.get("progressive")==="1" && view!=="visao-geral") {
-          if (!env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
+          if (!env.AUTH_DB&&!env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
           const loadId=url.searchParams.get("loadId")||"";
           if (!/^[a-f0-9-]{36}$/i.test(loadId)) throw new Error("DASHBOARD_LOAD_ID_INVALID");
           const cursorText=url.searchParams.get("cursor")||"{}";
@@ -7625,9 +7667,19 @@ export default {
             throw new Error("DASHBOARD_CURSOR_INVALID");
           }
           const scope=await sha256Hex(JSON.stringify([tenant.id,tenant.userAccess,auth.context.database,auth.context.entity]));
+          const sourceFilters={};
+          if(view==="debitos"){
+            const exercise=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+            const period=url.searchParams.get("periodo")||"ano";
+            if(Number.isInteger(exercise)&&exercise>=1900&&exercise<=2200&&period!=="todos"){
+              sourceFilters["bi:debitos"]=period==="12m"
+                ? "ano >= "+String(exercise-1)
+                : "ano = "+String(exercise);
+            }
+          }
           dashboardEnv={...env,BI_DASHBOARD_LOAD:{
-            prefix:"dashboard-batch:v1:"+scope+":"+loadId,
-            expected,cursors:{},hasMore:false,pending:new Map()
+            prefix:"dashboard-batch:v2:"+scope+":"+loadId,
+            expected,cursors:{},hasMore:false,pending:new Map(),sourceFilters
           }};
         }
         const body=await builder(dashboardEnv,tenant,url);
