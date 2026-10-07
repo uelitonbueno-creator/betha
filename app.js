@@ -2161,7 +2161,11 @@
     if(chartDef.apiPanel&&data){empty.querySelector("strong").textContent=data.status==="unavailable"?"Indicador indisponível":data.status==="missing-fields"?"Campos necessários não informados":"Sem registros neste recorte";empty.querySelector("span").textContent=data.note||"Confira os filtros selecionados.";empty.hidden=false;return;}
     const title=empty.querySelector("strong");
     const detail=empty.querySelector("span");
-    if(state.kind==="error"){
+    const hasSeries=Boolean(data&&Array.isArray(data.labels)&&data.labels.length&&Array.isArray(data.datasets)&&data.datasets.some(ds=>Array.isArray(ds.data)&&ds.data.length));
+    if(payload?.meta?.refreshError&&!hasSeries){
+      title.textContent="Resumo não atualizado";
+      detail.textContent="A API falhou ("+payload.meta.refreshError+"). O cache disponível não contém este gráfico.";
+    } else if(state.kind==="error"){
       title.textContent="Fonte indisponível";
       detail.textContent=state.detail;
     } else if(state.kind==="partial"){
@@ -2214,6 +2218,13 @@
     let rendered=0;
 
     const syncVisibility=()=>{
+      if(rendered===0&&payload?.meta?.refreshError){
+        const notice=document.createElement("div");
+        notice.className="summary-table-empty";
+        notice.innerHTML='<strong>Resumos não atualizados</strong><span>A API falhou ('+escapeHtml(payload.meta.refreshError)+'). O cache disponível não contém linhas analíticas.</span>';
+        host.appendChild(notice);
+        rendered=1;
+      }
       const hidden=rendered===0;
       host.hidden=hidden;
       if(heading) heading.hidden=hidden;
@@ -3276,16 +3287,27 @@
     params.set("progressive","1");
     params.set("loadId",crypto.randomUUID());
     let pendingRetries=0;
+    let transientRetries=0;
     for (let batch=0;batch<600;batch++) {
       if (!isActive()) return null;
       let payload;
       try {
         payload=await api("/api/dashboard/"+encodeURIComponent(view)+"?"+params.toString(),{timeoutMs:60000});
         pendingRetries=0;
+        transientRetries=0;
       } catch (error) {
-        if (error.message!=="DASHBOARD_BATCH_PENDING"||pendingRetries++>=30) throw error;
-        await new Promise(resolve=>setTimeout(resolve,2000));
-        continue;
+        if (error.message==="DASHBOARD_BATCH_PENDING"&&pendingRetries++<30) {
+          await new Promise(resolve=>setTimeout(resolve,2000));
+          continue;
+        }
+        const transient=[408,429,502,503,504].includes(Number(error.status))||error.message==="REQUEST_TIMEOUT";
+        if(transient&&transientRetries<3){
+          transientRetries++;
+          setStatus("waiting","Falha temporária na API · tentando novamente ("+transientRetries+"/3)…");
+          await new Promise(resolve=>setTimeout(resolve,1500*transientRetries));
+          continue;
+        }
+        throw error;
       }
       if (!isActive()) return null;
       const audits=Object.values(payload?.meta?.sourceAudit||{});
@@ -3691,6 +3713,12 @@
         setStatus("waiting", "Dados locais mantidos · motor analítico indisponível");
       } else if (error.message === "APPLICATION_SESSION_NOT_CONFIGURED") {
         setStatus("waiting", "Dados locais mantidos · aguardando autenticação Betha");
+      } else if (restored) {
+        const refreshError=error.status?"HTTP "+Number(error.status):String(error.message||"Falha ao atualizar").slice(0,100);
+        const cachedPayload=currentPayload&&typeof currentPayload==="object"?currentPayload:{};
+        cachedPayload.meta={...(cachedPayload.meta||{}),refreshError};
+        renderPayload(cachedPayload);
+        setStatus("waiting","Cache parcial exibido · API indisponível ("+refreshError+")");
       } else if (!restored) {
         setStatus("error", "Atualização indisponível");
       }
