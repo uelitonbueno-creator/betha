@@ -848,6 +848,37 @@ function panelDate(v) {
  const s=String(v);const d=new Date(/^\d{4}-\d{2}$/.test(s)?s+'-01':s);
  return Number.isNaN(d.getTime())?null:d;
 }
+function normalizePersonType(value){
+ const raw=String(panelScalar(value)??"").trim();
+ if(!raw)return "";
+ const plain=raw.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+ if(/^(f|pf)$/.test(plain)||plain.includes("fisic"))return "Pessoa física";
+ if(/^(j|pj)$/.test(plain)||plain.includes("jurid"))return "Pessoa jurídica";
+ return raw;
+}
+function closingMonthNumber(value){
+ const raw=panelScalar(value);
+ if(raw==null||raw==="")return null;
+ const numeric=Number(raw);
+ if(Number.isInteger(numeric)&&numeric>=1&&numeric<=12)return numeric;
+ const plain=String(raw).normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
+ const names=["janeiro","fevereiro","marco","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+ const index=names.findIndex(name=>plain===name||plain.startsWith(name.slice(0,3)));
+ return index>=0?index+1:null;
+}
+function closingPeriod(row){
+ const year=Number(panelScalar(panelValue(row,["anoEncerramento","ano","exercicio"])));
+ const month=closingMonthNumber(panelValue(row,[
+  "mesEncerramento.valor","mesEncerramento.codigo","mesEncerramento.descricao",
+  "mesEncerramento.nome","mesEncerramento","mes","competencia"
+ ]));
+ if(Number.isFinite(year)&&year>1900&&month){
+  return {key:year*100+month,label:String(month).padStart(2,"0")+"/"+year,date:String(year)+"-"+String(month).padStart(2,"0")+"-01"};
+ }
+ const date=panelDate(panelScalar(panelValue(row,["dataFinalMes","dataEncerramento","dtEncerramento","dataMovimento","dtMovimento","competencia"])));
+ if(date)return {key:date.getFullYear()*100+(date.getMonth()+1),label:String(date.getMonth()+1).padStart(2,"0")+"/"+date.getFullYear(),date:date.toISOString().slice(0,10)};
+ return null;
+}
 function normalizePanelRow(raw,source,index=0) {
  const r={_source:source,_key:source+':'+index};
  for(const [f,paths] of Object.entries(PANEL_FIELDS)){
@@ -860,7 +891,7 @@ function normalizePanelRow(raw,source,index=0) {
  if(source.endsWith(':obras'))r.obraId=r.id;
  if(source.endsWith(':indexadores'))r.indexadorId=r.id;
  if(/pagamentos|debitos|dividas|parcelamentos/.test(source))r.nome=panelScalar(panelValue(raw,['pessoa.nome','contribuinte.nome','responsavel.nome','nomeContribuinte','nomePessoa','nome']))??(r.pessoaId?'Pessoa '+r.pessoaId:null);
- if(source.startsWith('base:encerramento-')){const y=panelValue(raw,['anoEncerramento']);const m=panelScalar(panelValue(raw,['mesEncerramento.valor','mesEncerramento']));const d=panelValue(raw,['dataFinalMes']);r.encerramento=d?String(d):y&&Number(m)>=1&&Number(m)<=12?String(y)+'-'+String(m).padStart(2,'0')+'-01':null;}
+ if(source.startsWith('base:encerramento-')){const period=closingPeriod(raw);r.encerramento=period?.date||null;}
  if(source==='bi:pagamentos-parcelamentos'&&r.pago==null)r.pago=panelNumber(panelValue(raw,['valor','vlParcela']));
  if(source==='base:guias-unificadas'&&r.obrigacoes==null){const list=panelValue(raw,['referentes','debitos','itens']);if(Array.isArray(list))r.obrigacoes=list.length;}
  if(source.endsWith('economicos-atividades'))r.principal=panelScalar(panelValue(raw,['principal','atividadePrincipal','tipoAtividade.descricao','tipoAtividade']));
@@ -873,6 +904,7 @@ function normalizePanelRow(raw,source,index=0) {
  }
  const extras=['juros','multa','correcao'].map(k=>r[k]).filter(v=>v!=null);r.acrescimos=extras.length?extras.reduce((a,b)=>a+b,0):null;
  if(r.zona!=null){const t=String(r.zona).toLowerCase();r.zona=/rural|^true$|^1$|^s$/.test(t)?'Rural':/urban|^false$|^0$|^n$/.test(t)?'Urbana':r.zona;}
+ if(r.tipoPessoa!=null)r.tipoPessoa=normalizePersonType(r.tipoPessoa);
  if(r.situacao==null&&Object.hasOwn(raw,'desativado'))r.situacao=raw.desativado===true?'Inativo':'Ativo';
  const status=String(r.situacao||'');r.open=r.situacao!=null?!/pago|quitad|cancel|encerr|liquidad/i.test(status):null;
  const due=panelDate(r.vencimento);r.overdue=due&&r.open!=null?r.open&&due.getTime()<new Date().setHours(0,0,0,0):null;
@@ -1079,11 +1111,21 @@ async function readPanelSnapshot(env,key,sourceKey,pages) {
 // Background source snapshots are scoped to the saved credentials and entity.
 const SYNC_TTL=7*24*3600;
 const SYNC_INTERVALS=[0,15,30,60,180,360,720,1440];
-const SYNC_SOURCES_PER_TICK=8;
-const SYNC_CONCURRENCY=4;
-const SYNC_MAX_RETRIES=4;
+const SYNC_SOURCES_PER_TICK=6;
+const SYNC_CONCURRENCY=3;
+const SYNC_MAX_RETRIES=6;
 const SYNC_PAGE_SIZES=[250,100,50];
-const SYNC_TIMEOUT_BY_PAGE={250:10000,100:14000,50:18000};
+const SYNC_TIMEOUT_BY_PAGE={250:20000,100:30000,50:30000};
+const SYNC_HEAVY_RESOURCES=new Set([
+ "pagamentos","pagamentos-parcelamentos","pagamentos-detalhados",
+ "pagamentos-detalhados-valores","debitos","debitos-receitas",
+ "dividas","dividas-receitas","guias-unificadas"
+]);
+function syncInitialPageSize(resource){
+ if(resource==="pagamentos-detalhados"||resource==="pagamentos-detalhados-valores")return 50;
+ if(SYNC_HEAVY_RESOURCES.has(resource))return 100;
+ return 250;
+}
 
 async function syncScope(tenant){return 'bi-sync:v1:'+await sha256Hex(JSON.stringify([tenant.id,tenant.entityId,tenant.databaseId,tenant.userAccess,tenant.accessToken]));}
 async function syncConfig(env,tenant){return await env.BI_SESSIONS.get(await syncScope(tenant)+':config','json')||{enabled:false,intervalMinutes:60};}
@@ -1102,7 +1144,7 @@ function syncNextPageSize(size){
  if(n>100)return 100;
  return 50;
 }
-function normalizeSyncEntry(raw={}){
+function normalizeSyncEntry(raw={},defaultPageSize=250){
  const complete=raw.complete===true,error=raw.error||null;
  const loaded=Math.max(0,Number(raw.loaded)||0);
  const hasOffset=raw.nextOffset!==null&&raw.nextOffset!==undefined&&raw.nextOffset!=='';
@@ -1114,7 +1156,7 @@ function normalizeSyncEntry(raw={}){
   complete,
   error,
   nextOffset:Number.isFinite(candidateOffset)&&candidateOffset>=0?candidateOffset:(complete||error?null:loaded),
-  pageSize:SYNC_PAGE_SIZES.includes(Number(raw.pageSize))?Number(raw.pageSize):250,
+  pageSize:SYNC_PAGE_SIZES.includes(Number(raw.pageSize))?Number(raw.pageSize):defaultPageSize,
   retryCount:Math.max(0,Number(raw.retryCount)||0),
   stablePages:Math.max(0,Number(raw.stablePages)||0),
   lastError:raw.lastError||null,
@@ -1134,7 +1176,7 @@ function normalizeRunningSyncJob(job,cards){
  job.failures=Array.isArray(job.failures)?job.failures:[];
  for(const card of cards){
   if(!job.sources[card.id])continue;
-  const entry=normalizeSyncEntry(job.sources[card.id]);
+  const entry=normalizeSyncEntry(job.sources[card.id],syncInitialPageSize(card.resource));
   // Jobs created by older versions marked timeouts as permanent. Reopen
   // transient failures and retry the additional-fields 422 once because newer
   // builds now send Betha's required cpaFields=true parameter.
@@ -1180,7 +1222,7 @@ function pendingSyncIndexes(job,cards,limit=SYNC_SOURCES_PER_TICK){
  return out;
 }
 async function advanceSyncSource(env,tenant,scope,job,card){
- const entry=normalizeSyncEntry(job.sources[card.id]||{});
+ const entry=normalizeSyncEntry(job.sources[card.id]||{},syncInitialPageSize(card.resource));
  try{
   if(entry.pages>=500)throw new Error('SOURCE_PAGE_LIMIT');
   const pageSize=entry.pageSize||250;
@@ -1262,6 +1304,13 @@ async function advanceSync(env,tenant,config){
    job.sources[card.id]=result.entry;
    job.rows=(Number(job.rows)||0)+result.added;
    setSyncFailure(job,card.id,result.entry);
+   try{
+    await persistBackgroundSourceProgress(env,tenant,job,card,result.entry);
+   }catch(error){
+    job.persistenceFailures=Array.isArray(job.persistenceFailures)?job.persistenceFailures:[];
+    job.persistenceFailures=job.persistenceFailures.filter(item=>item.source!==card.id);
+    job.persistenceFailures.push({source:card.id,error:String(error?.message||error),at:new Date().toISOString()});
+   }
   }
  }));
  job.completed=cards.reduce((count,card)=>{
@@ -1272,6 +1321,10 @@ async function advanceSync(env,tenant,config){
   job.state=job.failures.length?'completed-with-warnings':'completed';
   job.finishedAt=new Date().toISOString();
   config={...config,latestJob:job.id,nextRunAt:config.intervalMinutes?new Date(Date.now()+config.intervalMinutes*60000).toISOString():null};
+ }
+ try{await persistBackgroundJobSummary(env,tenant,job);}catch(error){
+  job.persistenceFailures=Array.isArray(job.persistenceFailures)?job.persistenceFailures:[];
+  job.persistenceFailures.push({source:"job",error:String(error?.message||error),at:new Date().toISOString()});
  }
  await env.BI_SESSIONS.put(scope+':job:'+job.id,JSON.stringify(job),{expirationTtl:SYNC_TTL});
  await env.BI_SESSIONS.put(scope+':config',JSON.stringify({...config,activeJob:job.id}));
@@ -1321,7 +1374,9 @@ async function buildApiPanels(env,tenant,auth,key,url,detailId=null) {
  for(const f of ['situacao','bairro','rua','zona','nome','receita','tipo','ano'])filterOptions['panel_'+f]=[...new Set((sources[key]?.normalized||[]).map(r=>r[f]).filter(v=>v!=null))].sort().map(v=>({value:String(v),label:String(v)}));
  const sourceRows={},sourceAudit={};for(const [source,r]of Object.entries(sources)){sourceRows[source]=r.loaded||0;sourceAudit[source]={loaded:r.loaded||0,pages:r.pages||0,complete:r.complete===true,error:r.error||null,reportedTotal:r.reportedTotal??null,totalMismatch:r.totalMismatch===true};}
  for(const result of Object.values(charts))delete result.records;
- return {view:card.panelView,kpis:{'source-count':sources[key]?.error?null:sources[key]?.loaded??null},charts,loading:{hasMore:cached?cached.pending:load.hasMore,background:Boolean(cached),cursor:load.cursors},meta:{sourceRows,sourceAudit,filterOptions,updatedAt:cached?.updatedAt||new Date().toISOString(),snapshot:{loadId:url.searchParams.get('loadId'),cursor:load.cursors,cacheJob:cached?.id||null,cachePages:cached?.pages||null},warnings:Object.entries(sourceAudit).filter(([,a])=>a.error).map(([source,a])=>({source,error:a.error}))}};
+ const payload={view:card.panelView,kpis:{'source-count':sources[key]?.error?null:sources[key]?.loaded??null},charts,loading:{hasMore:cached?cached.pending:load.hasMore,background:Boolean(cached),cursor:load.cursors},meta:{sourceRows,sourceAudit,filterOptions,updatedAt:cached?.updatedAt||new Date().toISOString(),snapshot:{loadId:url.searchParams.get('loadId'),cursor:load.cursors,cacheJob:cached?.id||null,cachePages:cached?.pages||null},warnings:Object.entries(sourceAudit).filter(([,a])=>a.error).map(([source,a])=>({source,error:a.error}))}};
+ try{await persistApiPanelSnapshot(env,tenant,card,url,payload);}catch(error){console.warn("API panel snapshot not persisted",card.id,error?.message||error);}
+ return payload;
 }
 
 const API_PANEL_CATALOG={"version":1,"groups":[{"id":"cadastros","label":"Imóveis e contribuintes","icon":"home-city-outline","cards":[{"id":"bi:imoveis","source":"bi","resource":"imoveis","label":"Imóveis","view":"imobiliario","panels":[{"id":"p1","title":"Geral: imóveis urbanos e rurais","dim":"zona","measure":"count","agg":"count","input":"bi:imoveis"},{"id":"p2","title":"Imóveis por bairro","dim":"bairro","measure":"count","agg":"count","input":"bi:imoveis"},{"id":"p3","title":"Imóveis por rua","dim":"rua","measure":"count","agg":"count","input":"bi:imoveis"},{"id":"p4","title":"Imóveis por situação cadastral","dim":"situacao","measure":"count","agg":"count","input":"bi:imoveis"},{"id":"p5","title":"Imóveis por contribuinte","dim":"nome","measure":"imovelId","agg":"distinct","input":"bi:imoveis-responsaveis","restrict":{"source":"bi:imoveis","left":"imovelId","right":"id"}},{"id":"p6","title":"Imóveis urbanos por bairro","dim":"bairro","measure":"count","agg":"count","input":"bi:imoveis","where":["zona","Urbana"]},{"id":"p7","title":"Imóveis rurais por bairro","dim":"bairro","measure":"count","agg":"count","input":"bi:imoveis","where":["zona","Rural"]}],"panelView":"api-bi-imoveis","permissionViews":["imobiliario","qualidade","territorio"]},{"id":"bi:imoveis-responsaveis","source":"bi","resource":"imoveis-responsaveis","label":"Responsáveis dos imóveis","view":"imobiliario","panels":[{"id":"p1","title":"Responsáveis distintos","dim":"all","measure":"pessoaId","agg":"distinct","input":"bi:imoveis-responsaveis"},{"id":"p2","title":"Imóveis por responsável","dim":"nome","measure":"imovelId","agg":"distinct","input":"bi:imoveis-responsaveis"},{"id":"p3","title":"Imóveis com um ou vários responsáveis","dim":"countband","measure":"count","agg":"count","input":"bi:imoveis-responsaveis","transform":"links","entity":"imovelId","linked":"pessoaId"},{"id":"p4","title":"Responsáveis por bairro","dim":"j.bairro","measure":"pessoaId","agg":"distinct","input":"bi:imoveis-responsaveis","joins":[{"source":"bi:imoveis","left":"imovelId","right":"id","prefix":"j"}]},{"id":"p5","title":"Responsáveis por quantidade de imóveis","dim":"countband","measure":"count","agg":"count","input":"bi:imoveis-responsaveis","transform":"links","entity":"pessoaId","linked":"imovelId"}],"panelView":"api-bi-imoveis-responsaveis","permissionViews":["imobiliario"]},{"id":"bi:imoveis-corresponsaveis","source":"bi","resource":"imoveis-corresponsaveis","label":"Corresponsáveis dos imóveis","view":"imobiliario","panels":[{"id":"p1","title":"Imóveis com corresponsáveis","dim":"all","measure":"imovelId","agg":"distinct","input":"bi:imoveis-corresponsaveis"},{"id":"p2","title":"Corresponsáveis por imóvel","dim":"imovelId","measure":"pessoaId","agg":"distinct","input":"bi:imoveis-corresponsaveis"},{"id":"p3","title":"Imóveis por corresponsável","dim":"nome","measure":"imovelId","agg":"distinct","input":"bi:imoveis-corresponsaveis"},{"id":"p4","title":"Corresponsabilidade por bairro","dim":"j.bairro","measure":"imovelId","agg":"distinct","input":"bi:imoveis-corresponsaveis","joins":[{"source":"bi:imoveis","left":"imovelId","right":"id","prefix":"j"}]},{"id":"p5","title":"Imóveis com e sem corresponsabilidade","dim":"presence","measure":"count","agg":"count","input":"bi:imoveis","presence":{"source":"bi:imoveis-corresponsaveis","left":"id","right":"imovelId"}}],"panelView":"api-bi-imoveis-corresponsaveis","permissionViews":["imobiliario"]},{"id":"bi:imoveis-campos-adicionais","source":"bi","resource":"imoveis-campos-adicionais","label":"Características dos imóveis","view":"qualidade","panels":[{"id":"p1","title":"Preenchimento por característica","dim":"caracteristica","measure":"preenchido","agg":"average","input":"bi:imoveis-campos-adicionais"},{"id":"p2","title":"Imóveis por valor da característica","dim":"caracteristicaValor","measure":"count","agg":"count","input":"bi:imoveis-campos-adicionais"},{"id":"p3","title":"Características por bairro","dim":"j.bairro","measure":"count","agg":"count","input":"bi:imoveis-campos-adicionais","joins":[{"source":"bi:imoveis","left":"imovelId","right":"id","prefix":"j"}]},{"id":"p4","title":"Características: urbanos e rurais","dim":"j.zona","measure":"count","agg":"count","input":"bi:imoveis-campos-adicionais","joins":[{"source":"bi:imoveis","left":"imovelId","right":"id","prefix":"j"}]},{"id":"p5","title":"Imóveis com características sem preenchimento","dim":"preenchimento","measure":"imovelId","agg":"distinct","input":"bi:imoveis-campos-adicionais"}],"panelView":"api-bi-imoveis-campos-adicionais","permissionViews":["qualidade"]},{"id":"bi:contribuintes","source":"bi","resource":"contribuintes","label":"Contribuintes","view":"contribuintes","panels":[{"id":"p1","title":"Pessoas físicas e jurídicas","dim":"tipoPessoa","measure":"count","agg":"count","input":"bi:contribuintes"},{"id":"p2","title":"Contribuintes por situação cadastral","dim":"situacao","measure":"count","agg":"count","input":"bi:contribuintes"},{"id":"p3","title":"Contribuintes por município","dim":"cidade","measure":"count","agg":"count","input":"bi:contribuintes"},{"id":"p4","title":"Documentos e contatos: preenchimento","dim":"contactQuality","measure":"count","agg":"count","input":"bi:contribuintes"},{"id":"p5","title":"Contribuintes por quantidade de imóveis","dim":"countband","measure":"count","agg":"count","input":"bi:imoveis-responsaveis","transform":"links","entity":"pessoaId","linked":"imovelId"}],"panelView":"api-bi-contribuintes","permissionViews":["contribuintes","qualidade"]},{"id":"bi:economicos","source":"bi","resource":"economicos","label":"Cadastros econômicos","view":"economicos","panels":[{"id":"p1","title":"Cadastros econômicos por situação","dim":"situacao","measure":"count","agg":"count","input":"bi:economicos"},{"id":"p2","title":"Cadastros econômicos por bairro","dim":"bairro","measure":"count","agg":"count","input":"bi:economicos"},{"id":"p3","title":"Cadastros por natureza jurídica","dim":"natureza","measure":"count","agg":"count","input":"bi:economicos"},{"id":"p4","title":"Aberturas por período","dim":"month:abertura","measure":"count","agg":"count","input":"bi:economicos"},{"id":"p5","title":"Cadastros por atividade econômica","dim":"atividade","measure":"economicoId","agg":"distinct","input":"bi:economicos-atividades"}],"panelView":"api-bi-economicos","permissionViews":["economicos","qualidade"]},{"id":"bi:economicos-atividades","source":"bi","resource":"economicos-atividades","label":"Atividades econômicas","view":"economicos","panels":[{"id":"p1","title":"Cadastros por atividade/CNAE","dim":"atividade","measure":"economicoId","agg":"distinct","input":"bi:economicos-atividades"},{"id":"p2","title":"Atividades principais e secundárias","dim":"principal","measure":"count","agg":"count","input":"bi:economicos-atividades"},{"id":"p3","title":"Quantidade de atividades por cadastro","dim":"economicoId","measure":"atividade","agg":"distinct","input":"bi:economicos-atividades"},{"id":"p4","title":"Atividades por bairro","dim":"j.bairro","measure":"count","agg":"count","input":"bi:economicos-atividades","joins":[{"source":"bi:economicos","left":"economicoId","right":"id","prefix":"j"}]},{"id":"p5","title":"Atividades por situação do cadastro","dim":"j.situacao","measure":"count","agg":"count","input":"bi:economicos-atividades","joins":[{"source":"bi:economicos","left":"economicoId","right":"id","prefix":"j"}]}],"panelView":"api-bi-economicos-atividades","permissionViews":["economicos","qualidade"]},{"id":"base:imoveis","source":"base","resource":"imoveis","label":"Imóveis — cadastro complementar","view":"imobiliario","panels":[{"id":"p1","title":"Imóveis por tipo cadastral","dim":"tipo","measure":"count","agg":"count","input":"base:imoveis"},{"id":"p2","title":"Imóveis por setor, quadra e lote","dim":"setorQuadra","measure":"count","agg":"count","input":"base:imoveis"},{"id":"p3","title":"Imóveis por faixa de área do terreno","dim":"range:areaTerreno","measure":"count","agg":"count","input":"base:imoveis"},{"id":"p4","title":"Imóveis por faixa de área construída","dim":"range:areaConstruida","measure":"count","agg":"count","input":"base:imoveis"},{"id":"p5","title":"Comparação cadastral Base e BI","dim":"comparison","measure":"count","agg":"count","input":"base:imoveis","compare":"bi:imoveis","compareFields":["bairro","rua","zona"]}],"panelView":"api-base-imoveis","permissionViews":["imobiliario","territorio"]},{"id":"base:contribuintes","source":"base","resource":"contribuintes","label":"Contribuintes — cadastro complementar","view":"contribuintes","panels":[{"id":"p1","title":"Contribuintes por tipo de pessoa","dim":"tipoPessoa","measure":"count","agg":"count","input":"base:contribuintes"},{"id":"p2","title":"Contribuintes por localização","dim":"cidade","measure":"count","agg":"count","input":"base:contribuintes"},{"id":"p3","title":"Contatos completos e incompletos","dim":"contactQuality","measure":"count","agg":"count","input":"base:contribuintes"},{"id":"p4","title":"Possíveis duplicidades por documento","dim":"duplicate","measure":"count","agg":"count","input":"base:contribuintes","transform":"duplicates","entity":"documento"},{"id":"p5","title":"Comparação cadastral Base e BI","dim":"comparison","measure":"count","agg":"count","input":"base:contribuintes","compare":"bi:contribuintes","compareFields":["nome","cidade","tipoPessoa"]}],"panelView":"api-base-contribuintes","permissionViews":["contribuintes","qualidade"]}]},{"id":"arrecadacao","label":"Arrecadação e receitas","icon":"cash-multiple","cards":[{"id":"bi:pagamentos","source":"bi","resource":"pagamentos","label":"Pagamentos","view":"arrecadacao","panels":[{"id":"p1","title":"Arrecadação por período","dim":"month:pagamento","measure":"pago","agg":"sum","input":"bi:pagamentos"},{"id":"p2","title":"Quantidade de pagamentos por período","dim":"month:pagamento","measure":"count","agg":"count","input":"bi:pagamentos"},{"id":"p3","title":"Pagamentos por contribuinte","dim":"nome","measure":"pago","agg":"sum","input":"bi:pagamentos"},{"id":"p4","title":"Valor médio dos pagamentos por mês","dim":"month:pagamento","measure":"pago","agg":"average","input":"bi:pagamentos"},{"id":"p5","title":"Arrecadação por receita","dim":"receita","measure":"pago","agg":"sum","input":"bi:pagamentos-detalhados-valores"}],"panelView":"api-bi-pagamentos","permissionViews":["arrecadacao"]},{"id":"bi:pagamentos-parcelamentos","source":"bi","resource":"pagamentos-parcelamentos","label":"Pagamentos de parcelamentos","view":"parcelamentos","panels":[{"id":"p1","title":"Valor pago por período","dim":"month:pagamento","measure":"pago","agg":"sum","input":"bi:pagamentos-parcelamentos"},{"id":"p2","title":"Pagamentos por acordo","dim":"parcelamentoId","measure":"pago","agg":"sum","input":"bi:pagamentos-parcelamentos"},{"id":"p3","title":"Pagamentos por contribuinte","dim":"j.nome","measure":"pago","agg":"sum","input":"bi:pagamentos-parcelamentos","joins":[{"source":"bi:parcelamentos","left":"parcelamentoId","right":"id","prefix":"j"}]},{"id":"p4","title":"Pagamentos no prazo e em atraso","dim":"paymentTiming","measure":"count","agg":"count","input":"bi:pagamentos-parcelamentos","joins":[{"source":"bi:parcelamentos-parcelas","left":"parcelaId","right":"id","prefix":"j"}]},{"id":"p5","title":"Percentual pago por parcelamento","dim":"parcelamentoId","measure":"paymentRatio","agg":"average","input":"bi:pagamentos-parcelamentos","joins":[{"source":"bi:parcelamentos","left":"parcelamentoId","right":"id","prefix":"j"}],"transform":"agreementRatio","amounts":"bi:parcelamentos-parcelas","definition":"Pagamentos vinculados divididos pela soma das parcelas do acordo."}],"panelView":"api-bi-pagamentos-parcelamentos","permissionViews":["arrecadacao","parcelamentos"]},{"id":"bi:pagamentos-detalhados","source":"bi","resource":"pagamentos-detalhados","label":"Pagamentos detalhados","view":"arrecadacao","panels":[{"id":"p1","title":"Arrecadação por tributo/receita","dim":"receita","measure":"pago","agg":"sum","input":"bi:pagamentos-detalhados"},{"id":"p2","title":"Arrecadação por exercício de origem","dim":"ano","measure":"pago","agg":"sum","input":"bi:pagamentos-detalhados"},{"id":"p3","title":"Pagamentos por tipo de obrigação","dim":"origem","measure":"pago","agg":"sum","input":"bi:pagamentos-detalhados"},{"id":"p4","title":"Pagamentos por contribuinte","dim":"j.nome","measure":"pago","agg":"sum","input":"bi:pagamentos-detalhados","joins":[{"source":"bi:pagamentos","left":"pagamentoId","right":"id","prefix":"j"}]},{"id":"p5","title":"Composição de receitas de cada pagamento","dim":"pagamentoId","measure":"pago","agg":"sum","input":"bi:pagamentos-detalhados"}],"panelView":"api-bi-pagamentos-detalhados","permissionViews":["arrecadacao","economicos","imobiliario","receitas-creditos"]},{"id":"bi:pagamentos-detalhados-valores","source":"bi","resource":"pagamentos-detalhados-valores","label":"Composição dos pagamentos","view":"arrecadacao","panels":[{"id":"p1","title":"Principal, juros, multa e correção","dim":"component","measure":"count","agg":"count","input":"bi:pagamentos-detalhados-valores","components":["principal","juros","multa","correcao"]},{"id":"p2","title":"Acréscimos arrecadados por período","dim":"month:j.pagamento","measure":"acrescimos","agg":"sum","input":"bi:pagamentos-detalhados-valores","joins":[{"source":"bi:pagamentos","left":"pagamentoId","right":"id","prefix":"j"}]},{"id":"p3","title":"Descontos por período","dim":"month:j.pagamento","measure":"desconto","agg":"sum","input":"bi:pagamentos-detalhados-valores","joins":[{"source":"bi:pagamentos","left":"pagamentoId","right":"id","prefix":"j"}]},{"id":"p4","title":"Composição dos valores por receita","dim":"receita","measure":"pago","agg":"sum","input":"bi:pagamentos-detalhados-valores"},{"id":"p5","title":"Participação dos acréscimos no total pago","dim":"receita","measure":"acrescimos","agg":"ratio","input":"bi:pagamentos-detalhados-valores","denominator":"pago"}],"panelView":"api-bi-pagamentos-detalhados-valores","permissionViews":["arrecadacao","divida"]},{"id":"bi:receitas","source":"bi","resource":"receitas","label":"Receitas","view":"receitas-creditos","panels":[{"id":"p1","title":"Receitas por classificação","dim":"classificacao","measure":"count","agg":"count","input":"bi:receitas"},{"id":"p2","title":"Receitas por situação cadastral","dim":"situacao","measure":"count","agg":"count","input":"bi:receitas"},{"id":"p3","title":"Receitas com e sem movimentação","dim":"presence","measure":"count","agg":"count","input":"bi:receitas","presence":{"source":"bi:pagamentos-detalhados-valores","left":"id","right":"receitaId"}},{"id":"p4","title":"Arrecadação por receita","dim":"j.nome","measure":"pago","agg":"sum","input":"bi:pagamentos-detalhados-valores","joins":[{"source":"bi:receitas","left":"receitaId","right":"id","prefix":"j"}]},{"id":"p5","title":"Lançado e arrecadado por receita","dim":"receita","measure":"count","agg":"count","input":"bi:receitas","transform":"compareTotals","totals":[{"source":"bi:debitos-receitas","measure":"lancado","label":"Lançado"},{"source":"bi:pagamentos-detalhados-valores","measure":"pago","label":"Arrecadado"}]}],"panelView":"api-bi-receitas","permissionViews":["receitas-creditos"]},{"id":"base:creditos-tributarios","source":"base","resource":"creditos-tributarios","label":"Créditos tributários","view":"receitas-creditos","panels":[{"id":"p1","title":"Créditos por tipo","dim":"tipo","measure":"count","agg":"count","input":"base:creditos-tributarios"},{"id":"p2","title":"Créditos por situação","dim":"situacao","measure":"count","agg":"count","input":"base:creditos-tributarios"},{"id":"p3","title":"Créditos por exercício","dim":"ano","measure":"count","agg":"count","input":"base:creditos-tributarios"},{"id":"p4","title":"Créditos por faixa de valor","dim":"range:valor","measure":"count","agg":"count","input":"base:creditos-tributarios"},{"id":"p5","title":"Créditos por contribuinte","dim":"nome","measure":"count","agg":"count","input":"base:creditos-tributarios"}],"panelView":"api-base-creditos-tributarios","permissionViews":["debitos","receitas-creditos"]},{"id":"base:creditos-tributarios-receitas","source":"base","resource":"creditos-tributarios-receitas","label":"Receitas dos créditos tributários","view":"receitas-creditos","panels":[{"id":"p1","title":"Composição dos créditos por receita","dim":"receita","measure":"count","agg":"count","input":"base:creditos-tributarios-receitas"},{"id":"p2","title":"Receitas por crédito tributário","dim":"creditoId","measure":"receitaId","agg":"distinct","input":"base:creditos-tributarios-receitas"},{"id":"p3","title":"Créditos por quantidade de receitas","dim":"countband","measure":"count","agg":"count","input":"base:creditos-tributarios-receitas","transform":"links","entity":"creditoId","linked":"receitaId"},{"id":"p4","title":"Distribuição por classificação da receita","dim":"j.classificacao","measure":"count","agg":"count","input":"base:creditos-tributarios-receitas","joins":[{"source":"bi:receitas","left":"receitaId","right":"id","prefix":"j"}]},{"id":"p5","title":"Arrecadação por receita dos créditos","dim":"receita","measure":"pago","agg":"sum","input":"bi:pagamentos-detalhados-valores","restrict":{"source":"base:creditos-tributarios-receitas","left":"receitaId","right":"receitaId"}}],"panelView":"api-base-creditos-tributarios-receitas","permissionViews":["receitas-creditos"]},{"id":"base:guias-unificadas","source":"base","resource":"guias-unificadas","label":"Guias unificadas","view":"guias","panels":[{"id":"p1","title":"Guias emitidas por período","dim":"month:emissao","measure":"count","agg":"count","input":"base:guias-unificadas"},{"id":"p2","title":"Guias por situação","dim":"situacao","measure":"count","agg":"count","input":"base:guias-unificadas"},{"id":"p3","title":"Valor das guias por vencimento","dim":"month:vencimento","measure":"valor","agg":"sum","input":"base:guias-unificadas"},{"id":"p4","title":"Quantidade de obrigações por guia","dim":"id","measure":"obrigacoes","agg":"sum","input":"base:guias-unificadas"},{"id":"p5","title":"Guias emitidas e pagas","dim":"guidePayment","measure":"count","agg":"count","input":"base:guias-unificadas","presence":{"source":"bi:pagamentos","left":"id","right":"guiaId"}}],"panelView":"api-base-guias-unificadas","permissionViews":["guias"]}]},{"id":"lancamentos","label":"Lançamentos e débitos","icon":"file-document-edit-outline","cards":[{"id":"bi:debitos","source":"bi","resource":"debitos","label":"Débitos","view":"debitos","panels":[{"id":"p1","title":"Valor lançado por exercício","dim":"ano","measure":"lancado","agg":"sum","input":"bi:debitos"},{"id":"p2","title":"Débitos por situação","dim":"situacao","measure":"count","agg":"count","input":"bi:debitos"},{"id":"p3","title":"Débitos por vencimento","dim":"month:vencimento","measure":"count","agg":"count","input":"bi:debitos"},{"id":"p4","title":"Débitos por contribuinte","dim":"nome","measure":"lancado","agg":"sum","input":"bi:debitos"},{"id":"p5","title":"Débitos por faixa de valor","dim":"range:lancado","measure":"count","agg":"count","input":"bi:debitos"}],"panelView":"api-bi-debitos","permissionViews":["debitos"]},{"id":"bi:debitos-receitas","source":"bi","resource":"debitos-receitas","label":"Receitas dos débitos","view":"debitos","panels":[{"id":"p1","title":"Valor lançado por receita","dim":"receita","measure":"lancado","agg":"sum","input":"bi:debitos-receitas"},{"id":"p2","title":"Composição de receitas dos débitos","dim":"receita","measure":"count","agg":"count","input":"bi:debitos-receitas"},{"id":"p3","title":"Receitas por exercício","dim":"j.ano","measure":"lancado","agg":"sum","input":"bi:debitos-receitas","joins":[{"source":"bi:debitos","left":"debitoId","right":"id","prefix":"j"}]},{"id":"p4","title":"Saldo em aberto por receita","dim":"receita","measure":"saldo","agg":"sum","input":"bi:debitos-receitas"},{"id":"p5","title":"Receitas por bairro do imóvel","dim":"j.bairro","measure":"lancado","agg":"sum","input":"bi:debitos-receitas","joins":[{"source":"bi:debitos","left":"debitoId","right":"id","prefix":"d"},{"source":"bi:imoveis","left":"d.imovelId","right":"id","prefix":"j"}]}],"panelView":"api-bi-debitos-receitas","permissionViews":["debitos"]},{"id":"base:encerramento-lancamentos","source":"base","resource":"encerramento-lancamentos","label":"Encerramento dos lançamentos","view":"encerramento","panels":[{"id":"p1","title":"Encerramentos por período","dim":"month:encerramento","measure":"count","agg":"count","input":"base:encerramento-lancamentos"},{"id":"p2","title":"Encerramentos por motivo","dim":"motivo","measure":"count","agg":"count","input":"base:encerramento-lancamentos"},{"id":"p3","title":"Valor dos lançamentos encerrados","dim":"month:encerramento","measure":"lancado","agg":"sum","input":"base:encerramento-lancamentos"},{"id":"p4","title":"Encerramentos por receita","dim":"receita","measure":"lancado","agg":"sum","input":"base:encerramento-lancamentos"},{"id":"p5","title":"Lançamentos encerrados e em aberto","dim":"closingBalance","measure":"count","agg":"count","input":"base:encerramento-lancamentos","components":["lancado","saldo"]}],"panelView":"api-base-encerramento-lancamentos","permissionViews":["encerramento"]}]},{"id":"divida","label":"Dívida ativa","icon":"bank-outline","cards":[{"id":"bi:dividas","source":"bi","resource":"dividas","label":"Dívidas","view":"divida","panels":[{"id":"p1","title":"Saldo por exercício de origem","dim":"ano","measure":"c.saldo","agg":"sum","input":"bi:dividas","joins":[{"source":"base:encerramento-dividas","left":"id","right":"dividaId","prefix":"c","latest":"encerramento"}],"definition":"Saldo do último fechamento disponível para cada dívida."},{"id":"p2","title":"Dívidas por situação","dim":"situacao","measure":"count","agg":"count","input":"bi:dividas"},{"id":"p3","title":"Dívidas por contribuinte","dim":"nome","measure":"c.saldo","agg":"sum","input":"bi:dividas","joins":[{"source":"base:encerramento-dividas","left":"id","right":"dividaId","prefix":"c","latest":"encerramento"}],"definition":"Saldo do último fechamento disponível para cada dívida."},{"id":"p4","title":"Dívidas por faixa de valor","dim":"range:c.saldo","measure":"count","agg":"count","input":"bi:dividas","joins":[{"source":"base:encerramento-dividas","left":"id","right":"dividaId","prefix":"c","latest":"encerramento"}],"definition":"Saldo do último fechamento disponível para cada dívida."},{"id":"p5","title":"Dívidas por tempo de atraso","dim":"aging:vencimento","measure":"count","agg":"count","input":"bi:dividas"}],"panelView":"api-bi-dividas","permissionViews":["divida"]},{"id":"bi:dividas-receitas","source":"bi","resource":"dividas-receitas","label":"Receitas das dívidas","view":"divida","panels":[{"id":"p1","title":"Saldo por receita","dim":"receita","measure":"saldo","agg":"sum","input":"bi:dividas-receitas"},{"id":"p2","title":"Composição das receitas da dívida ativa","dim":"receita","measure":"count","agg":"count","input":"bi:dividas-receitas"},{"id":"p3","title":"Receitas por exercício","dim":"j.ano","measure":"saldo","agg":"sum","input":"bi:dividas-receitas","joins":[{"source":"bi:dividas","left":"dividaId","right":"id","prefix":"j"}]},{"id":"p4","title":"Recuperação da dívida por receita","dim":"receita","measure":"pago","agg":"sum","input":"bi:pagamentos-detalhados-valores","where":["origem","Dívida ativa"]},{"id":"p5","title":"Receitas por bairro do imóvel","dim":"j.bairro","measure":"saldo","agg":"sum","input":"bi:dividas-receitas","joins":[{"source":"bi:dividas","left":"dividaId","right":"id","prefix":"d"},{"source":"bi:imoveis","left":"d.imovelId","right":"id","prefix":"j"}]}],"panelView":"api-bi-dividas-receitas","permissionViews":["divida"]},{"id":"base:dividas","source":"base","resource":"dividas","label":"Dívidas — cadastro complementar","view":"divida","panels":[{"id":"p1","title":"Dívidas por situação de cobrança","dim":"situacao","measure":"count","agg":"count","input":"base:dividas"},{"id":"p2","title":"Inscrições em dívida por período","dim":"month:inscricao","measure":"count","agg":"count","input":"base:dividas"},{"id":"p3","title":"Dívidas por contribuinte","dim":"nome","measure":"saldo","agg":"sum","input":"base:dividas"},{"id":"p4","title":"Dívidas por faixa de saldo","dim":"range:saldo","measure":"count","agg":"count","input":"base:dividas"},{"id":"p5","title":"Comparação de dívidas Base e BI","dim":"comparison","measure":"count","agg":"count","input":"base:dividas","compare":"bi:dividas","compareFields":["saldo","situacao","ano"]}],"panelView":"api-base-dividas","permissionViews":["divida"]},{"id":"base:encerramento-dividas","source":"base","resource":"encerramento-dividas","label":"Encerramento da dívida ativa","view":"divida","panels":[{"id":"p1","title":"Encerramentos por período","dim":"month:encerramento","measure":"count","agg":"count","input":"base:encerramento-dividas"},{"id":"p2","title":"Encerramentos por motivo","dim":"motivo","measure":"count","agg":"count","input":"base:encerramento-dividas"},{"id":"p3","title":"Valores encerrados","dim":"month:encerramento","measure":"valor","agg":"sum","input":"base:encerramento-dividas"},{"id":"p4","title":"Encerramentos por exercício de origem","dim":"ano","measure":"count","agg":"count","input":"base:encerramento-dividas"},{"id":"p5","title":"Dívidas encerradas e abertas","dim":"closingBalance","measure":"count","agg":"count","input":"base:encerramento-dividas","components":["valor","saldo"]}],"panelView":"api-base-encerramento-dividas","permissionViews":["divida","encerramento"]}]},{"id":"parcelamentos","label":"Parcelamentos","icon":"calendar-check-outline","cards":[{"id":"bi:parcelamentos","source":"bi","resource":"parcelamentos","label":"Parcelamentos","view":"parcelamentos","panels":[{"id":"p1","title":"Acordos por situação","dim":"situacao","measure":"count","agg":"count","input":"bi:parcelamentos"},{"id":"p2","title":"Acordos formalizados por período","dim":"month:formalizacao","measure":"count","agg":"count","input":"bi:parcelamentos"},{"id":"p3","title":"Valor negociado por período","dim":"month:formalizacao","measure":"valor","agg":"sum","input":"bi:parcelamentos","transform":"agreementAmounts","amounts":"bi:parcelamentos-parcelas","definition":"Valor negociado calculado pela soma dos valores das parcelas vinculadas; não representa saldo em aberto."},{"id":"p4","title":"Acordos por quantidade de parcelas","dim":"quantidadeParcelas","measure":"count","agg":"count","input":"bi:parcelamentos"},{"id":"p5","title":"Parcelamentos por contribuinte","dim":"nome","measure":"count","agg":"count","input":"bi:parcelamentos"}],"panelView":"api-bi-parcelamentos","permissionViews":["parcelamentos"]},{"id":"bi:parcelamentos-referentes","source":"bi","resource":"parcelamentos-referentes","label":"Referentes dos parcelamentos","view":"parcelamentos","panels":[{"id":"p1","title":"Acordos por tipo de obrigação de origem","dim":"origem","measure":"parcelamentoId","agg":"distinct","input":"bi:parcelamentos-referentes"},{"id":"p2","title":"Quantidade de obrigações por acordo","dim":"parcelamentoId","measure":"count","agg":"count","input":"bi:parcelamentos-referentes"},{"id":"p3","title":"Obrigações parceladas por exercício","dim":"ano","measure":"count","agg":"count","input":"bi:parcelamentos-referentes"},{"id":"p4","title":"Valor parcelado por receita","dim":"receita","measure":"valor","agg":"sum","input":"bi:parcelamentos-referentes"},{"id":"p5","title":"Débitos e dívida ativa nos acordos","dim":"origem","measure":"valor","agg":"sum","input":"bi:parcelamentos-referentes"}],"panelView":"api-bi-parcelamentos-referentes","permissionViews":["parcelamentos"]},{"id":"bi:parcelamentos-parcelas","source":"bi","resource":"parcelamentos-parcelas","label":"Parcelas dos parcelamentos","view":"parcelamentos","panels":[{"id":"p1","title":"Parcelas por situação","dim":"situacao","measure":"count","agg":"count","input":"bi:parcelamentos-parcelas"},{"id":"p2","title":"Parcelas por mês de vencimento","dim":"month:vencimento","measure":"count","agg":"count","input":"bi:parcelamentos-parcelas"},{"id":"p3","title":"Valores vencidos e a vencer","dim":"dueState","measure":"valor","agg":"sum","input":"bi:parcelamentos-parcelas"},{"id":"p4","title":"Atrasos por faixa de dias","dim":"aging:vencimento","measure":"count","agg":"count","input":"bi:parcelamentos-parcelas","where":["open",true]},{"id":"p5","title":"Evolução dos pagamentos por acordo","dim":"month:j.pagamento","measure":"j.pago","agg":"sum","input":"bi:pagamentos-parcelamentos","joins":[{"source":"bi:pagamentos","left":"pagamentoId","right":"id","prefix":"j"}]}],"panelView":"api-bi-parcelamentos-parcelas","permissionViews":["parcelamentos"]},{"id":"base:parcelamentos","source":"base","resource":"parcelamentos","label":"Parcelamentos — cadastro complementar","view":"parcelamentos","panels":[{"id":"p1","title":"Acordos por modalidade","dim":"modalidade","measure":"count","agg":"count","input":"base:parcelamentos"},{"id":"p2","title":"Acordos por situação","dim":"situacao","measure":"count","agg":"count","input":"base:parcelamentos"},{"id":"p3","title":"Acordos por faixa de valor","dim":"range:valor","measure":"count","agg":"count","input":"base:parcelamentos"},{"id":"p4","title":"Acordos por contribuinte","dim":"nome","measure":"count","agg":"count","input":"base:parcelamentos"},{"id":"p5","title":"Comparação de acordos Base e BI","dim":"comparison","measure":"count","agg":"count","input":"base:parcelamentos","compare":"bi:parcelamentos","compareFields":["valor","situacao","quantidadeParcelas"]}],"panelView":"api-base-parcelamentos","permissionViews":["parcelamentos"]},{"id":"base:parcelamentos-parcelas","source":"base","resource":"parcelamentos-parcelas","label":"Parcelas — cadastro complementar","view":"parcelamentos","panels":[{"id":"p1","title":"Calendário de vencimentos","dim":"month:vencimento","measure":"count","agg":"count","input":"base:parcelamentos-parcelas"},{"id":"p2","title":"Distribuição dos valores das parcelas","dim":"range:valor","measure":"count","agg":"count","input":"base:parcelamentos-parcelas"},{"id":"p3","title":"Parcelas por situação","dim":"situacao","measure":"count","agg":"count","input":"base:parcelamentos-parcelas"},{"id":"p4","title":"Parcelas em atraso por acordo","dim":"parcelamentoId","measure":"count","agg":"count","input":"base:parcelamentos-parcelas","where":["overdue",true]},{"id":"p5","title":"Comparação de parcelas Base e BI","dim":"comparison","measure":"count","agg":"count","input":"base:parcelamentos-parcelas","compare":"bi:parcelamentos-parcelas","compareFields":["valor","vencimento","situacao"]}],"panelView":"api-base-parcelamentos-parcelas","permissionViews":["parcelamentos"]}]},{"id":"itbi","label":"Transferências e ITBI","icon":"swap-horizontal","cards":[{"id":"bi:solicitacoes-transferencias-imoveis","source":"bi","resource":"solicitacoes-transferencias-imoveis","label":"Solicitações de transferência","view":"itbi","panels":[{"id":"p1","title":"Solicitações por período","dim":"month:solicitacao","measure":"count","agg":"count","input":"bi:solicitacoes-transferencias-imoveis"},{"id":"p2","title":"Solicitações por situação","dim":"situacao","measure":"count","agg":"count","input":"bi:solicitacoes-transferencias-imoveis"},{"id":"p3","title":"Solicitações por tipo de transmissão","dim":"tipo","measure":"count","agg":"count","input":"bi:solicitacoes-transferencias-imoveis"},{"id":"p4","title":"Solicitações por requerente","dim":"nome","measure":"count","agg":"count","input":"bi:solicitacoes-transferencias-imoveis"},{"id":"p5","title":"Tempo médio de tramitação","dim":"situacao","measure":"tramitation","agg":"average","input":"bi:solicitacoes-transferencias-imoveis","transform":"tramitation","events":"bi:solicitacoes-transferencias-imoveis-movimentacoes"}],"panelView":"api-bi-solicitacoes-transferencias-imoveis","permissionViews":["itbi"]},{"id":"bi:solicitacoes-transferencias-imoveis-itens","source":"bi","resource":"solicitacoes-transferencias-imoveis-itens","label":"Imóveis das solicitações","view":"itbi","panels":[{"id":"p1","title":"Quantidade de imóveis por solicitação","dim":"solicitacaoId","measure":"imovelId","agg":"distinct","input":"bi:solicitacoes-transferencias-imoveis-itens"},{"id":"p2","title":"Imóveis solicitados por bairro","dim":"j.bairro","measure":"imovelId","agg":"distinct","input":"bi:solicitacoes-transferencias-imoveis-itens","joins":[{"source":"bi:imoveis","left":"imovelId","right":"id","prefix":"j"}]},{"id":"p3","title":"Imóveis urbanos e rurais","dim":"j.zona","measure":"imovelId","agg":"distinct","input":"bi:solicitacoes-transferencias-imoveis-itens","joins":[{"source":"bi:imoveis","left":"imovelId","right":"id","prefix":"j"}]},{"id":"p4","title":"Participação transmitida por faixa","dim":"range:percentual","measure":"count","agg":"count","input":"bi:solicitacoes-transferencias-imoveis-itens"},{"id":"p5","title":"Valores dos imóveis por faixa","dim":"range:valor","measure":"count","agg":"count","input":"bi:solicitacoes-transferencias-imoveis-itens"}],"panelView":"api-bi-solicitacoes-transferencias-imoveis-itens","permissionViews":["itbi"]},{"id":"bi:solicitacoes-transferencias-imoveis-movimentacoes","source":"bi","resource":"solicitacoes-transferencias-imoveis-movimentacoes","label":"Movimentações das solicitações","view":"itbi","panels":[{"id":"p1","title":"Movimentações por etapa","dim":"etapa","measure":"count","agg":"count","input":"bi:solicitacoes-transferencias-imoveis-movimentacoes"},{"id":"p2","title":"Movimentações por período","dim":"month:movimentacao","measure":"count","agg":"count","input":"bi:solicitacoes-transferencias-imoveis-movimentacoes"},{"id":"p3","title":"Tempo médio em cada etapa","dim":"etapa","measure":"stageDays","agg":"average","input":"bi:solicitacoes-transferencias-imoveis-movimentacoes","transform":"stages"},{"id":"p4","title":"Solicitações sem movimentação recente","dim":"recent","measure":"count","agg":"count","input":"bi:solicitacoes-transferencias-imoveis","transform":"recent","events":"bi:solicitacoes-transferencias-imoveis-movimentacoes"},{"id":"p5","title":"Retornos e reaberturas","dim":"etapa","measure":"count","agg":"count","input":"bi:solicitacoes-transferencias-imoveis-movimentacoes","whereRegex":["etapa","retorn|reabert"]}],"panelView":"api-bi-solicitacoes-transferencias-imoveis-movimentacoes","permissionViews":["itbi"]},{"id":"bi:transferencias-imoveis","source":"bi","resource":"transferencias-imoveis","label":"Transferências de imóveis","view":"itbi","panels":[{"id":"p1","title":"Transferências por período","dim":"month:transferencia","measure":"count","agg":"count","input":"bi:transferencias-imoveis"},{"id":"p2","title":"Transferências por tipo","dim":"tipo","measure":"count","agg":"count","input":"bi:transferencias-imoveis"},{"id":"p3","title":"Transferências por bairro","dim":"j.bairro","measure":"count","agg":"count","input":"bi:transferencias-imoveis","joins":[{"source":"bi:imoveis","left":"imovelId","right":"id","prefix":"j"}]},{"id":"p4","title":"Imóveis transferidos mais de uma vez","dim":"countband","measure":"count","agg":"count","input":"bi:transferencias-imoveis","transform":"links","entity":"imovelId","linked":"id","minLinks":2},{"id":"p5","title":"Transferências por adquirente ou transmitente","dim":"parties","measure":"count","agg":"count","input":"bi:transferencias-imoveis","components":["adquirente","transmitente"],"partyMode":true}],"panelView":"api-bi-transferencias-imoveis","permissionViews":["imobiliario","itbi"]},{"id":"bi:transferencias-imoveis-compra","source":"bi","resource":"transferencias-imoveis-compra","label":"Compras vinculadas às transferências","view":"itbi","panels":[{"id":"p1","title":"Valor das compras por período","dim":"month:j.transferencia","measure":"valor","agg":"sum","input":"bi:transferencias-imoveis-compra","joins":[{"source":"bi:transferencias-imoveis","left":"transferenciaId","right":"id","prefix":"j"}]},{"id":"p2","title":"Compras por faixa de valor","dim":"range:valor","measure":"count","agg":"count","input":"bi:transferencias-imoveis-compra"},{"id":"p3","title":"Valor médio por bairro","dim":"j.bairro","measure":"valor","agg":"average","input":"bi:transferencias-imoveis-compra","joins":[{"source":"bi:transferencias-imoveis","left":"transferenciaId","right":"id","prefix":"t"},{"source":"bi:imoveis","left":"t.imovelId","right":"id","prefix":"j"}]},{"id":"p4","title":"Valor declarado e avaliação","dim":"component","measure":"count","agg":"count","input":"bi:transferencias-imoveis-compra","components":["valor","avaliacao"]},{"id":"p5","title":"Compras por adquirente","dim":"adquirente","measure":"valor","agg":"sum","input":"bi:transferencias-imoveis-compra"}],"panelView":"api-bi-transferencias-imoveis-compra","permissionViews":["itbi"]},{"id":"base:imoveis-transferencias","source":"base","resource":"imoveis-transferencias","label":"Transferências — cadastro complementar","view":"itbi","panels":[{"id":"p1","title":"Histórico de transferências por imóvel","dim":"imovelId","measure":"count","agg":"count","input":"base:imoveis-transferencias"},{"id":"p2","title":"Transferências por natureza","dim":"tipo","measure":"count","agg":"count","input":"base:imoveis-transferencias"},{"id":"p3","title":"Transferências por período","dim":"month:transferencia","measure":"count","agg":"count","input":"base:imoveis-transferencias"},{"id":"p4","title":"Transferências por região","dim":"j.bairro","measure":"count","agg":"count","input":"base:imoveis-transferencias","joins":[{"source":"bi:imoveis","left":"imovelId","right":"id","prefix":"j"}]},{"id":"p5","title":"Comparação de transferências Base e BI","dim":"comparison","measure":"count","agg":"count","input":"base:imoveis-transferencias","compare":"bi:transferencias-imoveis","compareFields":["imovelId","transferencia","tipo"]}],"panelView":"api-base-imoveis-transferencias","permissionViews":["imobiliario","itbi"]}]},{"id":"territorio","label":"Território e valores imobiliários","icon":"map-marker-outline","cards":[{"id":"base:bairros","source":"base","resource":"bairros","label":"Bairros","view":"territorio","panels":[{"id":"p1","title":"Bairros por distrito","dim":"j.nome","measure":"count","agg":"count","input":"base:bairros","joins":[{"source":"base:distritos","left":"distritoId","right":"id","prefix":"j"}]},{"id":"p2","title":"Imóveis por bairro","dim":"j.nome","measure":"count","agg":"count","input":"bi:imoveis","joins":[{"source":"base:bairros","left":"bairroId","right":"id","prefix":"j"}]},{"id":"p3","title":"Ruas por bairro","dim":"j.nome","measure":"count","agg":"count","input":"base:logradouros","joins":[{"source":"base:bairros","left":"bairroId","right":"id","prefix":"j"}]},{"id":"p4","title":"Cadastros econômicos por bairro","dim":"j.nome","measure":"count","agg":"count","input":"bi:economicos","joins":[{"source":"base:bairros","left":"bairroId","right":"id","prefix":"j"}]},{"id":"p5","title":"Arrecadação dos imóveis por bairro","dim":"j.bairro","measure":"pago","agg":"sum","input":"bi:pagamentos-detalhados","joins":[{"source":"bi:imoveis","left":"imovelId","right":"id","prefix":"j"}]}],"panelView":"api-base-bairros","permissionViews":["territorio"]},{"id":"base:distritos","source":"base","resource":"distritos","label":"Distritos","view":"territorio","panels":[{"id":"p1","title":"Bairros por distrito","dim":"j.nome","measure":"count","agg":"count","input":"base:bairros","joins":[{"source":"base:distritos","left":"distritoId","right":"id","prefix":"j"}]},{"id":"p2","title":"Imóveis por distrito","dim":"j.nome","measure":"count","agg":"count","input":"bi:imoveis","joins":[{"source":"base:distritos","left":"distritoId","right":"id","prefix":"j"}]},{"id":"p3","title":"Urbanos e rurais por distrito","dim":"districtZone","measure":"count","agg":"count","input":"bi:imoveis","joins":[{"source":"base:distritos","left":"distritoId","right":"id","prefix":"j"}]},{"id":"p4","title":"Cadastros econômicos por distrito","dim":"j.nome","measure":"count","agg":"count","input":"bi:economicos","joins":[{"source":"base:distritos","left":"distritoId","right":"id","prefix":"j"}]},{"id":"p5","title":"Arrecadação dos imóveis por distrito","dim":"j.nome","measure":"pago","agg":"sum","input":"bi:pagamentos-detalhados","joins":[{"source":"bi:imoveis","left":"imovelId","right":"id","prefix":"i"},{"source":"base:distritos","left":"i.distritoId","right":"id","prefix":"j"}]}],"panelView":"api-base-distritos","permissionViews":["territorio"]},{"id":"base:logradouros","source":"base","resource":"logradouros","label":"Ruas e logradouros","view":"territorio","panels":[{"id":"p1","title":"Logradouros por tipo","dim":"tipo","measure":"count","agg":"count","input":"base:logradouros"},{"id":"p2","title":"Logradouros por bairro","dim":"j.nome","measure":"count","agg":"count","input":"base:logradouros","joins":[{"source":"base:bairros","left":"bairroId","right":"id","prefix":"j"}]},{"id":"p3","title":"Imóveis por rua","dim":"j.nome","measure":"count","agg":"count","input":"bi:imoveis","joins":[{"source":"base:logradouros","left":"ruaId","right":"id","prefix":"j"}]},{"id":"p4","title":"Cadastros econômicos por rua","dim":"j.nome","measure":"count","agg":"count","input":"bi:economicos","joins":[{"source":"base:logradouros","left":"ruaId","right":"id","prefix":"j"}]},{"id":"p5","title":"Ruas com e sem imóveis vinculados","dim":"presence","measure":"count","agg":"count","input":"base:logradouros","presence":{"source":"bi:imoveis","left":"id","right":"ruaId"}}],"panelView":"api-base-logradouros","permissionViews":["territorio"]},{"id":"base:loteamentos","source":"base","resource":"loteamentos","label":"Loteamentos","view":"imobiliario","panels":[{"id":"p1","title":"Loteamentos por situação","dim":"situacao","measure":"count","agg":"count","input":"base:loteamentos"},{"id":"p2","title":"Loteamentos por localização","dim":"bairro","measure":"count","agg":"count","input":"base:loteamentos"},{"id":"p3","title":"Imóveis por loteamento","dim":"j.nome","measure":"count","agg":"count","input":"bi:imoveis","joins":[{"source":"base:loteamentos","left":"loteamentoId","right":"id","prefix":"j"}]},{"id":"p4","title":"Área dos terrenos por loteamento","dim":"j.nome","measure":"areaTerreno","agg":"sum","input":"base:imoveis","joins":[{"source":"base:loteamentos","left":"loteamentoId","right":"id","prefix":"j"}]},{"id":"p5","title":"Lotes com e sem construção","dim":"built","measure":"count","agg":"count","input":"base:imoveis","joins":[{"source":"base:loteamentos","left":"loteamentoId","right":"id","prefix":"j"}]}],"panelView":"api-base-loteamentos","permissionViews":["imobiliario","territorio"]},{"id":"base:planta-valores","source":"base","resource":"planta-valores","label":"Planta de valores","view":"imobiliario","panels":[{"id":"p1","title":"Valores por exercício de vigência","dim":"ano","measure":"metroQuadrado","agg":"average","input":"base:planta-valores"},{"id":"p2","title":"Valores por região ou zona","dim":"regiao","measure":"metroQuadrado","agg":"average","input":"base:planta-valores"},{"id":"p3","title":"Distribuição do preço por m²","dim":"range:metroQuadrado","measure":"count","agg":"count","input":"base:planta-valores"},{"id":"p4","title":"Variação dos valores entre exercícios","dim":"ano","measure":"metroQuadrado","agg":"change","input":"base:planta-valores","series":"regiao"},{"id":"p5","title":"Imóveis com e sem referência na planta","dim":"presence","measure":"count","agg":"count","input":"base:imoveis","presence":{"source":"base:planta-valores","left":"plantaId","right":"id"}}],"panelView":"api-base-planta-valores","permissionViews":["imobiliario"]}]},{"id":"obras","label":"Obras","icon":"office-building-outline","cards":[{"id":"base:obras","source":"base","resource":"obras","label":"Obras","view":"obras","panels":[{"id":"p1","title":"Obras por situação","dim":"situacao","measure":"count","agg":"count","input":"base:obras"},{"id":"p2","title":"Obras por tipo","dim":"tipo","measure":"count","agg":"count","input":"base:obras"},{"id":"p3","title":"Obras por bairro","dim":"bairro","measure":"count","agg":"count","input":"base:obras"},{"id":"p4","title":"Área das obras por faixa","dim":"range:areaConstruida","measure":"count","agg":"count","input":"base:obras"},{"id":"p5","title":"Obras cadastradas por período","dim":"month:cadastro","measure":"count","agg":"count","input":"base:obras"}],"panelView":"api-base-obras","permissionViews":["obras"]},{"id":"base:obras-responsaveis","source":"base","resource":"obras-responsaveis","label":"Responsáveis pela execução de obras","view":"obras","panels":[{"id":"p1","title":"Obras por responsável","dim":"nome","measure":"obraId","agg":"distinct","input":"base:obras-responsaveis"},{"id":"p2","title":"Responsáveis por função","dim":"funcao","measure":"count","agg":"count","input":"base:obras-responsaveis"},{"id":"p3","title":"Quantidade de responsáveis por obra","dim":"obraId","measure":"pessoaId","agg":"distinct","input":"base:obras-responsaveis"},{"id":"p4","title":"Responsáveis por tipo de obra","dim":"j.tipo","measure":"pessoaId","agg":"distinct","input":"base:obras-responsaveis","joins":[{"source":"base:obras","left":"obraId","right":"id","prefix":"j"}]},{"id":"p5","title":"Obras com e sem responsável","dim":"presence","measure":"count","agg":"count","input":"base:obras","presence":{"source":"base:obras-responsaveis","left":"id","right":"obraId"}}],"panelView":"api-base-obras-responsaveis","permissionViews":["obras"]}]},{"id":"indexadores","label":"Indexadores","icon":"currency-usd","cards":[{"id":"bi:indexadores","source":"bi","resource":"indexadores","label":"Indexadores","view":"indexadores","panels":[{"id":"p1","title":"Indexadores por tipo","dim":"tipo","measure":"count","agg":"count","input":"bi:indexadores"},{"id":"p2","title":"Indexadores por situação","dim":"situacao","measure":"count","agg":"count","input":"bi:indexadores"},{"id":"p3","title":"Indexadores com e sem valores","dim":"presence","measure":"count","agg":"count","input":"bi:indexadores","presence":{"source":"bi:indexadores-valores","left":"id","right":"indexadorId"}},{"id":"p4","title":"Cobertura histórica dos indexadores","dim":"j.nome","measure":"dataValor","agg":"distinct","input":"bi:indexadores-valores","joins":[{"source":"bi:indexadores","left":"indexadorId","right":"id","prefix":"j"}]},{"id":"p5","title":"Indexadores com valores desatualizados","dim":"recent","measure":"count","agg":"count","input":"bi:indexadores","transform":"recent","events":"bi:indexadores-valores","eventKey":"indexadorId","eventDate":"dataValor"}],"panelView":"api-bi-indexadores","permissionViews":["indexadores"]},{"id":"bi:indexadores-valores","source":"bi","resource":"indexadores-valores","label":"Valores dos indexadores","view":"indexadores","panels":[{"id":"p1","title":"Evolução histórica dos valores","dim":"month:dataValor","measure":"valor","agg":"average","input":"bi:indexadores-valores","series":"indexadorId"},{"id":"p2","title":"Variação percentual mensal","dim":"month:dataValor","measure":"valor","agg":"change","input":"bi:indexadores-valores","series":"indexadorId"},{"id":"p3","title":"Variação percentual anual","dim":"year:dataValor","measure":"valor","agg":"change","input":"bi:indexadores-valores","series":"indexadorId"},{"id":"p4","title":"Comparação percentual entre indexadores","dim":"month:dataValor","measure":"valor","agg":"indexed","input":"bi:indexadores-valores","series":"indexadorId"},{"id":"p5","title":"Períodos sem valor cadastrado","dim":"missingPeriod","measure":"count","agg":"count","input":"bi:indexadores-valores","transform":"missingPeriods"}],"panelView":"api-bi-indexadores-valores","permissionViews":["indexadores"]}]}]};
@@ -1380,6 +1435,114 @@ async function persistSupabaseCache(env,body) {
     throw error;
   }
   return data;
+}
+
+async function persistBackgroundSourceProgress(env,tenant,job,card,entry){
+  const now=new Date().toISOString();
+  const status=entry.error?"error":entry.complete?"complete":"partial";
+  return persistSupabaseCache(env,{
+    snapshot:{
+      tenant_id:tenant.id,
+      painel:"__sync__",
+      periodo:"todos",
+      exercicio:new Date().getFullYear(),
+      fonte:card.id,
+      payload_json:{
+        source:card.id,
+        syncRunId:job.id,
+        registrosCarregados:Number(entry.loaded||0),
+        paginas:Number(entry.pages||0),
+        nextOffset:entry.nextOffset??null,
+        completo:entry.complete===true,
+        error:entry.error||null,
+        errorDetail:entry.errorDetail||null,
+        updatedAt:now
+      },
+      status
+    },
+    progress:[{
+      tenant_id:tenant.id,
+      painel:"__sync__",
+      periodo:"todos",
+      exercicio:new Date().getFullYear(),
+      fonte:card.id,
+      registros_carregados:Number(entry.loaded||0),
+      paginas:Number(entry.pages||0),
+      next_offset:entry.nextOffset??null,
+      completo:entry.complete===true,
+      reported_total:entry.reportedTotal??null,
+      status,
+      detalhe:{
+        syncRunId:job.id,
+        error:entry.error||null,
+        errorDetail:entry.errorDetail||null,
+        pageSize:entry.pageSize||null,
+        retryCount:entry.retryCount||0
+      }
+    }]
+  });
+}
+
+async function persistBackgroundJobSummary(env,tenant,job){
+  const status=job.state==="completed"?"complete":"partial";
+  return persistSupabaseCache(env,{
+    snapshot:{
+      tenant_id:tenant.id,
+      painel:"__sync__",
+      periodo:"todos",
+      exercicio:new Date().getFullYear(),
+      fonte:"job",
+      payload_json:{
+        syncRunId:job.id,
+        state:job.state,
+        startedAt:job.startedAt,
+        finishedAt:job.finishedAt||null,
+        completedSources:Number(job.completed||0),
+        totalSources:Number(job.total||0),
+        rows:Number(job.rows||0),
+        failures:job.failures||[],
+        persistenceFailures:job.persistenceFailures||[],
+        updatedAt:new Date().toISOString()
+      },
+      status
+    },
+    progress:[]
+  });
+}
+
+async function persistApiPanelSnapshot(env,tenant,card,url,payload){
+  const hasFilters=[...url.searchParams].some(([key,value])=>key.startsWith("panel_")&&value);
+  if(hasFilters)return {ok:false,skipped:true,error:"FILTERED_PANEL_NOT_CACHED"};
+  const audits=Object.values(payload?.meta?.sourceAudit||{});
+  const complete=audits.length>0&&audits.every(a=>a&&a.complete===true);
+  const periodo=url.searchParams.get("periodo")||"ano";
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const progress=Object.entries(payload?.meta?.sourceAudit||{}).map(([fonte,audit])=>({
+    tenant_id:tenant.id,
+    painel:card.panelView,
+    periodo,
+    exercicio,
+    fonte,
+    registros_carregados:Number(audit?.loaded||0),
+    paginas:Number(audit?.pages||0),
+    next_offset:audit?.nextOffset??null,
+    completo:audit?.complete===true,
+    reported_total:audit?.reportedTotal??null,
+    status:audit?.error?"error":audit?.complete===true?"complete":"partial",
+    detalhe:{error:audit?.error||null}
+  }));
+  return persistSupabaseCache(env,{
+    snapshot:{
+      tenant_id:tenant.id,
+      painel:card.panelView,
+      periodo,
+      exercicio,
+      fonte:"auto",
+      payload_json:{...payload,meta:{...(payload.meta||{}),cachedInSupabase:true}},
+      status:complete?"complete":"partial"
+    },
+    progress
+  });
 }
 
 function corsHeaders(request, env) {
@@ -2422,8 +2585,10 @@ async function safeBethaRows(env,tenant,source,resource,options={}) {
 
   const requestedLimit=Number(options.limit || 0);
   const limits=requestedLimit>0
-    ? [requestedLimit]
-    : (heavyFinancial.has(resource) ? [500,250,100,50] : [1000,500,250]);
+    ? [...new Set(heavyFinancial.has(resource)&&requestedLimit>50
+        ? [requestedLimit,Math.min(100,requestedLimit),50]
+        : [requestedLimit])]
+    : (heavyFinancial.has(resource) ? [250,100,50] : [1000,500,250]);
 
   let lastError=null;
 
@@ -3784,13 +3949,7 @@ async function buildActiveDebtDashboard(env,tenant,url) {
     safeBethaRows(env,tenant,"base","dividas")
   ]);
 
-  const closingKey=row=>{
-    const year=Number(firstValue(row,["anoEncerramento"]));
-    const month=Number(firstValue(row,["mesEncerramento.valor","mesEncerramento"]));
-    if(Number.isFinite(year)&&year>1900&&Number.isFinite(month)&&month>=1&&month<=12) return year*100+month;
-    const d=dateValue(row,["dataFinalMes"]);
-    return d ? d.getFullYear()*100+(d.getMonth()+1) : 0;
-  };
+  const closingKey=row=>closingPeriod(row)?.key||0;
 
   const closingKeys=enc.rows.map(closingKey).filter(Boolean);
   const latestKey=closingKeys.length?Math.max(...closingKeys):0;
@@ -3924,12 +4083,13 @@ async function buildActiveDebtDashboard(env,tenant,url) {
     "Dívidas","number"
   );
 
+  const debtReferencePaths=["idDivida","idDividas","divida.id","iDividas"];
   const recoveryBase=payvals.rows
-    .filter(r=>firstValue(r,["idDivida"])!==undefined)
-    .filter(r=>!firstValue(r,["pagamento.dhEstorno"]));
+    .filter(r=>firstValue(r,debtReferencePaths)!==undefined)
+    .filter(r=>!firstValue(r,["pagamento.dhEstorno","pagamento.dataHoraEstorno","dhEstorno","dataHoraEstorno"]));
 
   const recoveryRows=(Object.keys(activeFilters).length
-    ? recoveryBase.filter(r=>latestDebtIds.has(String(firstValue(r,["idDivida"])||"")))
+    ? recoveryBase.filter(r=>latestDebtIds.has(String(firstValue(r,debtReferencePaths)||"")))
     : recoveryBase
   ).map(r=>({
     ...r,
@@ -3941,7 +4101,7 @@ async function buildActiveDebtDashboard(env,tenant,url) {
   }));
 
   const recup=monthSeries(recoveryRows,{
-    datePaths:["dtPagamento","pagamento.dtPagamento"],valuePaths:["__totalPaid"],periodo,exercicio
+    datePaths:["dtPagamento","dataPagamento","dhPagamento","pagamento.dtPagamento","pagamento.dataPagamento","pagamento.dhPagamento"],valuePaths:["__totalPaid"],periodo,exercicio
   });
 
   const recRows=Object.keys(activeFilters).length
@@ -4482,7 +4642,7 @@ async function buildTaxpayersDashboard(env,tenant,url) {
   const normalizedSearch=filters.busca.toLocaleLowerCase("pt-BR");
   const isInactive=row=>truthyValue(row,["desativado"])||/inativ|desativ/i.test(stringValue(row,["situacao","status"],""));
   const rows=allRows.filter(row=>{
-    if(filters.tipoPessoa&&!matchesDashboardFilter(row,filters.tipoPessoa,["tipoPessoa","tipoPessoa.descricao","pessoa.tipo"])) return false;
+    if(filters.tipoPessoa&&normalizePersonType(firstValue(row,["tipoPessoa","tipoPessoa.descricao","pessoa.tipo"])).localeCompare(normalizePersonType(filters.tipoPessoa),"pt-BR",{sensitivity:"base"})!==0) return false;
     if(filters.cidade&&!matchesDashboardFilter(row,filters.cidade,["nomeCidade","cidade.nome","municipio.nome"])) return false;
     if(filters.simples==="sim"&&!truthyValue(row,["optanteSimples","simplesNacional","optanteSimplesNacional"])) return false;
     if(filters.simples==="nao"&&truthyValue(row,["optanteSimples","simplesNacional","optanteSimplesNacional"])) return false;
@@ -4502,7 +4662,12 @@ async function buildTaxpayersDashboard(env,tenant,url) {
     return true;
   });
 
-  const tipo=groupCount(rows,["tipoPessoa","tipoPessoa.descricao","pessoa.tipo"],5);
+  const tipoMap=new Map();
+  for(const row of rows){
+    const label=normalizePersonType(firstValue(row,["tipoPessoa","tipoPessoa.descricao","pessoa.tipo"]))||"Não informado";
+    tipoMap.set(label,(tipoMap.get(label)||0)+1);
+  }
+  const tipo=[...tipoMap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5);
   const simples=groupCount(rows,["optanteSimples","simplesNacional","optanteSimplesNacional"],5);
   const porte=groupCount(rows,["porteEmpresa","porteEmpresa.descricao","porte"],10);
   const bairro=groupCount(rows,["nomeBairro","bairro.nome","bairro"],15);
@@ -4520,13 +4685,14 @@ async function buildTaxpayersDashboard(env,tenant,url) {
     view:"contribuintes",tenant:{id:tenant.id,name:tenant.name},period:{periodo,exercicio},
     filters:activeFilterObject(filters),
     filterOptions:{
-      tipoPessoa:filterOptionsFromRows(allRows,["tipoPessoa","tipoPessoa.descricao","pessoa.tipo"]),
+      tipoPessoa:[...new Set(allRows.map(row=>normalizePersonType(firstValue(row,["tipoPessoa","tipoPessoa.descricao","pessoa.tipo"]))).filter(Boolean))]
+        .sort((a,b)=>a.localeCompare(b,"pt-BR",{sensitivity:"base"})).map(value=>({value,label:value})),
       cidade:filterOptionsFromRows(allRows,["nomeCidade","cidade.nome","municipio.nome"])
     },
     kpis:{
       "contribuintes-total":rows.length,
-      pf:countWhere(rows,r=>/fis|pf|física/i.test(stringValue(r,["tipoPessoa","tipoPessoa.descricao"],""))),
-      pj:countWhere(rows,r=>/jur|pj|jurídica/i.test(stringValue(r,["tipoPessoa","tipoPessoa.descricao"],""))),
+      pf:countWhere(rows,r=>normalizePersonType(firstValue(r,["tipoPessoa","tipoPessoa.descricao","pessoa.tipo"]))==="Pessoa física"),
+      pj:countWhere(rows,r=>normalizePersonType(firstValue(r,["tipoPessoa","tipoPessoa.descricao","pessoa.tipo"]))==="Pessoa jurídica"),
       simples:countWhere(rows,r=>truthyValue(r,["optanteSimples","simplesNacional","optanteSimplesNacional"])),
       inativos:countWhere(rows,r=>isInactive(r))
     },
@@ -4561,7 +4727,7 @@ async function buildClosingDashboard(env,tenant,url) {
     : rows;
   const lanRows=filterByCompetencia(lan.rows);
   const divRows=filterByCompetencia(div.rows);
-  const labelFor=row=>String(firstValue(row,competenciaPaths)||"Não informado");
+  const labelFor=row=>closingPeriod(row)?.label||String(panelScalar(firstValue(row,competenciaPaths))||"Não informado");
   const aggregate=(rows)=>{
     const map=new Map();
     for(const r of rows){
@@ -7363,7 +7529,7 @@ export default {
     if (url.pathname==="/api/health" && request.method==="GET") {
       return json(request,env,200,{
         ok:true,
-        buildVersion:"2026-10-07-bi-vella-v92",
+        buildVersion:"2026-10-07-worker-persistence-v93",
         progressiveDashboards:true,
         dashboardAggregatePublic:false,
         dashboardAuthorization:"betha-session+tenant+page-permission",
