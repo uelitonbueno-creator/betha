@@ -4121,6 +4121,7 @@
     currentSystemId=String(system.id);
     renderSystemSelector();
     if(systemMenu) systemMenu.hidden=true;
+    systemButton?.setAttribute("aria-expanded","false");
 
     const target=String(system.href||system.url||"").trim();
     if(target && previous!==currentSystemId){
@@ -4143,12 +4144,18 @@
   systemButton?.addEventListener("click",event=>{
     event.stopPropagation();
     if(entityMenu) entityMenu.hidden=true;
-    if(systemMenu) systemMenu.hidden=!systemMenu.hidden;
+    if(!systemMenu) return;
+    const opening=systemMenu.hidden;
+    systemMenu.hidden=!opening;
+    systemButton.setAttribute("aria-expanded",String(opening));
   });
 
   document.addEventListener("click", (event) => {
     if (!event.target.closest(".entity-control") && entityMenu) entityMenu.hidden = true;
-    if (!event.target.closest(".system-control") && systemMenu) systemMenu.hidden = true;
+    if (!event.target.closest(".system-control") && systemMenu) {
+      systemMenu.hidden = true;
+      systemButton?.setAttribute("aria-expanded","false");
+    }
   });
 
   let selectedCentralUser = null;
