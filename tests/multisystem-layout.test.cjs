@@ -218,6 +218,13 @@ test("gestão de usuários agrupa permissões por sistema", () => {
   assert.match(app, /groups=systems\.map/);
 });
 
+test("busca global preserva o sistema do painel encontrado", () => {
+  const search = fs.readFileSync(path.join(ROOT, "global-search.js"), "utf8");
+  assert.match(search, /window\.BI_DASHBOARDS\?\.\[view\]/);
+  assert.match(search, /url\.searchParams\.set\("sistema",system\)/);
+  assert.match(search, /url\.searchParams\.set\("view",view\)/);
+});
+
 test("frontend não expõe User-Access ou access token em configuração pública", () => {
   const config = fs.readFileSync(path.join(ROOT, "config.js"), "utf8");
   assert.doesNotMatch(config, /User-Access\s*[:=]\s*["'][^"']+["']/i);
