@@ -94,6 +94,30 @@ test("homes de Contabilidade, Compras e Folha possuem duas tabelas executivas", 
   }
 });
 
+test("tabelas executivas locais mantêm chave de agrupamento para drill-down", () => {
+  const window = loadCatalogs();
+  const samples = {
+    contabil: JSON.parse(fs.readFileSync(path.join(ROOT, "data", "samples", "contabil-100.json"), "utf8")),
+    compras: JSON.parse(fs.readFileSync(path.join(ROOT, "data", "samples", "compras-100.json"), "utf8")),
+    folha: JSON.parse(fs.readFileSync(path.join(ROOT, "data", "samples", "folha-100.json"), "utf8"))
+  };
+  for (const id of ["contabil-visao-geral", "compras-visao-geral", "folha-visao-geral"]) {
+    const dashboard = window.BI_DASHBOARDS[id];
+    const row = samples[dashboard.system].rows[0];
+    for (const table of dashboard.summaryTables) {
+      assert.ok(Object.prototype.hasOwnProperty.call(row, table.group), id + " não possui campo de drill " + table.group);
+    }
+  }
+});
+
+test("frontend registra interação acessível para drill-down das tabelas executivas", () => {
+  const app = fs.readFileSync(path.join(ROOT, "app.js"), "utf8");
+  assert.match(app, /summary-table-row-drill/);
+  assert.match(app, /openLocalSampleSummaryDetail/);
+  assert.match(app, /\["Enter"," "\]/);
+  assert.match(app, /AMOSTRA LOCAL · SEM CONSUMO DA API/);
+});
+
 test("amostras locais continuam com exatamente 100 registros", () => {
   for (const file of ["contabil-100.json", "compras-100.json", "folha-100.json"]) {
     const doc = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "samples", file), "utf8"));
