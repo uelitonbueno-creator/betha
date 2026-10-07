@@ -1595,7 +1595,7 @@
       chartInstances.delete(baseChartId);
     }
 
-    const bethaPalette = ["#168a62","#356ae6","#7b68c8","#d99224","#3a8f9d","#c65e72","#657184","#9671bd"];
+    const bethaPalette = ["#0878f9","#0aa66d","#ff9f1a","#7c3aed","#ff4d45","#0f8db8","#64748b","#a855f7"];
     const chartDatasets = data.datasets.map((dataset,index) => {
       const color=bethaPalette[index % bethaPalette.length];
       const base={...dataset};
