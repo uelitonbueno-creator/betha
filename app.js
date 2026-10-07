@@ -83,6 +83,30 @@
   let entityLabel = query.entidade || query.entity || query.entidadeNome || "ENTIDADE NÃO IDENTIFICADA";
   let currentSystemId = query.sistema || cfg.DEFAULT_SYSTEM || systems[0]?.id || "tributos";
   if(!systems.some(system=>String(system.id)===String(currentSystemId))) currentSystemId=systems[0]?.id||"tributos";
+
+  window.BIVellaSearchContext=Object.freeze({
+    getState:()=>{
+      const system=systems.find(item=>String(item.id)===String(currentSystemId))||systems[0]||null;
+      const tenant=currentTenantInfo();
+      const privileged=Boolean(tenant&&(tenant.admin===true||tenant.technical===true));
+      const allowedViews=Object.keys(dashboards).filter(view=>{
+        const owner=String(dashboards[view]?.system||"tributos");
+        if(owner!==String(currentSystemId)) return false;
+        return privileged||currentAllowedViews.has(view);
+      });
+      const homeView=String(system?.homeView||DEFAULT_VIEW);
+      const home=dashboards[homeView]||{};
+      return {
+        currentSystemId:String(currentSystemId),
+        systemName:String(system?.name||system?.label||currentSystemId||"Tributos"),
+        homeView,
+        localSample:Boolean(home.localSample),
+        sampleFile:home.localSample?.file||"",
+        allowedViews
+      };
+    }
+  });
+
   const initialSystem=systems.find(system=>String(system.id)===String(currentSystemId))||systems[0]||null;
   const initialSystemHome=initialSystem?.homeView||DEFAULT_VIEW;
   const initialViewSystem=dashboards[currentView]?.system||"tributos";
