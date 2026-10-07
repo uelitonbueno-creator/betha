@@ -6502,3 +6502,330 @@ button{touch-action:manipulation}
     height:240px!important;
   }
 }
+
+
+/* Contribuintes · layout executivo cadastral v1 · 2026-10-06 */
+#dashboardView[data-dashboard="contribuintes"]{
+  --taxpayer-green:#078a61;
+  --taxpayer-warning:#a66b00;
+  --taxpayer-blue:#3b6f91;
+}
+#dashboardView[data-dashboard="contribuintes"] .page-heading{
+  margin-bottom:18px;
+}
+#dashboardView[data-dashboard="contribuintes"] .page-heading h1{
+  font-size:clamp(28px,2.35vw,35px);
+  letter-spacing:-.042em;
+}
+#dashboardView[data-dashboard="contribuintes"] .page-heading p{
+  max-width:820px;
+  color:#587066;
+  font-size:12.5px;
+}
+#dashboardView[data-dashboard="contribuintes"]>.filter-row:not(.advanced-filter-row){
+  margin-bottom:16px;
+  border-color:#dbe7e1;
+  border-radius:16px;
+  background:linear-gradient(180deg,#fff,#fbfdfc);
+  box-shadow:0 7px 24px rgba(18,67,48,.04);
+}
+#dashboardView[data-dashboard="contribuintes"] .advanced-filter-row{
+  border-color:#dbe7e1;
+  border-radius:16px;
+  background:#fbfdfc;
+}
+#dashboardView[data-dashboard="contribuintes"] .active-filter-chip{
+  border-color:#d3e8dd;
+  background:#f2faf6;
+}
+
+.taxpayer-section-heading{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:18px;
+  margin:4px 2px 10px;
+}
+.taxpayer-section-heading>div{min-width:0}
+.taxpayer-section-heading span{
+  display:block;
+  margin-bottom:3px;
+  color:#16805e;
+  font-size:8px;
+  font-weight:800;
+  letter-spacing:.095em;
+}
+.taxpayer-section-heading h2{
+  margin:0;
+  color:#173328;
+  font-size:16px;
+  line-height:1.2;
+  font-weight:760;
+  letter-spacing:-.018em;
+}
+.taxpayer-section-heading p{
+  max-width:520px;
+  margin:0;
+  color:#78887f;
+  font-size:9.5px;
+  line-height:1.45;
+  text-align:right;
+}
+
+/* Total da base e inativos são a leitura de saúde cadastral. */
+#dashboardView[data-dashboard="contribuintes"] .kpi-grid{
+  display:grid;
+  grid-template-columns:repeat(12,minmax(0,1fr));
+  gap:12px;
+  margin-bottom:20px;
+}
+#dashboardView[data-dashboard="contribuintes"] .kpi-card{
+  min-height:108px;
+  padding:15px 16px;
+  border:1px solid #dce8e2;
+  border-top:2px solid rgba(7,138,97,.25);
+  border-radius:17px;
+  background:#fff;
+  box-shadow:0 4px 16px rgba(18,67,48,.035);
+}
+#dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="contribuintes-total"]{
+  grid-column:span 7;
+}
+#dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="inativos"]{
+  grid-column:span 5;
+}
+#dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="contribuintes-total"],
+#dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="inativos"]{
+  min-height:142px;
+  padding:20px;
+}
+#dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="contribuintes-total"]{
+  border-top:3px solid rgba(7,138,97,.54);
+  background:
+    radial-gradient(circle at 100% 0,rgba(7,138,97,.09),transparent 36%),
+    linear-gradient(180deg,#fff,#fbfdfc);
+}
+#dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="inativos"]{
+  border-top:3px solid rgba(166,107,0,.46);
+  background:
+    radial-gradient(circle at 100% 0,rgba(166,107,0,.08),transparent 38%),
+    linear-gradient(180deg,#fff,#fffaf2);
+}
+#dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="contribuintes-total"] small,
+#dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="inativos"] small{
+  margin-bottom:9px;
+  color:#557065;
+  font-size:11px;
+}
+#dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="contribuintes-total"] strong,
+#dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="inativos"] strong{
+  margin-bottom:8px;
+  font-size:clamp(28px,2.45vw,37px);
+  line-height:1.08;
+}
+#dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="contribuintes-total"] strong{
+  color:#123f2e;
+}
+#dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="inativos"] strong{
+  color:#7c520a;
+}
+#dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="inativos"] .kpi-kind-icon{
+  color:#a66b00;
+}
+#dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="pf"],
+#dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="pj"],
+#dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="simples"]{
+  grid-column:span 4;
+}
+#dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="simples"]{
+  border-top-color:rgba(59,111,145,.30);
+  background:linear-gradient(180deg,#fff,#f7fbfe);
+}
+#dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="simples"] .kpi-kind-icon{
+  color:#3b6f91;
+}
+#dashboardView[data-dashboard="contribuintes"] .kpi-card span{
+  font-size:8px;
+}
+
+/* Perfil PF/PJ + completude de contato compõem a leitura principal. */
+.taxpayer-executive{
+  display:grid;
+  grid-template-columns:minmax(0,1.2fr) minmax(420px,1fr);
+  gap:16px;
+  align-items:stretch;
+  margin-bottom:20px;
+}
+.taxpayer-executive>.chart-card{
+  min-width:0;
+  margin:0;
+  border:1px solid #dce8e2;
+  border-radius:18px;
+  background:#fff;
+  box-shadow:0 6px 22px rgba(18,67,48,.04);
+}
+.taxpayer-executive .chart-card-header{
+  min-height:64px!important;
+  padding:17px 17px 10px!important;
+}
+.taxpayer-executive .chart-title-block h2{
+  font-size:14.5px!important;
+}
+.taxpayer-executive .chart-body{
+  height:300px!important;
+  padding:6px 15px 15px!important;
+}
+.taxpayer-executive .chart-display-controls{
+  grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
+  padding:0 15px 10px;
+}
+.taxpayer-executive-main{
+  border-top:3px solid rgba(7,138,97,.42)!important;
+}
+.taxpayer-executive-side{
+  border-top:3px solid rgba(59,111,145,.32)!important;
+  background:linear-gradient(180deg,#fff,#f8fbfd)!important;
+}
+.taxpayer-executive-side .chart-display-controls{
+  grid-template-columns:1fr;
+}
+
+/* Segmentação, território e atualização cadastral. */
+#dashboardView[data-dashboard="contribuintes"] #chartGrid{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:16px;
+  margin-bottom:18px;
+}
+#dashboardView[data-dashboard="contribuintes"] #chartGrid>.chart-card{
+  grid-column:auto;
+  border-color:#dfe8e3;
+  border-radius:16px;
+  box-shadow:0 3px 14px rgba(18,67,48,.03);
+}
+#dashboardView[data-dashboard="contribuintes"] #chartGrid>.chart-card[data-chart="bairro-contribuintes"],
+#dashboardView[data-dashboard="contribuintes"] #chartGrid>.chart-card[data-chart="cidade-contribuintes"],
+#dashboardView[data-dashboard="contribuintes"] #chartGrid>.chart-card[data-chart="atualizacoes"]{
+  grid-column:1/-1;
+}
+#dashboardView[data-dashboard="contribuintes"] #chartGrid>.chart-card[data-chart="bairro-contribuintes"],
+#dashboardView[data-dashboard="contribuintes"] #chartGrid>.chart-card[data-chart="cidade-contribuintes"]{
+  border-color:#d6e6dd;
+  box-shadow:0 5px 18px rgba(18,67,48,.035);
+}
+#dashboardView[data-dashboard="contribuintes"] #chartGrid>.chart-card[data-chart="situacao-cadastro"]{
+  border-top:3px solid rgba(166,107,0,.34);
+  background:linear-gradient(180deg,#fff,#fffdf8);
+}
+#dashboardView[data-dashboard="contribuintes"] #chartGrid>.chart-card[data-chart="bairro-contribuintes"] .chart-body,
+#dashboardView[data-dashboard="contribuintes"] #chartGrid>.chart-card[data-chart="cidade-contribuintes"] .chart-body,
+#dashboardView[data-dashboard="contribuintes"] #chartGrid>.chart-card[data-chart="atualizacoes"] .chart-body{
+  height:295px;
+}
+#dashboardView[data-dashboard="contribuintes"] #chartGrid>.chart-card:not([data-chart="bairro-contribuintes"]):not([data-chart="cidade-contribuintes"]):not([data-chart="atualizacoes"]) .chart-body{
+  height:255px;
+}
+#dashboardView[data-dashboard="contribuintes"] #chartGrid .chart-card-header{
+  min-height:60px;
+  padding:14px 14px 9px;
+}
+#dashboardView[data-dashboard="contribuintes"] #chartGrid .chart-title-block h2{
+  font-size:12.5px;
+}
+#dashboardView[data-dashboard="contribuintes"] #chartGrid .chart-title-block p{
+  font-size:9px;
+}
+#dashboardView[data-dashboard="contribuintes"] #chartGrid .chart-display-controls{
+  padding:0 13px 10px;
+}
+#dashboardView[data-dashboard="contribuintes"] .integration-coverage{
+  margin:0 0 12px;
+  border-style:dashed;
+  background:#fbfdfc;
+  box-shadow:none;
+}
+
+/* Tablet */
+@media(max-width:1180px){
+  #dashboardView[data-dashboard="contribuintes"] .kpi-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  #dashboardView[data-dashboard="contribuintes"] .kpi-card,
+  #dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi]{
+    grid-column:auto;
+  }
+  #dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="contribuintes-total"],
+  #dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="inativos"]{
+    min-height:120px;
+  }
+  .taxpayer-executive{
+    grid-template-columns:1fr;
+  }
+}
+
+/* Mobile */
+@media(max-width:820px){
+  #dashboardView[data-dashboard="contribuintes"] .page-heading h1{
+    font-size:27px;
+  }
+  .taxpayer-section-heading{
+    align-items:flex-start;
+    flex-direction:column;
+    gap:3px;
+    margin-bottom:9px;
+  }
+  .taxpayer-section-heading p{
+    max-width:none;
+    text-align:left;
+  }
+  #dashboardView[data-dashboard="contribuintes"] .kpi-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:9px;
+  }
+  #dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="contribuintes-total"],
+  #dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="inativos"]{
+    grid-column:1/-1;
+    min-height:116px;
+  }
+  #dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="contribuintes-total"] strong,
+  #dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="inativos"] strong{
+    font-size:27px;
+  }
+  .taxpayer-executive{
+    grid-template-columns:1fr;
+    gap:12px;
+  }
+  .taxpayer-executive .chart-body{
+    height:260px!important;
+  }
+  #dashboardView[data-dashboard="contribuintes"] #chartGrid{
+    grid-template-columns:1fr;
+    gap:12px;
+  }
+  #dashboardView[data-dashboard="contribuintes"] #chartGrid>.chart-card[data-chart]{
+    grid-column:auto;
+  }
+  #dashboardView[data-dashboard="contribuintes"] #chartGrid>.chart-card[data-chart] .chart-body{
+    height:250px;
+  }
+}
+
+/* Small phones */
+@media(max-width:480px){
+  #dashboardView[data-dashboard="contribuintes"] .kpi-grid{
+    grid-template-columns:1fr;
+  }
+  #dashboardView[data-dashboard="contribuintes"] .kpi-card,
+  #dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi]{
+    grid-column:auto;
+    min-height:106px;
+    padding:13px 14px;
+  }
+  #dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="contribuintes-total"] strong,
+  #dashboardView[data-dashboard="contribuintes"] .kpi-card[data-kpi="inativos"] strong{
+    font-size:24px;
+  }
+  .taxpayer-executive .chart-body,
+  #dashboardView[data-dashboard="contribuintes"] #chartGrid>.chart-card[data-chart] .chart-body{
+    height:240px!important;
+  }
+}
