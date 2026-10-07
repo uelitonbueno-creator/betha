@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
   <meta name="color-scheme" content="light">
-  <meta name="theme-color" content="#078a61">
+  <meta name="theme-color" content="#0b2842">
   <title>BI Vella</title>
 
   <link rel="stylesheet" href="https://unpkg.com/@mdi/font@5.0.45/css/materialdesignicons.min.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/collection/assets/fonts.css">
   <link rel="stylesheet" href="https://unpkg.com/@betha-plataforma/estrutura-componentes/dist/estrutura-componentes/estrutura-componentes.css">
-  <link rel="stylesheet" href="style.css?v=20261007-bi-vella-system-selector1">
+  <link rel="stylesheet" href="style.css?v=20261007-vella-redesign1">
 
   <script type="module">
     import { defineCustomElements } from "https://unpkg.com/@betha-plataforma/estrutura-componentes/loader/index.es2017.mjs";
@@ -57,9 +57,25 @@
     </div>
   </div>
 
-  <bth-app id="bethaApp" menu-bg-color="#078a61">
+  <bth-app id="bethaApp" menu-bg-color="#0b2842">
 
-    <div slot="menu_marca_produto" class="bi-product-brand"><span aria-hidden="true">V</span><strong>BI Vella</strong></div>
+    <div slot="menu_marca_produto" class="bi-product-brand vella-sidebar-brand">
+      <div class="bi-brand-row"><span class="bi-brand-mark" aria-hidden="true">V</span><strong>BI VELLA</strong></div>
+      <div class="sidebar-context-block" aria-label="Contexto do BI">
+        <span class="sidebar-context-label">ENTIDADE</span>
+        <button id="sidebarEntityButton" class="sidebar-context-button" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="sidebarEntityMenu">
+          <i class="mdi mdi-office-building-outline" aria-hidden="true"></i>
+          <span id="sidebarEntityContext">Selecione a entidade</span>
+          <i class="mdi mdi-chevron-down" aria-hidden="true"></i>
+        </button>
+        <div id="sidebarEntityMenu" class="sidebar-entity-menu" hidden>
+          <div class="entity-menu-title">Entidades autorizadas</div>
+          <div id="sidebarEntityList" class="entity-list"></div>
+        </div>
+        <span class="sidebar-context-label sidebar-system-label">SISTEMAS</span>
+        <div id="systemRailList" class="system-rail-list" role="navigation" aria-label="Sistemas disponíveis"></div>
+      </div>
+    </div>
 
     <div slot="menu_ferramentas" class="menu-tools" aria-label="Ferramentas">
       <button class="tool-button" id="globalSearchButton" type="button" title="Busca global (Ctrl+K)" aria-label="Abrir busca global"><i class="mdi mdi-magnify"></i></button>
@@ -71,6 +87,8 @@
     </div>
 
     <div slot="container_contexto" class="context-bar">
+      <div class="vella-context-title"><strong>BI VELLA</strong><span aria-hidden="true">|</span><span>PAINEL <span id="systemHeaderContext">TRIBUTOS</span></span></div>
+      <div class="context-breadcrumb" aria-label="Caminho atual">
       <div class="entity-control">
         <button id="entityButton" class="context-entity-button" type="button">
           <i class="mdi mdi-office-building"></i>
@@ -100,6 +118,7 @@
       </div>
       <span class="context-divider">›</span>
       <span id="pageContext">VISÃO GERAL</span>
+      </div>
     </div>
 
     <main slot="container_aplicacao" class="workspace">
@@ -161,6 +180,12 @@
             </div>
           </div>
         </header>
+
+        <div id="sampleModeBadge" class="sample-mode-banner" role="status" aria-live="polite" hidden>
+          <i class="mdi mdi-flask-outline" aria-hidden="true"></i>
+          <strong>AMOSTRA LOCAL</strong>
+          <span>100 registros · sem consumo da API</span>
+        </div>
 
         <section id="personalHome" class="personal-home" aria-label="Minha Home personalizada" hidden></section>
 
@@ -225,6 +250,8 @@
         </section>
 
         <section id="chartGrid" class="chart-grid" aria-label="Gráficos"></section>
+
+        <section id="tableGrid" class="summary-table-grid" aria-label="Tabelas analíticas" hidden></section>
 
         <details class="panel source-panel source-disclosure">
           <summary class="source-disclosure-summary">
@@ -714,13 +741,13 @@
     </div>
   </aside>
 
-  <script src="config.js?v=20261007-multisystem1"></script>
+  <script src="config.js?v=20261007-vella-redesign1"></script>
   <script src="auth/auth.js?v=20261002-kvsession1"></script>
   <script src="dashboard-catalog.js?v=20261007-bi-vella-home1"></script>
-  <script src="system-catalog.js?v=20261007-multisystem1"></script>
+  <script src="system-catalog.js?v=20261007-vella-redesign1"></script>
   <div id="uiToast" class="ui-toast" role="status" aria-live="polite" aria-atomic="true"></div>
   <script src="api-panel-catalog.js?v=20261006-chart-visible9"></script>
-  <script src="app.js?v=20261007-multisystem1"></script>
+  <script src="app.js?v=20261007-vella-redesign1"></script>
   <script src="global-search.js?v=20261005-1"></script>
 </body>
 </html>
