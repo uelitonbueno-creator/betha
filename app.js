@@ -686,37 +686,64 @@
     return "há "+Math.min(Math.floor(hours/24),99)+" d";
   }
 
+  function dashboardSystemId(view) {
+    return String(dashboards[view]?.system||"tributos");
+  }
+
+  function isCurrentSystemHome(view=currentView) {
+    return String(view||"")===String(currentSystemInfo()?.homeView||DEFAULT_VIEW);
+  }
+
+  function isPersonalizationViewAllowed(view) {
+    return Boolean(
+      dashboards[view] &&
+      dashboardSystemId(view)===String(currentSystemId) &&
+      isViewAllowed(view)
+    );
+  }
+
   function renderPersonalHome() {
     const home=document.getElementById("personalHome");
     if(!home) return;
-    if(currentView!=="visao-geral"){
+    if(!isCurrentSystemHome()){
       home.hidden=true; home.innerHTML=""; return;
     }
 
     const state=readPersonalization();
-    const favorites=(state.favoriteDashboards||[]).filter(view=>dashboards[view]).slice(0,6);
-    const recent=(state.recentViews||[]).filter(item=>item&&dashboards[item.view]&&item.view!=="visao-geral").slice(0,4);
+    const system=currentSystemInfo();
+    const systemName=String(system?.name||system?.label||currentSystemId||"Tributos");
+    const homeView=String(system?.homeView||DEFAULT_VIEW);
+
+    const favorites=(state.favoriteDashboards||[])
+      .filter(view=>view!==homeView&&isPersonalizationViewAllowed(view))
+      .slice(0,6);
+
+    const recent=(state.recentViews||[])
+      .filter(item=>item&&item.view!==homeView&&isPersonalizationViewAllowed(item.view))
+      .slice(0,4);
+
     const favoriteKpis=(state.favoriteKpis||[]).map(item=>{
+      if(!isPersonalizationViewAllowed(item.view)) return null;
       const def=(dashboards[item.view]?.kpis||[]).find(kpi=>kpi.id===item.kpiId);
       return def ? {...item,def,snapshot:state.kpiSnapshots[favoriteKpiKey(item.view,item.kpiId)]||null} : null;
     }).filter(Boolean).slice(0,4);
 
     const favoriteHtml=favorites.length
       ? favorites.map(view=>'<button class="home-shortcut-card" type="button" data-home-open-view="'+escapeHtml(view)+'"><span class="home-shortcut-icon"><i class="mdi mdi-view-dashboard-outline"></i></span><span><strong>'+escapeHtml(dashboardLabel(view))+'</strong><small>Abrir painel favorito</small></span><i class="mdi mdi-chevron-right"></i></button>').join("")
-      : '<div class="home-empty"><i class="mdi mdi-star-outline"></i><span>Favorite os painéis mais usados pela estrela do cabeçalho.</span></div>';
+      : '<div class="home-empty"><i class="mdi mdi-star-outline"></i><span>Favorite os painéis de '+escapeHtml(systemName)+' mais usados pela estrela do cabeçalho.</span></div>';
 
     const recentHtml=recent.length
       ? recent.map(item=>'<button class="home-recent-item" type="button" data-home-open-view="'+escapeHtml(item.view)+'"><span><strong>'+escapeHtml(dashboardLabel(item.view))+'</strong><small>'+escapeHtml(shortRelativeTime(item.at))+'</small></span><i class="mdi mdi-arrow-right"></i></button>').join("")
-      : '<div class="home-empty compact"><span>Seus acessos recentes aparecerão aqui.</span></div>';
+      : '<div class="home-empty compact"><span>Seus acessos recentes em '+escapeHtml(systemName)+' aparecerão aqui.</span></div>';
 
     const kpiHtml=favoriteKpis.length
       ? favoriteKpis.map(item=>'<button class="home-kpi-card" type="button" data-home-open-view="'+escapeHtml(item.view)+'"><small>'+escapeHtml(dashboardLabel(item.view))+'</small><strong>'+escapeHtml(item.def.label)+'</strong><span class="home-kpi-value">'+escapeHtml(item.snapshot?.formatted||"—")+'</span><span class="home-kpi-meta">'+escapeHtml(item.snapshot?.updatedAt ? "Última leitura "+shortRelativeTime(item.snapshot.updatedAt) : "Abra o painel para carregar o valor")+'</span></button>').join("")
-      : '<div class="home-empty"><i class="mdi mdi-chart-box-outline"></i><span>Use a estrela nos indicadores para destacar KPIs aqui.</span></div>';
+      : '<div class="home-empty"><i class="mdi mdi-chart-box-outline"></i><span>Destaque KPIs de '+escapeHtml(systemName)+' pela estrela dos indicadores.</span></div>';
 
     home.innerHTML=
-      '<div class="personal-home-head"><div><small>MINHA HOME</small><h2>Seu BI, do seu jeito</h2><p>Favoritos, indicadores destacados e o que você acessou recentemente.</p></div><span class="personal-home-badge"><i class="mdi mdi-account-cog-outline"></i> Personalizado</span></div>'+
+      '<div class="personal-home-head"><div><small>MINHA HOME · '+escapeHtml(systemName.toUpperCase())+'</small><h2>Seu '+escapeHtml(systemName)+', do seu jeito</h2><p>Favoritos, indicadores destacados e acessos recentes somente deste sistema e dentro das suas permissões.</p></div><span class="personal-home-badge"><i class="mdi mdi-account-cog-outline"></i> Personalizado</span></div>'+
       '<div class="personal-home-grid">'+
-        '<section class="home-block home-block-favorites"><div class="home-block-title"><strong>Painéis favoritos</strong><span>Atalhos rápidos</span></div><div class="home-shortcuts">'+favoriteHtml+'</div></section>'+
+        '<section class="home-block home-block-favorites"><div class="home-block-title"><strong>Painéis favoritos</strong><span>Atalhos de '+escapeHtml(systemName)+'</span></div><div class="home-shortcuts">'+favoriteHtml+'</div></section>'+
         '<section class="home-block home-block-kpis"><div class="home-block-title"><strong>KPIs destacados</strong><span>Última leitura disponível</span></div><div class="home-kpis">'+kpiHtml+'</div></section>'+
         '<section class="home-block home-block-recent"><div class="home-block-title"><strong>Recentes</strong><span>Continue de onde parou</span></div><div class="home-recents">'+recentHtml+'</div></section>'+
       '</div>';
