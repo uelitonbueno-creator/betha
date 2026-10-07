@@ -171,6 +171,53 @@ test("navegação móvel mantém contexto Entidade → Sistema → Painel sincro
   assert.match(css, /@media\(max-width:390px\)[\s\S]*?\.mobile-context-bar/);
 });
 
+test("todos os 46 dashboards possuem permissão funcional explícita", () => {
+  const window = loadCatalogs();
+  const app = fs.readFileSync(path.join(ROOT, "app.js"), "utf8");
+  const start = app.indexOf("const PAGE_PERMISSION_IDS = Object.freeze({");
+  const end = app.indexOf("\n  });", start);
+  assert.ok(start >= 0 && end > start, "PAGE_PERMISSION_IDS não encontrado");
+  const objectSource = app.slice(
+    app.indexOf("{", start),
+    end + 4
+  );
+  const permissions = new Function("return (" + objectSource + ")")();
+  for (const id of Object.keys(window.BI_DASHBOARDS)) {
+    assert.ok(permissions[id], "dashboard sem permissão: " + id);
+  }
+});
+
+test("permissões locais são fail-closed para usuário comum e sistemas não autorizados ficam ocultos", () => {
+  const app = fs.readFileSync(path.join(ROOT, "app.js"), "utf8");
+  assert.match(app, /privileged\|\|currentAllowedViews\.has\(view\)/);
+  assert.match(app, /function tenantCanAccessSystem\(/);
+  assert.match(app, /accessibleSystemsForTenant\(\)/);
+  assert.match(app, /Este sistema não possui painéis liberados para o seu acesso/);
+});
+
+test("worker reconhece permissões multi-sistema sem anunciar amostras no MCP real", () => {
+  const worker = fs.readFileSync(path.join(ROOT, "backend", "worker.js"), "utf8");
+  for (const permission of [
+    "BIContabilVisaoGeralPage",
+    "BIContabilExecucaoOrcamentariaPage",
+    "BIComprasVisaoGeralPage",
+    "BIComprasContratosPage",
+    "BIFolhaVisaoGeralPage",
+    "BIFolhaServidoresPage"
+  ]) {
+    assert.match(worker, new RegExp(permission));
+  }
+  assert.match(worker, /const BI_PERMISSION_VIEW_MAP = Object\.freeze/);
+  assert.match(worker, /permissionViewsForAccess\(auth\.access\)\.filter\(view=>Boolean\(dashboardBuilder\(view\)\)\)/);
+});
+
+test("gestão de usuários agrupa permissões por sistema", () => {
+  const app = fs.readFileSync(path.join(ROOT, "app.js"), "utf8");
+  assert.match(app, /permission-system-group/);
+  assert.match(app, /data-permission-group-toggle/);
+  assert.match(app, /groups=systems\.map/);
+});
+
 test("frontend não expõe User-Access ou access token em configuração pública", () => {
   const config = fs.readFileSync(path.join(ROOT, "config.js"), "utf8");
   assert.doesNotMatch(config, /User-Access\s*[:=]\s*["'][^"']+["']/i);
