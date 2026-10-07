@@ -1,7 +1,7 @@
 {
   "mode": "sample",
   "system": "contabil",
-  "generatedAt": "2026-10-06",
+  "generatedAt": "2026-10-07",
   "recordCount": 100,
   "rows": [
     {
@@ -20,7 +20,10 @@
       "debito": 7000,
       "credito": 6800,
       "saldoConta": -200,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00001/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 6125
     },
     {
       "id": 2,
@@ -38,7 +41,10 @@
       "debito": 7800,
       "credito": 7560,
       "saldoConta": 210,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00002/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 5849
     },
     {
       "id": 3,
@@ -56,7 +62,10 @@
       "debito": 8600,
       "credito": 8320,
       "saldoConta": 620,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00003/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 5305
     },
     {
       "id": 4,
@@ -74,7 +83,10 @@
       "debito": 9400,
       "credito": 9080,
       "saldoConta": 1030,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00004/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 4473
     },
     {
       "id": 5,
@@ -92,7 +104,10 @@
       "debito": 10200,
       "credito": 9840,
       "saldoConta": 1440,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00005/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 6626
     },
     {
       "id": 6,
@@ -110,7 +125,10 @@
       "debito": 11000,
       "credito": 10600,
       "saldoConta": 1850,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00006/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 8869
     },
     {
       "id": 7,
@@ -128,7 +146,10 @@
       "debito": 11800,
       "credito": 11360,
       "saldoConta": 2260,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00007/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 8004
     },
     {
       "id": 8,
@@ -146,7 +167,10 @@
       "debito": 12600,
       "credito": 12120,
       "saldoConta": -480,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00008/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 6832
     },
     {
       "id": 9,
@@ -164,7 +188,10 @@
       "debito": 13400,
       "credito": 12880,
       "saldoConta": -70,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00009/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 9421
     },
     {
       "id": 10,
@@ -182,7 +209,10 @@
       "debito": 7000,
       "credito": 13640,
       "saldoConta": 7540,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00010/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 8054
     },
     {
       "id": 11,
@@ -200,7 +230,10 @@
       "debito": 7800,
       "credito": 6800,
       "saldoConta": 350,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00011/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 11290
     },
     {
       "id": 12,
@@ -218,7 +251,10 @@
       "debito": 8600,
       "credito": 7560,
       "saldoConta": 760,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00012/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 9773
     },
     {
       "id": 13,
@@ -236,7 +272,10 @@
       "debito": 9400,
       "credito": 8320,
       "saldoConta": 1170,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00013/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 12753
     },
     {
       "id": 14,
@@ -254,7 +293,10 @@
       "debito": 10200,
       "credito": 9080,
       "saldoConta": 1580,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00014/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 4575
     },
     {
       "id": 15,
@@ -272,7 +314,10 @@
       "debito": 11000,
       "credito": 9840,
       "saldoConta": -1160,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00015/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 3941
     },
     {
       "id": 16,
@@ -290,7 +335,10 @@
       "debito": 11800,
       "credito": 10600,
       "saldoConta": -750,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00016/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 6020
     },
     {
       "id": 17,
@@ -308,7 +356,10 @@
       "debito": 12600,
       "credito": 11360,
       "saldoConta": -340,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00017/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 7872
     },
     {
       "id": 18,
@@ -326,7 +377,10 @@
       "debito": 13400,
       "credito": 12120,
       "saldoConta": 70,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00018/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 7186
     },
     {
       "id": 19,
@@ -344,7 +398,10 @@
       "debito": 7000,
       "credito": 12880,
       "saldoConta": 7680,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00019/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 6202
     },
     {
       "id": 20,
@@ -362,7 +419,10 @@
       "debito": 7800,
       "credito": 13640,
       "saldoConta": 8090,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00020/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 4902
     },
     {
       "id": 21,
@@ -380,7 +440,10 @@
       "debito": 8600,
       "credito": 6800,
       "saldoConta": 900,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00021/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 11377
     },
     {
       "id": 22,
@@ -398,7 +461,10 @@
       "debito": 9400,
       "credito": 7560,
       "saldoConta": -1840,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00022/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 10357
     },
     {
       "id": 23,
@@ -416,7 +482,10 @@
       "debito": 10200,
       "credito": 8320,
       "saldoConta": -1430,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00023/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 9019
     },
     {
       "id": 24,
@@ -434,7 +503,10 @@
       "debito": 11000,
       "credito": 9080,
       "saldoConta": -1020,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00024/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 7342
     },
     {
       "id": 25,
@@ -452,7 +524,10 @@
       "debito": 11800,
       "credito": 9840,
       "saldoConta": -610,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00025/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 10545
     },
     {
       "id": 26,
@@ -470,7 +545,10 @@
       "debito": 12600,
       "credito": 10600,
       "saldoConta": -200,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00026/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 13736
     },
     {
       "id": 27,
@@ -488,7 +566,10 @@
       "debito": 13400,
       "credito": 11360,
       "saldoConta": 210,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00027/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 5114
     },
     {
       "id": 28,
@@ -506,7 +587,10 @@
       "debito": 7000,
       "credito": 12120,
       "saldoConta": 7820,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00028/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 4520
     },
     {
       "id": 29,
@@ -524,7 +608,10 @@
       "debito": 7800,
       "credito": 12880,
       "saldoConta": 5080,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00029/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 6421
     },
     {
       "id": 30,
@@ -542,7 +629,10 @@
       "debito": 8600,
       "credito": 13640,
       "saldoConta": 5490,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00030/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 5633
     },
     {
       "id": 31,
@@ -560,7 +650,10 @@
       "debito": 9400,
       "credito": 6800,
       "saldoConta": -1700,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00031/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 8128
     },
     {
       "id": 32,
@@ -578,7 +671,10 @@
       "debito": 10200,
       "credito": 7560,
       "saldoConta": -1290,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00032/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 7171
     },
     {
       "id": 33,
@@ -596,7 +692,10 @@
       "debito": 11000,
       "credito": 8320,
       "saldoConta": -880,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00033/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 9518
     },
     {
       "id": 34,
@@ -614,7 +713,10 @@
       "debito": 11800,
       "credito": 9080,
       "saldoConta": -470,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00034/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 8366
     },
     {
       "id": 35,
@@ -632,7 +734,10 @@
       "debito": 12600,
       "credito": 9840,
       "saldoConta": -60,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00035/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 6886
     },
     {
       "id": 36,
@@ -650,7 +755,10 @@
       "debito": 13400,
       "credito": 10600,
       "saldoConta": -2800,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00036/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 10118
     },
     {
       "id": 37,
@@ -668,7 +776,10 @@
       "debito": 7000,
       "credito": 11360,
       "saldoConta": 4810,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00037/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 12791
     },
     {
       "id": 38,
@@ -686,7 +797,10 @@
       "debito": 7800,
       "credito": 12120,
       "saldoConta": 5220,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00038/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 11335
     },
     {
       "id": 39,
@@ -704,7 +818,10 @@
       "debito": 8600,
       "credito": 12880,
       "saldoConta": 5630,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00039/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 9532
     },
     {
       "id": 40,
@@ -722,7 +839,10 @@
       "debito": 9400,
       "credito": 13640,
       "saldoConta": 6040,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00040/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 3167
     },
     {
       "id": 41,
@@ -740,7 +860,10 @@
       "debito": 10200,
       "credito": 6800,
       "saldoConta": -1150,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00041/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 7672
     },
     {
       "id": 42,
@@ -758,7 +881,10 @@
       "debito": 11000,
       "credito": 7560,
       "saldoConta": -740,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00042/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 7176
     },
     {
       "id": 43,
@@ -776,7 +902,10 @@
       "debito": 11800,
       "credito": 8320,
       "saldoConta": -3480,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00043/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 6399
     },
     {
       "id": 44,
@@ -794,7 +923,10 @@
       "debito": 12600,
       "credito": 9080,
       "saldoConta": -3070,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00044/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 5318
     },
     {
       "id": 45,
@@ -812,7 +944,10 @@
       "debito": 13400,
       "credito": 9840,
       "saldoConta": -2660,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00045/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 7780
     },
     {
       "id": 46,
@@ -830,7 +965,10 @@
       "debito": 7000,
       "credito": 10600,
       "saldoConta": 4950,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00046/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 10302
     },
     {
       "id": 47,
@@ -848,7 +986,10 @@
       "debito": 7800,
       "credito": 11360,
       "saldoConta": 5360,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00047/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 9212
     },
     {
       "id": 48,
@@ -866,7 +1007,10 @@
       "debito": 8600,
       "credito": 12120,
       "saldoConta": 5770,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00048/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 7798
     },
     {
       "id": 49,
@@ -884,7 +1028,10 @@
       "debito": 9400,
       "credito": 12880,
       "saldoConta": 6180,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00049/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 10673
     },
     {
       "id": 50,
@@ -902,7 +1049,10 @@
       "debito": 10200,
       "credito": 13640,
       "saldoConta": 3440,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00050/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 9064
     },
     {
       "id": 51,
@@ -920,7 +1070,10 @@
       "debito": 11000,
       "credito": 6800,
       "saldoConta": -3750,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00051/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 12611
     },
     {
       "id": 52,
@@ -938,7 +1091,10 @@
       "debito": 11800,
       "credito": 7560,
       "saldoConta": -3340,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00052/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 10858
     },
     {
       "id": 53,
@@ -956,7 +1112,10 @@
       "debito": 12600,
       "credito": 8320,
       "saldoConta": -2930,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00053/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 6283
     },
     {
       "id": 54,
@@ -974,7 +1133,10 @@
       "debito": 13400,
       "credito": 9080,
       "saldoConta": -2520,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00054/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 5691
     },
     {
       "id": 55,
@@ -992,7 +1154,10 @@
       "debito": 7000,
       "credito": 9840,
       "saldoConta": 5090,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00055/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 4808
     },
     {
       "id": 56,
@@ -1010,7 +1175,10 @@
       "debito": 7800,
       "credito": 10600,
       "saldoConta": 5500,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00056/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 7227
     },
     {
       "id": 57,
@@ -1028,7 +1196,10 @@
       "debito": 8600,
       "credito": 11360,
       "saldoConta": 2760,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00057/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 9321
     },
     {
       "id": 58,
@@ -1046,7 +1217,10 @@
       "debito": 9400,
       "credito": 12120,
       "saldoConta": 3170,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00058/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 8407
     },
     {
       "id": 59,
@@ -1064,7 +1238,10 @@
       "debito": 10200,
       "credito": 12880,
       "saldoConta": 3580,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00059/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 7183
     },
     {
       "id": 60,
@@ -1082,7 +1259,10 @@
       "debito": 11000,
       "credito": 13640,
       "saldoConta": 3990,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00060/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 5626
     },
     {
       "id": 61,
@@ -1100,7 +1280,10 @@
       "debito": 11800,
       "credito": 6800,
       "saldoConta": -3200,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00061/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 12923
     },
     {
       "id": 62,
@@ -1118,7 +1301,10 @@
       "debito": 12600,
       "credito": 7560,
       "saldoConta": -2790,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00062/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 11685
     },
     {
       "id": 63,
@@ -1136,7 +1322,10 @@
       "debito": 13400,
       "credito": 8320,
       "saldoConta": -2380,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00063/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 10113
     },
     {
       "id": 64,
@@ -1154,7 +1343,10 @@
       "debito": 7000,
       "credito": 9080,
       "saldoConta": 2080,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00064/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 8186
     },
     {
       "id": 65,
@@ -1172,7 +1364,10 @@
       "debito": 7800,
       "credito": 9840,
       "saldoConta": 2490,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00065/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 11698
     },
     {
       "id": 66,
@@ -1190,7 +1385,10 @@
       "debito": 8600,
       "credito": 10600,
       "saldoConta": 2900,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00066/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 6868
     },
     {
       "id": 67,
@@ -1208,7 +1406,10 @@
       "debito": 9400,
       "credito": 11360,
       "saldoConta": 3310,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00067/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 6320
     },
     {
       "id": 68,
@@ -1226,7 +1427,10 @@
       "debito": 10200,
       "credito": 12120,
       "saldoConta": 3720,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00068/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 5486
     },
     {
       "id": 69,
@@ -1244,7 +1448,10 @@
       "debito": 11000,
       "credito": 12880,
       "saldoConta": 4130,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00069/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 7673
     },
     {
       "id": 70,
@@ -1262,7 +1469,10 @@
       "debito": 11800,
       "credito": 13640,
       "saldoConta": 4540,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00070/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 6643
     },
     {
       "id": 71,
@@ -1280,7 +1490,10 @@
       "debito": 12600,
       "credito": 6800,
       "saldoConta": -5800,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00071/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 9448
     },
     {
       "id": 72,
@@ -1298,7 +1511,10 @@
       "debito": 13400,
       "credito": 7560,
       "saldoConta": -5390,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00072/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 8257
     },
     {
       "id": 73,
@@ -1316,7 +1532,10 @@
       "debito": 7000,
       "credito": 8320,
       "saldoConta": 2220,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00073/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 10868
     },
     {
       "id": 74,
@@ -1334,7 +1553,10 @@
       "debito": 7800,
       "credito": 9080,
       "saldoConta": 2630,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00074/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 9482
     },
     {
       "id": 75,
@@ -1352,7 +1574,10 @@
       "debito": 8600,
       "credito": 9840,
       "saldoConta": 3040,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00075/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 7753
     },
     {
       "id": 76,
@@ -1370,7 +1595,10 @@
       "debito": 9400,
       "credito": 10600,
       "saldoConta": 3450,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00076/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 11325
     },
     {
       "id": 77,
@@ -1388,7 +1616,10 @@
       "debito": 10200,
       "credito": 11360,
       "saldoConta": 3860,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00077/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 14239
     },
     {
       "id": 78,
@@ -1406,7 +1637,10 @@
       "debito": 11000,
       "credito": 12120,
       "saldoConta": 1120,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00078/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 12557
     },
     {
       "id": 79,
@@ -1424,7 +1658,10 @@
       "debito": 11800,
       "credito": 12880,
       "saldoConta": 1530,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00079/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 4834
     },
     {
       "id": 80,
@@ -1442,7 +1679,10 @@
       "debito": 12600,
       "credito": 13640,
       "saldoConta": 1940,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00080/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 3892
     },
     {
       "id": 81,
@@ -1460,7 +1700,10 @@
       "debito": 13400,
       "credito": 6800,
       "saldoConta": -5250,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00081/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 9218
     },
     {
       "id": 82,
@@ -1478,7 +1721,10 @@
       "debito": 7000,
       "credito": 7560,
       "saldoConta": 2360,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00082/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 8504
     },
     {
       "id": 83,
@@ -1496,7 +1742,10 @@
       "debito": 7800,
       "credito": 8320,
       "saldoConta": 2770,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00083/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 7492
     },
     {
       "id": 84,
@@ -1514,7 +1763,10 @@
       "debito": 8600,
       "credito": 9080,
       "saldoConta": 3180,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00084/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 6162
     },
     {
       "id": 85,
@@ -1532,7 +1784,10 @@
       "debito": 9400,
       "credito": 9840,
       "saldoConta": 440,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00085/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 8933
     },
     {
       "id": 86,
@@ -1550,7 +1805,10 @@
       "debito": 10200,
       "credito": 10600,
       "saldoConta": 850,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00086/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 11735
     },
     {
       "id": 87,
@@ -1568,7 +1826,10 @@
       "debito": 11000,
       "credito": 11360,
       "saldoConta": 1260,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00087/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 10418
     },
     {
       "id": 88,
@@ -1586,7 +1847,10 @@
       "debito": 11800,
       "credito": 12120,
       "saldoConta": 1670,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00088/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 8763
     },
     {
       "id": 89,
@@ -1604,7 +1868,10 @@
       "debito": 12600,
       "credito": 12880,
       "saldoConta": 2080,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00089/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 11925
     },
     {
       "id": 90,
@@ -1622,7 +1889,10 @@
       "debito": 13400,
       "credito": 13640,
       "saldoConta": 2490,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00090/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 10075
     },
     {
       "id": 91,
@@ -1640,7 +1910,10 @@
       "debito": 7000,
       "credito": 6800,
       "saldoConta": 2500,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00091/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 13931
     },
     {
       "id": 92,
@@ -1658,7 +1931,10 @@
       "debito": 7800,
       "credito": 7560,
       "saldoConta": -240,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00092/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 5655
     },
     {
       "id": 93,
@@ -1676,7 +1952,10 @@
       "debito": 8600,
       "credito": 8320,
       "saldoConta": 170,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00093/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 7633
     },
     {
       "id": 94,
@@ -1694,7 +1973,10 @@
       "debito": 9400,
       "credito": 9080,
       "saldoConta": 580,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00094/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 6808
     },
     {
       "id": 95,
@@ -1712,7 +1994,10 @@
       "debito": 10200,
       "credito": 9840,
       "saldoConta": 990,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00095/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 5675
     },
     {
       "id": 96,
@@ -1730,7 +2015,10 @@
       "debito": 11000,
       "credito": 10600,
       "saldoConta": 1400,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00096/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 8434
     },
     {
       "id": 97,
@@ -1748,7 +2036,10 @@
       "debito": 11800,
       "credito": 11360,
       "saldoConta": 1810,
-      "status": "Pendente"
+      "status": "Pendente",
+      "empenho": "EMP-00097/2026",
+      "fonteRecurso": "Recursos próprios",
+      "restosPagar": 10770
     },
     {
       "id": 98,
@@ -1766,7 +2057,10 @@
       "debito": 12600,
       "credito": 12120,
       "saldoConta": 2220,
-      "status": "Liquidado"
+      "status": "Liquidado",
+      "empenho": "EMP-00098/2026",
+      "fonteRecurso": "Transferências",
+      "restosPagar": 9629
     },
     {
       "id": 99,
@@ -1784,7 +2078,10 @@
       "debito": 13400,
       "credito": 12880,
       "saldoConta": -520,
-      "status": "Pago"
+      "status": "Pago",
+      "empenho": "EMP-00099/2026",
+      "fonteRecurso": "Vinculados",
+      "restosPagar": 8164
     },
     {
       "id": 100,
@@ -1802,7 +2099,10 @@
       "debito": 7000,
       "credito": 13640,
       "saldoConta": 7090,
-      "status": "Processado"
+      "status": "Processado",
+      "empenho": "EMP-00100/2026",
+      "fonteRecurso": "Convênios",
+      "restosPagar": 6350
     }
   ]
 }
