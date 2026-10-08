@@ -7692,7 +7692,10 @@ function mcpToolDefinitions(credential) {
     });
   }
 
-  if (credential.allowedViews.includes("economicos")) {
+  if (
+    credential.allowedViews.includes("economicos") &&
+    credential.allowedViews.includes("arrecadacao")
+  ) {
     tools.push({
       name:"bi_company_iss",
       description:"Consulta quanto uma empresa ou econômico arrecadou de ISS no período, pesquisando pelo nome ou nome fantasia.",
@@ -7793,6 +7796,70 @@ function mcpToolDefinitions(credential) {
           exercicio:{type:"integer",minimum:2000,maximum:2100},
           limite:{type:"integer",minimum:1,maximum:20},
           filters:{type:"object",additionalProperties:{type:["string","number","boolean"]}}
+        },
+        additionalProperties:false
+      }
+    });
+  }
+
+  if (
+    credential.allowedViews.includes("contribuintes") ||
+    credential.allowedViews.includes("economicos")
+  ) {
+    tools.push({
+      name:"bi_resolve_subject",
+      description:"Resolve nome ou documento em candidatos seguros de contribuinte/econômico antes de uma consulta específica. Retorna IDs estáveis e documento mascarado para desambiguação.",
+      inputSchema:{
+        type:"object",
+        required:["busca"],
+        properties:{
+          busca:{type:"string",minLength:2,maxLength:120},
+          tipo:{type:"string",enum:["ambos","contribuinte","economico"],default:"ambos"},
+          limite:{type:"integer",minimum:1,maximum:10}
+        },
+        additionalProperties:false
+      }
+    });
+  }
+
+  if (
+    credential.allowedViews.includes("economicos") &&
+    credential.allowedViews.includes("arrecadacao")
+  ) {
+    tools.push({
+      name:"bi_company_iss_detail",
+      description:"Consulta ISS pago por um econômico específico, com resolução de ambiguidades, total, evolução mensal e composição por crédito/receita quando disponível.",
+      inputSchema:{
+        type:"object",
+        required:["busca"],
+        properties:{
+          busca:{type:"string",minLength:2,maxLength:120},
+          economico_id:{type:"string",minLength:1,maxLength:80},
+          periodo:{type:"string",description:"Período, por exemplo ano, mes, trimestre ou todos."},
+          exercicio:{type:"integer",minimum:2000,maximum:2100},
+          limite:{type:"integer",minimum:1,maximum:12}
+        },
+        additionalProperties:false
+      }
+    });
+  }
+
+  if (
+    credential.allowedViews.includes("contribuintes") &&
+    credential.allowedViews.includes("debitos") &&
+    credential.allowedViews.includes("divida")
+  ) {
+    tools.push({
+      name:"bi_subject_financial_summary",
+      description:"Resume débitos lançados e dívida ativa de um contribuinte específico, com resolução de ambiguidades e sem expor documentos completos, endereços ou lançamentos individualizados.",
+      inputSchema:{
+        type:"object",
+        required:["busca"],
+        properties:{
+          busca:{type:"string",minLength:2,maxLength:120},
+          contribuinte_id:{type:"string",minLength:1,maxLength:80},
+          periodo:{type:"string",description:"Período dos débitos lançados; use todos para histórico completo."},
+          exercicio:{type:"integer",minimum:2000,maximum:2100}
         },
         additionalProperties:false
       }
@@ -7904,6 +7971,396 @@ function mcpLookupMatches(row,query,paths) {
   return false;
 }
 
+
+function mcpPublicSubjectCandidate(candidate) {
+  return {
+    kind:candidate.kind,
+    id:candidate.id,
+    name:candidate.name,
+    fantasyName:candidate.fantasyName||"",
+    document:candidate.documentRaw ? maskDetailDocument(candidate.documentRaw) : "",
+    status:candidate.status||"",
+    score:Number(candidate.score||0)
+  };
+}
+
+function mcpSubjectCandidatesFromRows(rows,query,kind,limit=10) {
+  const config=kind==="economico"
+    ? {
+        idPaths:["id","idEconomico"],
+        namePaths:["nome","razaoSocial","pessoa.nome"],
+        fantasyPaths:["nomeFantasia","pessoa.nomeFantasia"],
+        documentPaths:["pessoa.cpf","pessoa.cnpj","pessoa.cpfCnpj","cpf","cnpj","cpfCnpj"],
+        statusPaths:["situacao.descricao","situacao","status"]
+      }
+    : {
+        idPaths:["id","idPessoas","idPessoa"],
+        namePaths:["nome","pessoa.nome"],
+        fantasyPaths:["nomeFantasia","pessoa.nomeFantasia"],
+        documentPaths:["cpf","cnpj","cpfCnpj","documento","pessoa.cpf","pessoa.cnpj"],
+        statusPaths:["situacao","status","desativado"]
+      };
+
+  const searchPaths=[
+    ...config.idPaths,
+    ...config.namePaths,
+    ...config.fantasyPaths,
+    ...config.documentPaths
+  ];
+
+  const candidates=[];
+  for(const row of rows||[]){
+    const score=globalSearchScore(row,query,searchPaths);
+    if(score<=0) continue;
+    const id=String(firstValue(row,config.idPaths)||"").trim();
+    if(!id) continue;
+    candidates.push({
+      kind,
+      id,
+      name:stringValue(row,config.namePaths,kind==="economico"?"Econômico":"Contribuinte"),
+      fantasyName:stringValue(row,config.fantasyPaths,""),
+      documentRaw:firstValue(row,config.documentPaths),
+      status:stringValue(row,config.statusPaths,""),
+      score,
+      row
+    });
+  }
+
+  candidates.sort((a,b)=>
+    b.score-a.score ||
+    a.name.localeCompare(b.name,"pt-BR",{sensitivity:"base"}) ||
+    a.id.localeCompare(b.id,"pt-BR",{numeric:true})
+  );
+
+  const seen=new Set();
+  return candidates.filter(candidate=>{
+    const key=candidate.kind+":"+candidate.id;
+    if(seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0,Math.max(1,Math.min(10,Number(limit)||10)));
+}
+
+function mcpSelectResolvedCandidate(candidates,explicitId="") {
+  const requested=String(explicitId||"").trim();
+  if(requested){
+    const selected=(candidates||[]).find(candidate=>String(candidate.id)===requested);
+    return selected
+      ? {status:"resolved",selected,candidates:[selected]}
+      : {status:"not_found",selected:null,candidates:[]};
+  }
+
+  if(!Array.isArray(candidates)||!candidates.length){
+    return {status:"not_found",selected:null,candidates:[]};
+  }
+  if(candidates.length===1){
+    return {status:"resolved",selected:candidates[0],candidates};
+  }
+
+  const top=candidates[0];
+  const second=candidates[1];
+  if(Number(top.score)>=98 && Number(top.score)>Number(second.score)){
+    return {status:"resolved",selected:top,candidates};
+  }
+  return {status:"ambiguous",selected:null,candidates};
+}
+
+async function mcpResolveSubject(env,credential,args) {
+  const query=String(args.busca||"").trim();
+  if(query.length<2) throw new Error("MCP_QUERY_REQUIRED");
+  const type=String(args.tipo||"ambos");
+  const limit=Math.max(1,Math.min(10,Number(args.limite)||8));
+  if(!["ambos","contribuinte","economico"].includes(type)) throw new Error("MCP_SUBJECT_TYPE_INVALID");
+
+  const canContrib=credential.allowedViews.includes("contribuintes");
+  const canEco=credential.allowedViews.includes("economicos");
+  const wantsContrib=(type==="ambos"||type==="contribuinte")&&canContrib;
+  const wantsEco=(type==="ambos"||type==="economico")&&canEco;
+
+  const [contributors,economics]=await Promise.all([
+    wantsContrib ? safeBethaRows(env,credential.tenant,"bi","contribuintes") : Promise.resolve({rows:[],loaded:0,complete:true}),
+    wantsEco ? safeBethaRows(env,credential.tenant,"bi","economicos") : Promise.resolve({rows:[],loaded:0,complete:true})
+  ]);
+
+  const candidates=[
+    ...(wantsContrib?mcpSubjectCandidatesFromRows(contributors.rows,query,"contribuinte",limit):[]),
+    ...(wantsEco?mcpSubjectCandidatesFromRows(economics.rows,query,"economico",limit):[])
+  ].sort((a,b)=>b.score-a.score||a.name.localeCompare(b.name,"pt-BR",{sensitivity:"base"})).slice(0,limit);
+
+  return {
+    tenant:{id:credential.tenant.id,name:credential.tenant.name},
+    query,
+    type,
+    count:candidates.length,
+    ambiguous:candidates.length>1 && !(candidates[0]&&candidates[1]&&candidates[0].score>=98&&candidates[0].score>candidates[1].score),
+    candidates:candidates.map(mcpPublicSubjectCandidate),
+    sourceStatus:{
+      contributorsLoaded:Number(contributors.loaded||0),
+      economicsLoaded:Number(economics.loaded||0),
+      contributorsComplete:contributors.complete===true,
+      economicsComplete:economics.complete===true
+    }
+  };
+}
+
+function mcpIssCreditLabel(row) {
+  return [
+    stringValue(row,["creditoTributario.abreviatura","credito.abreviatura"],""),
+    stringValue(row,["creditoTributario.descricao","credito.descricao"],"")
+  ].filter(Boolean).join(" · ");
+}
+
+function mcpIsIssPaymentDetail(row) {
+  const label=normalizeMcpLookup(mcpIssCreditLabel(row));
+  if(!label) return false;
+  return /(^|[^a-z])iss(qn)?([^a-z]|$)/.test(label) ||
+    label.includes("imposto sobre servicos");
+}
+
+function mcpPaymentTotal(row) {
+  return numericValue(row,["valorPagoLancado","vlPagoLancado","valorPago","vlPago"])+
+    numericValue(row,["valorPagoCorrecao","vlPagoCorrecao"])+
+    numericValue(row,["valorPagoJuros","vlPagoJuros"])+
+    numericValue(row,["valorPagoMulta","vlPagoMulta"]);
+}
+
+function mcpEconomicLinked(row,economicId) {
+  const id=firstValue(row,["idEconomico","economico.id","economicoId","referente.idEconomico"]);
+  return id!==undefined&&id!==null&&String(id)===String(economicId);
+}
+
+async function mcpCompanyIssDetail(request,env,credential,args) {
+  mcpRequireViews(credential,["economicos","arrecadacao"]);
+  const query=String(args.busca||"").trim();
+  if(query.length<2) throw new Error("MCP_QUERY_REQUIRED");
+  const limit=Math.max(1,Math.min(12,Number(args.limite)||8));
+
+  const economics=await safeBethaRows(env,credential.tenant,"bi","economicos");
+  const candidates=mcpSubjectCandidatesFromRows(economics.rows,query,"economico",10);
+  const resolution=mcpSelectResolvedCandidate(candidates,args.economico_id);
+
+  if(resolution.status!=="resolved"){
+    return {
+      tenant:{id:credential.tenant.id,name:credential.tenant.name},
+      query,
+      status:resolution.status,
+      ambiguous:resolution.status==="ambiguous",
+      candidates:resolution.candidates.slice(0,limit).map(mcpPublicSubjectCandidate),
+      note:resolution.status==="ambiguous"
+        ? "Mais de um econômico corresponde à busca. Informe economico_id para consultar valores financeiros."
+        : "Nenhum econômico encontrado para a busca informada."
+    };
+  }
+
+  const selected=resolution.selected;
+  const period=String(args.periodo||"ano");
+  const exercise=Number(args.exercicio)||new Date().getFullYear();
+  const payments=await safeBethaRows(env,credential.tenant,"bi","pagamentos-detalhados");
+
+  const linked=payments.rows
+    .filter(row=>mcpEconomicLinked(row,selected.id))
+    .filter(row=>periodIncludes(row,{
+      periodo:period,
+      exercicio:exercise,
+      datePaths:["pagamento.dataPagamento","dataPagamento","dtPagamento"],
+      yearPaths:["ano","exercicio"]
+    }))
+    .filter(row=>!firstValue(row,["pagamento.dataHoraEstorno","pagamento.dhEstorno","dataHoraEstorno","dhEstorno"]));
+
+  const issRows=linked
+    .filter(mcpIsIssPaymentDetail)
+    .map(row=>({...row,__totalPaid:mcpPaymentTotal(row)}));
+
+  const tributo=sumRows(issRows,["valorPagoLancado","vlPagoLancado","valorPago","vlPago"]);
+  const correcao=sumRows(issRows,["valorPagoCorrecao","vlPagoCorrecao"]);
+  const juros=sumRows(issRows,["valorPagoJuros","vlPagoJuros"]);
+  const multa=sumRows(issRows,["valorPagoMulta","vlPagoMulta"]);
+  const total=tributo+correcao+juros+multa;
+
+  const monthly=monthSeries(issRows,{
+    datePaths:["pagamento.dataPagamento","dataPagamento","dtPagamento"],
+    valuePaths:["__totalPaid"],
+    periodo:period,
+    exercicio:exercise
+  });
+  const byCredit=groupSum(issRows,["creditoTributario.descricao","creditoTributario.abreviatura"],["__totalPaid"],limit);
+  const byRevenue=groupSum(issRows,["receita.descricao","receita.abreviatura"],["__totalPaid"],limit);
+
+  return {
+    tenant:{id:credential.tenant.id,name:credential.tenant.name},
+    query,
+    status:"resolved",
+    subject:mcpPublicSubjectCandidate(selected),
+    period:{periodo:period,exercicio:exercise},
+    iss:{
+      total,
+      tributo,
+      correcao,
+      juros,
+      multa,
+      pagamentosClassificados:issRows.length,
+      pagamentosVinculados:linked.length
+    },
+    mensal:{labels:monthly.labels||[],valores:monthly.values||[]},
+    porCredito:byCredit.map(([label,value])=>({label,value:Number(value)||0})),
+    porReceita:byRevenue
+      .filter(([label])=>String(label)!=="Não informado")
+      .map(([label,value])=>({label,value:Number(value)||0})),
+    note:linked.length&&!issRows.length
+      ? "Há pagamentos vinculados ao econômico, mas nenhum pôde ser classificado como ISS pelos campos de crédito tributário disponíveis."
+      : "",
+    sourceStatus:{
+      economicsLoaded:Number(economics.loaded||0),
+      paymentsLoaded:Number(payments.loaded||0),
+      economicsComplete:economics.complete===true,
+      paymentsComplete:payments.complete===true
+    }
+  };
+}
+
+function mcpSubjectRowMatches(row,subject) {
+  const subjectId=String(subject&&subject.id||"");
+  const rowId=firstValue(row,[
+    "idPessoa","idPessoas","idContribuinte","pessoa.id","contribuinte.id","responsavel.id"
+  ]);
+  if(subjectId && rowId!==undefined&&rowId!==null&&String(rowId)===subjectId) return true;
+
+  const subjectDigits=String(subject&&subject.documentRaw||"").replace(/\D/g,"");
+  if(subjectDigits.length>=5){
+    const rowDocument=firstValue(row,[
+      "pessoa.cpf","pessoa.cnpj","pessoa.cpfCnpj",
+      "contribuinte.cpf","contribuinte.cnpj","contribuinte.cpfCnpj",
+      "cpf","cnpj","cpfCnpj","documento"
+    ]);
+    const rowDigits=String(rowDocument||"").replace(/\D/g,"");
+    if(rowDigits&&rowDigits===subjectDigits) return true;
+  }
+
+  const subjectName=normalizeMcpLookup(subject&&subject.name||"");
+  const rowName=normalizeMcpLookup(stringValue(row,[
+    "pessoa.nome","pessoa.nomeFantasia","contribuinte.nome","contribuinte.nomeFantasia",
+    "nomeContribuinte","nomePessoa","nome"
+  ],""));
+  return Boolean(subjectName&&rowName&&subjectName===rowName);
+}
+
+async function mcpSubjectFinancialSummary(request,env,credential,args) {
+  mcpRequireViews(credential,["contribuintes","debitos","divida"]);
+  const query=String(args.busca||"").trim();
+  if(query.length<2) throw new Error("MCP_QUERY_REQUIRED");
+
+  const contributors=await safeBethaRows(env,credential.tenant,"bi","contribuintes");
+  const candidates=mcpSubjectCandidatesFromRows(contributors.rows,query,"contribuinte",10);
+  const resolution=mcpSelectResolvedCandidate(candidates,args.contribuinte_id);
+
+  if(resolution.status!=="resolved"){
+    return {
+      tenant:{id:credential.tenant.id,name:credential.tenant.name},
+      query,
+      status:resolution.status,
+      ambiguous:resolution.status==="ambiguous",
+      candidates:resolution.candidates.map(mcpPublicSubjectCandidate),
+      note:resolution.status==="ambiguous"
+        ? "Mais de um contribuinte corresponde à busca. Informe contribuinte_id para consultar dados financeiros."
+        : "Nenhum contribuinte encontrado para a busca informada."
+    };
+  }
+
+  const selected=resolution.selected;
+  const period=String(args.periodo||"todos");
+  const exercise=Number(args.exercicio)||new Date().getFullYear();
+  const [debits,baseDebts,closings]=await Promise.all([
+    safeBethaRows(env,credential.tenant,"bi","debitos"),
+    safeBethaRows(env,credential.tenant,"base","dividas"),
+    safeBethaRows(env,credential.tenant,"base","encerramento-dividas")
+  ]);
+
+  const now=Date.now();
+  const subjectDebits=debits.rows
+    .filter(row=>mcpSubjectRowMatches(row,selected))
+    .filter(row=>periodIncludes(row,{
+      periodo:period,
+      exercicio:exercise,
+      datePaths:["dhDebito"],
+      yearPaths:["ano"]
+    }))
+    .map(row=>{
+      const paid=Boolean(firstValue(row,["dtPgto"]));
+      const status=stringValue(row,["situacao"],"");
+      const open=!paid&&!/cancel|quit|pago|baix/i.test(status);
+      const due=dateValue(row,["dtVcto"]);
+      return {
+        ...row,
+        __paid:paid,
+        __open:open,
+        __overdue:open&&Boolean(due&&due.getTime()<now)
+      };
+    });
+
+  const subjectBaseDebts=baseDebts.rows.filter(row=>mcpSubjectRowMatches(row,selected));
+  const subjectDebtIds=new Set(
+    subjectBaseDebts.map(row=>String(firstValue(row,["id","idDivida"])||"")).filter(Boolean)
+  );
+
+  const closingKey=row=>closingPeriod(row)?.key||0;
+  const allKeys=closings.rows.map(closingKey).filter(Boolean);
+  const latestKey=allKeys.length?Math.max(...allKeys):0;
+  const subjectClosingRows=closings.rows.filter(row=>{
+    if(latestKey&&closingKey(row)!==latestKey) return false;
+    const contributorId=firstValue(row,["idContribuinte","contribuinte.id"]);
+    if(contributorId!==undefined&&contributorId!==null&&String(contributorId)===String(selected.id)) return true;
+    const debtId=String(firstValue(row,["idDivida","divida.id"])||"");
+    return debtId&&subjectDebtIds.has(debtId);
+  });
+
+  const openRows=subjectDebits.filter(row=>row.__open);
+  const overdueRows=subjectDebits.filter(row=>row.__overdue);
+  const paidRows=subjectDebits.filter(row=>row.__paid);
+  const activeBalance=sumRows(subjectClosingRows,["valorSaldo"]);
+  const activeCorrection=sumRows(subjectClosingRows,["valorCorrecao"]);
+  const activeInterest=sumRows(subjectClosingRows,["valorJuros"]);
+  const activePenalty=sumRows(subjectClosingRows,["valorMulta"]);
+
+  return {
+    tenant:{id:credential.tenant.id,name:credential.tenant.name},
+    query,
+    status:"resolved",
+    subject:mcpPublicSubjectCandidate(selected),
+    period:{periodo:period,exercicio:exercise},
+    debitos:{
+      quantidade:subjectDebits.length,
+      lancado:sumRows(subjectDebits,["vlLancado"]),
+      descontos:sumRows(subjectDebits,["vlDesconto"]),
+      abertos:{quantidade:openRows.length,valor:sumRows(openRows,["vlLancado"])},
+      vencidos:{quantidade:overdueRows.length,valor:sumRows(overdueRows,["vlLancado"])},
+      pagos:{quantidade:paidRows.length,valor:sumRows(paidRows,["vlLancado"])}
+    },
+    dividaAtiva:{
+      fechamento:latestKey||null,
+      quantidade:subjectClosingRows.length,
+      saldo:activeBalance,
+      principal:Math.max(0,activeBalance-activeCorrection-activeInterest-activePenalty),
+      correcao:activeCorrection,
+      juros:activeInterest,
+      multa:activePenalty,
+      executadas:countWhere(subjectBaseDebts,row=>truthyValue(row,["executada.valor","executada.descricao","executada"])),
+      protestadas:countWhere(subjectBaseDebts,row=>truthyValue(row,["protestada.valor","protestada.descricao","protestada"])),
+      comCda:countWhere(subjectBaseDebts,row=>truthyValue(row,["possuiCdaEmitida","cdaEmitida"]))
+    },
+    privacy:"Resumo agregado. Não retorna endereço, documento completo nem lançamentos individualizados.",
+    sourceStatus:{
+      contributorsLoaded:Number(contributors.loaded||0),
+      debitsLoaded:Number(debits.loaded||0),
+      activeDebtsLoaded:Number(baseDebts.loaded||0),
+      closingsLoaded:Number(closings.loaded||0),
+      contributorsComplete:contributors.complete===true,
+      debitsComplete:debits.complete===true,
+      activeDebtsComplete:baseDebts.complete===true,
+      closingsComplete:closings.complete===true
+    }
+  };
+}
+
 async function mcpRevenueSummary(request,env,credential,args) {
   mcpRequireViews(credential,["arrecadacao"]);
   const url=mcpDashboardUrl(request,{
@@ -7934,40 +8391,12 @@ async function mcpRevenueSummary(request,env,credential,args) {
 }
 
 async function mcpCompanyIss(request,env,credential,args) {
-  mcpRequireViews(credential,["economicos"]);
-  const empresa=String(args.empresa||"").trim();
-  if(empresa.length<2) throw new Error("MCP_QUERY_REQUIRED");
-
-  const url=mcpDashboardUrl(request,{
-    view:"economicos",
-    periodo:args.periodo||"ano",
-    exercicio:args.exercicio||new Date().getFullYear(),
-    filters:{busca:empresa}
+  return mcpCompanyIssDetail(request,env,credential,{
+    ...args,
+    economico_id:args.economico_id||""
   });
-  const body=await buildEconomicsDashboard(env,credential.tenant,url);
-  const chart=body.charts&&body.charts["iss-arrecadacao"] ? body.charts["iss-arrecadacao"] : null;
-  const matched=Number(body.kpis&&body.kpis.economicos||0);
-
-  return {
-    tenant:body.tenant,
-    query:empresa,
-    period:body.period,
-    matchedEconomics:matched,
-    ambiguous:matched>1,
-    activeEconomics:Number(body.kpis&&body.kpis["ativos-economicos"]||0),
-    activities:Number(body.kpis&&body.kpis.atividades||0),
-    issArrecadado:mcpChartTotal(chart),
-    mensal:chart ? {
-      labels:chart.labels||[],
-      valores:chart.datasets&&chart.datasets[0] ? chart.datasets[0].data||[] : []
-    } : {labels:[],valores:[]},
-    note:matched===0
-      ? "Nenhum econômico encontrado para a busca informada."
-      : matched>1
-        ? "A busca encontrou mais de um econômico; refine o nome para obter um resultado individual."
-        : "Resultado individual encontrado."
-  };
 }
+
 
 function mcpChartRows(chart,limit=12) {
   if(!chart || !Array.isArray(chart.labels) || !Array.isArray(chart.datasets)) return [];
@@ -8315,6 +8744,18 @@ async function executeMcpTool(request,env,credential,name,args={}) {
 
   if (name==="bi_installments_summary") {
     return mcpInstallmentsSummary(request,env,credential,args);
+  }
+
+  if (name==="bi_resolve_subject") {
+    return mcpResolveSubject(env,credential,args);
+  }
+
+  if (name==="bi_company_iss_detail") {
+    return mcpCompanyIssDetail(request,env,credential,args);
+  }
+
+  if (name==="bi_subject_financial_summary") {
+    return mcpSubjectFinancialSummary(request,env,credential,args);
   }
 
   throw new Error("MCP_TOOL_NOT_FOUND");
@@ -9326,6 +9767,98 @@ export default {
       }
     }
 
+
+    if (url.pathname==="/api/mcp/analytics/resolve-subject" && request.method==="GET") {
+      try {
+        const tenant=await resolveTenant(env,getTenantId(request,url));
+        const auth=await authorizeTenant(request,env,tenant);
+        const credential={
+          tenant,
+          allowedViews:permissionViewsForAccess(auth.access).filter(view=>Boolean(dashboardBuilder(view)))
+        };
+        const result=await mcpResolveSubject(env,credential,{
+          busca:url.searchParams.get("busca")||"",
+          tipo:url.searchParams.get("tipo")||"ambos",
+          limite:url.searchParams.get("limite")||8
+        });
+        await writeAuditEvent(env,{
+          tenantId:tenant.id,
+          actor:auditActorLabel(auth.access),
+          category:"mcp",
+          action:"tool.call.sdk",
+          status:"ok",
+          subject:"bi_resolve_subject",
+          meta:{candidateCount:Number(result.count||0)}
+        });
+        return json(request,env,200,result);
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
+    if (url.pathname==="/api/mcp/analytics/company-iss" && request.method==="GET") {
+      try {
+        const tenant=await resolveTenant(env,getTenantId(request,url));
+        const auth=await authorizeTenant(request,env,tenant);
+        requireViewPermission(auth,"economicos");
+        requireViewPermission(auth,"arrecadacao");
+        const credential={
+          tenant,
+          allowedViews:permissionViewsForAccess(auth.access).filter(view=>Boolean(dashboardBuilder(view)))
+        };
+        const result=await mcpCompanyIssDetail(request,env,credential,{
+          busca:url.searchParams.get("busca")||"",
+          economico_id:url.searchParams.get("economico_id")||"",
+          periodo:url.searchParams.get("periodo")||"ano",
+          exercicio:Number(url.searchParams.get("exercicio"))||new Date().getFullYear(),
+          limite:Number(url.searchParams.get("limite"))||8
+        });
+        await writeAuditEvent(env,{
+          tenantId:tenant.id,
+          actor:auditActorLabel(auth.access),
+          category:"mcp",
+          action:"tool.call.sdk",
+          status:"ok",
+          subject:"bi_company_iss_detail",
+          meta:{resolved:result&&result.status==="resolved"}
+        });
+        return json(request,env,200,result);
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
+
+    if (url.pathname==="/api/mcp/analytics/subject-financial" && request.method==="GET") {
+      try {
+        const tenant=await resolveTenant(env,getTenantId(request,url));
+        const auth=await authorizeTenant(request,env,tenant);
+        requireViewPermission(auth,"contribuintes");
+        requireViewPermission(auth,"debitos");
+        requireViewPermission(auth,"divida");
+        const credential={
+          tenant,
+          allowedViews:permissionViewsForAccess(auth.access).filter(view=>Boolean(dashboardBuilder(view)))
+        };
+        const result=await mcpSubjectFinancialSummary(request,env,credential,{
+          busca:url.searchParams.get("busca")||"",
+          contribuinte_id:url.searchParams.get("contribuinte_id")||"",
+          periodo:url.searchParams.get("periodo")||"todos",
+          exercicio:Number(url.searchParams.get("exercicio"))||new Date().getFullYear()
+        });
+        await writeAuditEvent(env,{
+          tenantId:tenant.id,
+          actor:auditActorLabel(auth.access),
+          category:"mcp",
+          action:"tool.call.sdk",
+          status:"ok",
+          subject:"bi_subject_financial_summary",
+          meta:{resolved:result&&result.status==="resolved"}
+        });
+        return json(request,env,200,result);
+      } catch(error) {
+        return errorResponse(request,env,error);
+      }
+    }
 
     if (url.pathname==="/api/mcp/tokens" && request.method==="GET") {
       try {
