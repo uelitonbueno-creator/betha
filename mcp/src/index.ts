@@ -187,6 +187,7 @@ function safeQuery(args: Record<string, unknown>) {
     data_inicial: "dataInicial",
     data_final: "dataFinal",
     exercicio: "exercicio",
+    periodo: "periodo",
     comparar_periodo_anterior: "compararPeriodoAnterior",
   };
   for (const [input, output] of Object.entries(mapping)) {
@@ -194,6 +195,20 @@ function safeQuery(args: Record<string, unknown>) {
     if (value !== undefined && value !== null && value !== "") {
       params.set(output, String(value));
     }
+  }
+
+  const filters = args.filters;
+  if (filters && typeof filters === "object" && !Array.isArray(filters)) {
+    for (const [key, value] of Object.entries(filters as Record<string, unknown>)) {
+      if (value === undefined || value === null || value === "") continue;
+      if (["string", "number", "boolean"].includes(typeof value)) {
+        params.set(key, String(value));
+      }
+    }
+  }
+
+  if (args.carteira !== undefined && args.carteira !== null && args.carteira !== "") {
+    params.set("carteira", String(args.carteira));
   }
   return params;
 }
@@ -315,6 +330,180 @@ function toolError(error: unknown) {
   };
 }
 
+type JsonRecord = Record<string, any>;
+
+const analyticalTools = {
+  bi_revenue_breakdown: {
+    panel: "arrecadacao",
+    permission: "BIArrecadacaoPage",
+    title: "Arrecadação por dimensão",
+    description: "Analisa a arrecadação por receita, crédito tributário, tipo de pagamento, tipo de baixa ou classificação da guia.",
+  },
+  bi_debt_portfolio: {
+    panel: "debitos",
+    permission: "BIDebitosPage",
+    title: "Carteira de débitos",
+    description: "Resume débitos abertos, vencidos ou pagos, com aging, crédito, origem e receita.",
+  },
+  bi_active_debt_summary: {
+    panel: "divida",
+    permission: "BIDividaPage",
+    title: "Resumo da dívida ativa",
+    description: "Resume estoque, composição, situação, aging, crédito, cobrança e recuperação da dívida ativa sem ranking nominal.",
+  },
+  bi_installments_summary: {
+    panel: "parcelamentos",
+    permission: "BIParcelamentosPage",
+    title: "Resumo de parcelamentos",
+    description: "Resume parcelamentos, parcelas vencidas, entradas, situações e recebimentos.",
+  },
+} as const;
+
+function analyticToolDefinition(name: keyof typeof analyticalTools): ToolDefinition {
+  const def = analyticalTools[name];
+  return {
+    name,
+    panel: def.panel,
+    title: def.title,
+    description: def.description,
+    permission: def.permission,
+    upstream: "/api/dashboard/" + def.panel,
+    readOnly: true,
+  };
+}
+
+function record(value: unknown): JsonRecord {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as JsonRecord
+    : {};
+}
+
+function chartRows(chartValue: unknown, limitValue: unknown = 12) {
+  const chart = record(chartValue);
+  const labels = Array.isArray(chart.labels) ? chart.labels : [];
+  const datasets = Array.isArray(chart.datasets) ? chart.datasets.map(record) : [];
+  const limit = Math.max(1, Math.min(20, Number(limitValue) || 12));
+
+  return labels.slice(0, limit).map((label: unknown, index: number) => {
+    const values: Record<string, number | null> = {};
+    for (const dataset of datasets) {
+      const key = String(dataset.label || "Valor");
+      const data = Array.isArray(dataset.data) ? dataset.data : [];
+      const n = Number(data[index]);
+      values[key] = Number.isFinite(n) ? n : null;
+    }
+    const names = Object.keys(values);
+    return names.length === 1
+      ? { label: String(label), value: values[names[0]] }
+      : { label: String(label), values };
+  });
+}
+
+function numeric(recordValue: JsonRecord, key: string) {
+  const value = Number(recordValue[key]);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function revenueBreakdown(bodyValue: unknown, args: Record<string, unknown>) {
+  const body = record(bodyValue);
+  const kpis = record(body.kpis);
+  const charts = record(body.charts);
+  const dimension = String(args.dimensao || "");
+  const map: Record<string, string> = {
+    receita: "arrecadacao-receita",
+    credito: "arrecadacao-credito",
+    tipo_pagamento: "tipo-pagamento",
+    tipo_baixa: "tipo-baixa",
+    classificacao_guia: "guias",
+  };
+  const chartKey = map[dimension];
+  if (!chartKey) throw new Error("MCP_DIMENSION_INVALID");
+
+  const total = numeric(kpis, "total-pago");
+  const groups = chartRows(charts[chartKey], args.limite).map((item: any) => ({
+    ...item,
+    ...(typeof item.value === "number"
+      ? { percentual: total > 0 ? Number(((item.value / total) * 100).toFixed(2)) : 0 }
+      : {}),
+  }));
+
+  return {
+    tenant: body.tenant,
+    period: body.period,
+    filters: body.filters || {},
+    dimensao: dimension,
+    totalArrecadado: total,
+    grupos: groups,
+    calculationBasis: record(body.meta).calculationBasis || null,
+  };
+}
+
+function debtPortfolio(bodyValue: unknown, args: Record<string, unknown>) {
+  const body = record(bodyValue);
+  const kpis = record(body.kpis);
+  const charts = record(body.charts);
+  return {
+    tenant: body.tenant,
+    period: body.period,
+    filters: body.filters || {},
+    carteira: String(args.carteira || "aberto"),
+    totalLancado: numeric(kpis, "vl-lancado"),
+    quantidadeDebitos: numeric(kpis, "qtd-debitos"),
+    vencidos: numeric(kpis, "vencidos"),
+    pagos: numeric(kpis, "pagos"),
+    descontos: numeric(kpis, "descontos-debito"),
+    aging: chartRows(charts["aging-debitos"], args.limite),
+    porCredito: chartRows(charts["debitos-credito"], args.limite),
+    porOrigem: chartRows(charts["origem-cadastro"], args.limite),
+    porReceita: chartRows(charts["debitos-receita"], args.limite),
+  };
+}
+
+function activeDebtSummary(bodyValue: unknown, args: Record<string, unknown>) {
+  const body = record(bodyValue);
+  const kpis = record(body.kpis);
+  const charts = record(body.charts);
+  return {
+    tenant: body.tenant,
+    period: body.period,
+    filters: body.filters || {},
+    saldoAtual: numeric(kpis, "saldo-divida"),
+    valorInscrito: numeric(kpis, "inscrito"),
+    quantidadeDividas: numeric(kpis, "qtd-dividas"),
+    executadas: numeric(kpis, "executadas"),
+    protestadas: numeric(kpis, "protestadas"),
+    comCda: numeric(kpis, "cda"),
+    composicao: chartRows(charts["composicao-divida"], args.limite),
+    situacoes: chartRows(charts["status-divida"], args.limite),
+    aging: chartRows(charts["aging-divida"], args.limite),
+    porCredito: chartRows(charts["divida-credito"], args.limite),
+    cobranca: chartRows(charts.cobranca, args.limite),
+    recuperacaoMensal: chartRows(charts.recuperacao, args.limite),
+    calculationBasis: record(body.meta).calculationBasis || null,
+  };
+}
+
+function installmentsSummary(bodyValue: unknown, args: Record<string, unknown>) {
+  const body = record(bodyValue);
+  const kpis = record(body.kpis);
+  const charts = record(body.charts);
+  return {
+    tenant: body.tenant,
+    period: body.period,
+    filters: body.filters || {},
+    quantidadeParcelamentos: numeric(kpis, "qtd-parcelamentos"),
+    ativos: numeric(kpis, "ativos"),
+    quantidadeParcelas: numeric(kpis, "qtd-parcelas"),
+    parcelasVencidas: numeric(kpis, "parcelas-vencidas"),
+    valorEntradas: numeric(kpis, "entradas"),
+    cancelados: numeric(kpis, "cancelados"),
+    situacoes: chartRows(charts["situacao-parcelamentos"], args.limite),
+    faixaParcelas: chartRows(charts["faixa-parcelas"], args.limite),
+    vencidasPorParcelamento: chartRows(charts["vencidas-parcelamento"], args.limite),
+    recebimentosMensais: chartRows(charts["pagamentos-parcelas"], args.limite),
+  };
+}
+
 function createServer(principal: Principal, env: Env) {
   const server = new McpServer({
     name: "bi-vella-mcp",
@@ -364,6 +553,72 @@ function createServer(principal: Principal, env: Env) {
     );
   }
 
+  const commonAnalyticsSchema = {
+    tenant_id: z.string().trim().min(1).optional(),
+    periodo: z.string().optional(),
+    exercicio: z.number().int().min(2000).max(2100).optional(),
+    limite: z.number().int().min(1).max(20).optional(),
+    filters: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
+  };
+
+  const registerAnalytic = (
+    name: keyof typeof analyticalTools,
+    input: Record<string, z.ZodTypeAny>,
+    transform: (body: unknown, args: Record<string, unknown>) => unknown,
+  ) => {
+    const tool = analyticToolDefinition(name);
+    if (!canUseTool(principal, tool)) return;
+
+    server.registerTool(
+      name,
+      {
+        title: tool.title,
+        description: tool.description,
+        inputSchema: input,
+        securitySchemes: [{ type: "oauth2", scopes: ["bi:read"] }],
+        annotations: {
+          readOnlyHint: true,
+          destructiveHint: false,
+          openWorldHint: false,
+        },
+      },
+      async (args) => {
+        try {
+          const normalized = args as Record<string, unknown>;
+          const result = await callBi(env, principal, tool, normalized);
+          const data = transform(result.body, normalized);
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify({ ok: true, data }) }],
+            structuredContent: { ok: true, data },
+          };
+        } catch (error) {
+          return toolError(error);
+        }
+      },
+    );
+  };
+
+  registerAnalytic(
+    "bi_revenue_breakdown",
+    {
+      ...commonAnalyticsSchema,
+      dimensao: z.enum(["receita", "credito", "tipo_pagamento", "tipo_baixa", "classificacao_guia"]),
+    },
+    revenueBreakdown,
+  );
+
+  registerAnalytic(
+    "bi_debt_portfolio",
+    {
+      ...commonAnalyticsSchema,
+      carteira: z.enum(["aberto", "vencido", "pago"]).optional(),
+    },
+    debtPortfolio,
+  );
+
+  registerAnalytic("bi_active_debt_summary", commonAnalyticsSchema, activeDebtSummary);
+  registerAnalytic("bi_installments_summary", commonAnalyticsSchema, installmentsSummary);
+
   return server;
 }
 
@@ -399,7 +654,7 @@ export default {
         ok: true,
         service: "bi-vella-mcp",
         mode: generatedCatalog.mode,
-        toolCount: generatedCatalog.toolCount,
+        toolCount: generatedCatalog.toolCount + Object.keys(analyticalTools).length,
         missingPermissions: generatedCatalog.missingPermissions,
         authReady: String(env.MCP_AUTH_READY || "").toLowerCase() === "true",
         authServerConfigured: Boolean(authServerBase(env)),
