@@ -36,7 +36,8 @@ type ToolDefinition = {
   panel: string;
   title: string;
   description: string;
-  permission: string;
+  permission?: string;
+  permissions?: readonly string[];
   upstream: string;
   readOnly: true;
 };
@@ -148,13 +149,26 @@ async function introspect(request: Request, env: Env): Promise<Principal> {
   };
 }
 
+function toolPermissions(tool: ToolDefinition) {
+  const list = Array.isArray(tool.permissions) && tool.permissions.length
+    ? tool.permissions.map(String)
+    : (tool.permission ? [String(tool.permission)] : []);
+  return [...new Set(list.filter(Boolean))];
+}
+
 function tenantCanUseTool(tenant: TenantGrant, tool: ToolDefinition) {
-  return Array.isArray(tenant.permissions) && tenant.permissions.includes(tool.permission);
+  const required = toolPermissions(tool);
+  return required.length > 0 &&
+    Array.isArray(tenant.permissions) &&
+    required.every(permission => tenant.permissions!.includes(permission));
 }
 
 function canUseTool(principal: Principal, tool: ToolDefinition) {
   if (!principal.scopes.includes("bi:read")) return false;
-  if (principal.permissions.includes("*") || principal.permissions.includes(tool.permission)) return true;
+  const required = toolPermissions(tool);
+  if (!required.length) return false;
+  if (principal.permissions.includes("*")) return true;
+  if (required.every(permission => principal.permissions.includes(permission))) return true;
   return principal.tenants.some(tenant => tenantCanUseTool(tenant, tool));
 }
 
@@ -189,6 +203,11 @@ function safeQuery(args: Record<string, unknown>) {
     exercicio: "exercicio",
     periodo: "periodo",
     comparar_periodo_anterior: "compararPeriodoAnterior",
+    busca: "busca",
+    tipo: "tipo",
+    limite: "limite",
+    economico_id: "economico_id",
+    contribuinte_id: "contribuinte_id",
   };
   for (const [input, output] of Object.entries(mapping)) {
     const value = args[input];
@@ -252,6 +271,21 @@ async function audit(
   }
 }
 
+function safeAuditArgs(args: Record<string, unknown>) {
+  const out: Record<string, unknown> = {};
+  for (const key of ["periodo", "exercicio", "dimensao", "carteira", "limite", "comparar_periodo_anterior"]) {
+    const value = args[key];
+    if (["string", "number", "boolean"].includes(typeof value)) out[key] = value;
+  }
+  if (args.filters && typeof args.filters === "object" && !Array.isArray(args.filters)) {
+    out.filterKeys = Object.keys(args.filters as Record<string, unknown>).slice(0, 20);
+  }
+  if (args.busca !== undefined || args.empresa !== undefined) out.subjectLookup = true;
+  if (args.economico_id !== undefined) out.economicIdProvided = true;
+  if (args.contribuinte_id !== undefined) out.contributorIdProvided = true;
+  return out;
+}
+
 async function callBi(
   env: Env,
   principal: Principal,
@@ -260,8 +294,9 @@ async function callBi(
 ) {
   if (!canUseTool(principal, tool)) throw new Error("MCP_TOOL_ACCESS_DENIED");
   const tenant = resolveTenant(principal, args.tenant_id ? String(args.tenant_id) : undefined);
+  const requiredPermissions = toolPermissions(tool);
   if (!principal.permissions.includes("*") &&
-      !principal.permissions.includes(tool.permission) &&
+      !requiredPermissions.every(permission => principal.permissions.includes(permission)) &&
       !tenantCanUseTool(tenant, tool)) {
     throw new Error("MCP_TOOL_ACCESS_DENIED");
   }
@@ -297,9 +332,6 @@ async function callBi(
     ok = true;
     return { tenant, body };
   } finally {
-    const filters = Object.fromEntries(
-      Object.entries(args).filter(([key]) => key !== "tenant_id")
-    );
     await audit(env, {
       subject: principal.subject,
       clientId: principal.clientId,
@@ -309,7 +341,7 @@ async function callBi(
       ok,
       durationMs: Date.now() - started,
       error: failure || undefined,
-      filters,
+      filters: safeAuditArgs(args),
     });
   }
 }
@@ -357,17 +389,48 @@ const analyticalTools = {
     title: "Resumo de parcelamentos",
     description: "Resume parcelamentos, parcelas vencidas, entradas, situações e recebimentos.",
   },
+  bi_resolve_subject: {
+    panel: "contribuintes",
+    permission: "BIContribuintesPage",
+    permissions: ["BIContribuintesPage", "BIEconomicosPage"],
+    upstream: "/api/mcp/analytics/resolve-subject",
+    title: "Resolver contribuinte ou econômico",
+    description: "Resolve nome ou documento em candidatos seguros, com IDs estáveis e documento mascarado para desambiguação.",
+  },
+  bi_company_iss_detail: {
+    panel: "arrecadacao",
+    permission: "BIArrecadacaoPage",
+    permissions: ["BIArrecadacaoPage", "BIEconomicosPage"],
+    upstream: "/api/mcp/analytics/company-iss",
+    title: "ISS por empresa",
+    description: "Consulta ISS de um econômico específico, com desambiguação, total, evolução mensal e composição por crédito/receita.",
+  },
+  bi_subject_financial_summary: {
+    panel: "debitos",
+    permission: "BIDebitosPage",
+    permissions: ["BIContribuintesPage", "BIDebitosPage", "BIDividaPage"],
+    upstream: "/api/mcp/analytics/subject-financial",
+    title: "Resumo financeiro do contribuinte",
+    description: "Resume débitos e dívida ativa de um contribuinte específico sem expor documento completo, endereço ou lançamentos individualizados.",
+  },
 } as const;
 
 function analyticToolDefinition(name: keyof typeof analyticalTools): ToolDefinition {
   const def = analyticalTools[name];
+  const permissions = "permissions" in def && Array.isArray(def.permissions)
+    ? [...def.permissions]
+    : [def.permission];
+  const upstream = "upstream" in def
+    ? String(def.upstream)
+    : "/api/dashboard/" + def.panel;
   return {
     name,
     panel: def.panel,
     title: def.title,
     description: def.description,
     permission: def.permission,
-    upstream: "/api/dashboard/" + def.panel,
+    permissions,
+    upstream,
     readOnly: true,
   };
 }
@@ -504,6 +567,10 @@ function installmentsSummary(bodyValue: unknown, args: Record<string, unknown>) 
   };
 }
 
+function identityResult(bodyValue: unknown) {
+  return bodyValue;
+}
+
 function createServer(principal: Principal, env: Env) {
   const server = new McpServer({
     name: "bi-vella-mcp",
@@ -511,7 +578,7 @@ function createServer(principal: Principal, env: Env) {
   });
 
   for (const tool of generatedCatalog.tools) {
-    if (!tool.permission || !tool.readOnly || !canUseTool(principal, tool)) continue;
+    if (!tool.readOnly || !toolPermissions(tool).length || !canUseTool(principal, tool)) continue;
 
     server.registerTool(
       tool.name,
@@ -618,6 +685,42 @@ function createServer(principal: Principal, env: Env) {
 
   registerAnalytic("bi_active_debt_summary", commonAnalyticsSchema, activeDebtSummary);
   registerAnalytic("bi_installments_summary", commonAnalyticsSchema, installmentsSummary);
+
+  registerAnalytic(
+    "bi_resolve_subject",
+    {
+      tenant_id: z.string().trim().min(1).optional(),
+      busca: z.string().trim().min(2).max(120),
+      tipo: z.enum(["ambos", "contribuinte", "economico"]).optional(),
+      limite: z.number().int().min(1).max(10).optional(),
+    },
+    identityResult,
+  );
+
+  registerAnalytic(
+    "bi_company_iss_detail",
+    {
+      tenant_id: z.string().trim().min(1).optional(),
+      busca: z.string().trim().min(2).max(120),
+      economico_id: z.string().trim().min(1).max(80).optional(),
+      periodo: z.string().optional(),
+      exercicio: z.number().int().min(2000).max(2100).optional(),
+      limite: z.number().int().min(1).max(12).optional(),
+    },
+    identityResult,
+  );
+
+  registerAnalytic(
+    "bi_subject_financial_summary",
+    {
+      tenant_id: z.string().trim().min(1).optional(),
+      busca: z.string().trim().min(2).max(120),
+      contribuinte_id: z.string().trim().min(1).max(80).optional(),
+      periodo: z.string().optional(),
+      exercicio: z.number().int().min(2000).max(2100).optional(),
+    },
+    identityResult,
+  );
 
   return server;
 }
