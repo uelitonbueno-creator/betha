@@ -81,7 +81,15 @@ Além dos painéis, o MCP publica 4 ferramentas analíticas de alto nível:
 - `bi_active_debt_summary`: estoque e recuperação da dívida ativa sem ranking nominal de devedores;
 - `bi_installments_summary`: parcelamentos, parcelas vencidas, entradas e recebimentos.
 
-No Worker SDK v2 o total esperado passa a ser 23 ferramentas.
+No Worker SDK v2 o total esperado passa a ser 29 ferramentas.
+
+A primeira expansão multi-sistema adiciona três painéis genéricos e três ferramentas executivas:
+
+- `get_contabil_visao_geral` + `bi_accounting_execution`: receita prevista/arrecadada, empenhado, liquidado, pago, resultado e restos a pagar;
+- `get_compras_visao_geral` + `bi_procurement_summary`: processos, valores estimados/homologados, economia, contratos ativos e fornecedores;
+- `get_folha_visao_geral` + `bi_payroll_summary`: servidores, bruto, líquido, descontos, encargos e custos agregados.
+
+**Importante:** Contabilidade, Compras e Folha ainda usam `data/samples/*-100.json`, dados sintéticos/determinísticos. Toda resposta MCP desses módulos informa `dataMode: "sample"` e um aviso explícito para impedir interpretação como dado real da prefeitura.
 
 A camada de consultas por sujeito adiciona:
 
