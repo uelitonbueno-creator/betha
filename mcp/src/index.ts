@@ -54,7 +54,9 @@ const inputSchema = {
   data_inicial: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   data_final: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   exercicio: z.number().int().min(1900).max(2200).optional(),
+  periodo: z.string().optional(),
   comparar_periodo_anterior: z.boolean().optional(),
+  filters: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
 };
 
 function json(status: number, body: unknown, headers: Record<string, string> = {}) {
@@ -413,6 +415,24 @@ const analyticalTools = {
     title: "Resumo financeiro do contribuinte",
     description: "Resume débitos e dívida ativa de um contribuinte específico sem expor documento completo, endereço ou lançamentos individualizados.",
   },
+  bi_accounting_execution: {
+    panel: "contabil-visao-geral",
+    permission: "BIContabilVisaoGeralPage",
+    title: "Execução contábil executiva",
+    description: "Resumo executivo da Contabilidade com receita, despesa, resultado e restos a pagar. Atualmente usa amostra local sintética de 100 registros.",
+  },
+  bi_procurement_summary: {
+    panel: "compras-visao-geral",
+    permission: "BIComprasVisaoGeralPage",
+    title: "Resumo executivo de compras",
+    description: "Resumo de processos, valores, economia, contratos ativos e fornecedores. Atualmente usa amostra local sintética de 100 registros.",
+  },
+  bi_payroll_summary: {
+    panel: "folha-visao-geral",
+    permission: "BIFolhaVisaoGeralPage",
+    title: "Resumo executivo da folha",
+    description: "Resumo agregado de servidores, bruto, líquido, descontos e encargos, sem nomes individuais. Atualmente usa amostra local sintética de 100 registros.",
+  },
 } as const;
 
 function analyticToolDefinition(name: keyof typeof analyticalTools): ToolDefinition {
@@ -564,6 +584,83 @@ function installmentsSummary(bodyValue: unknown, args: Record<string, unknown>) 
     faixaParcelas: chartRows(charts["faixa-parcelas"], args.limite),
     vencidasPorParcelamento: chartRows(charts["vencidas-parcelamento"], args.limite),
     recebimentosMensais: chartRows(charts["pagamentos-parcelas"], args.limite),
+  };
+}
+
+function sampleWarning(body: JsonRecord) {
+  return String(record(body.meta).warning || "AMOSTRA LOCAL SINTÉTICA – 100 registros. Não representa dados reais da prefeitura.");
+}
+
+function accountingExecution(bodyValue: unknown) {
+  const body=record(bodyValue);
+  const kpis=record(body.kpis);
+  const charts=record(body.charts);
+  return {
+    tenant:body.tenant,
+    period:body.period,
+    filters:body.filters||{},
+    dataMode:"sample",
+    warning:sampleWarning(body),
+    receitaPrevista:numeric(kpis,"receita-prevista"),
+    receitaArrecadada:numeric(kpis,"receita-arrecadada"),
+    despesaEmpenhada:numeric(kpis,"despesa-empenhada"),
+    despesaLiquidada:numeric(kpis,"despesa-liquidada"),
+    despesaPaga:numeric(kpis,"despesa-paga"),
+    resultado:numeric(kpis,"resultado"),
+    restosAPagar:numeric(kpis,"restos-pagar"),
+    credores:numeric(kpis,"credores"),
+    execucaoMensal:chartRows(charts["execucao-mensal"],12),
+    despesaPorUnidade:chartRows(charts["despesa-unidade"],10),
+    despesaPorNatureza:chartRows(charts["despesa-natureza"],10),
+  };
+}
+
+function procurementSummary(bodyValue: unknown) {
+  const body=record(bodyValue);
+  const kpis=record(body.kpis);
+  const charts=record(body.charts);
+  return {
+    tenant:body.tenant,
+    period:body.period,
+    filters:body.filters||{},
+    dataMode:"sample",
+    warning:sampleWarning(body),
+    processos:numeric(kpis,"processos"),
+    valorEstimado:numeric(kpis,"estimado"),
+    valorHomologado:numeric(kpis,"homologado"),
+    economia:numeric(kpis,"economia"),
+    contratosAtivos:numeric(kpis,"contratos-ativos"),
+    fornecedores:numeric(kpis,"fornecedores"),
+    evolucaoMensal:chartRows(charts["compras-mensal"],12),
+    porSecretaria:chartRows(charts["compras-secretaria"],10),
+    porModalidade:chartRows(charts["compras-modalidade"],10),
+    porFornecedor:chartRows(charts["compras-fornecedor"],10),
+  };
+}
+
+function payrollSummary(bodyValue: unknown) {
+  const body=record(bodyValue);
+  const kpis=record(body.kpis);
+  const charts=record(body.charts);
+  return {
+    tenant:body.tenant,
+    period:body.period,
+    filters:body.filters||{},
+    dataMode:"sample",
+    warning:sampleWarning(body),
+    servidores:numeric(kpis,"servidores"),
+    bruto:numeric(kpis,"bruto"),
+    liquido:numeric(kpis,"liquido"),
+    descontos:numeric(kpis,"descontos"),
+    encargos:numeric(kpis,"encargos"),
+    ativos:numeric(kpis,"ativos"),
+    afastados:numeric(kpis,"afastados"),
+    evolucaoMensal:chartRows(charts["folha-mensal"],12),
+    custoPorSecretaria:chartRows(charts["folha-secretaria"],10),
+    servidoresPorVinculo:chartRows(charts["folha-vinculo"],10),
+    servidoresPorSituacao:chartRows(charts["folha-status"],10),
+    custoPorCargo:chartRows(charts["folha-cargo"],10),
+    privacy:"Resumo agregado; nomes de servidores não são retornados.",
   };
 }
 
@@ -721,6 +818,10 @@ function createServer(principal: Principal, env: Env) {
     },
     identityResult,
   );
+
+  registerAnalytic("bi_accounting_execution", commonAnalyticsSchema, accountingExecution);
+  registerAnalytic("bi_procurement_summary", commonAnalyticsSchema, procurementSummary);
+  registerAnalytic("bi_payroll_summary", commonAnalyticsSchema, payrollSummary);
 
   return server;
 }

@@ -44,7 +44,10 @@ const labelMap = {
   "receitas-creditos":"Receitas e créditos",
   guias:"Guias e documentos",
   indexadores:"Indexadores",
-  territorio:"Território cadastral"
+  territorio:"Território cadastral",
+  "contabil-visao-geral":"Contabilidade · Visão geral",
+  "compras-visao-geral":"Compras · Visão geral",
+  "folha-visao-geral":"Folha · Visão geral"
 };
 
 const toolName = (panelId) => "get_" + panelId
@@ -73,6 +76,12 @@ const tools = [...new Set(panelIds)].sort().map(panelId => ({
       data_inicial: { type: "string", description: "Data inicial no formato YYYY-MM-DD." },
       data_final: { type: "string", description: "Data final no formato YYYY-MM-DD." },
       exercicio: { type: "integer", minimum: 1900, maximum: 2200 },
+      periodo: { type: "string", description: "Período lógico do painel, por exemplo ano ou todos." },
+      filters: {
+        type: "object",
+        description: "Filtros simples autorizados pelo painel.",
+        additionalProperties: { type: ["string","number","boolean"] }
+      },
       comparar_periodo_anterior: { type: "boolean", default: false }
     }
   }

@@ -16,6 +16,7 @@ on:
       - "scripts/check-mcp-audit-persistence.mjs"
       - "scripts/check-mcp-analytics.mjs"
       - "scripts/check-mcp-subject-analytics.mjs"
+      - "scripts/check-mcp-multisystem.mjs"
       - "scripts/check-mcp-tenant-isolation.mjs"
       - "mcp/**"
       - ".github/workflows/mcp-production-watch.yml"
@@ -31,6 +32,7 @@ on:
       - "scripts/check-mcp-audit-persistence.mjs"
       - "scripts/check-mcp-analytics.mjs"
       - "scripts/check-mcp-subject-analytics.mjs"
+      - "scripts/check-mcp-multisystem.mjs"
       - "scripts/check-mcp-tenant-isolation.mjs"
       - "mcp/**"
       - ".github/workflows/mcp-production-watch.yml"
@@ -80,6 +82,9 @@ jobs:
 
       - name: Validate MCP subject analytics
         run: node scripts/check-mcp-subject-analytics.mjs
+
+      - name: Validate MCP multi-system executive tools
+        run: node scripts/check-mcp-multisystem.mjs
 
       - name: Install MCP Worker dependencies
         run: npm install --prefix mcp --ignore-scripts --no-audit --no-fund

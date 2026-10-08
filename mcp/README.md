@@ -42,10 +42,12 @@ Concluído:
 3. auditoria persistente;
 4. guard automático tenant A × tenant B;
 5. ferramentas analíticas especializadas em paridade com o endpoint de produção;
-6. resolução segura de contribuinte/econômico com desambiguação e documentos mascarados.
+6. resolução segura de contribuinte/econômico com desambiguação e documentos mascarados;
+7. visão executiva MCP de Contabilidade, Compras e Folha usando as amostras locais sintéticas de 100 registros.
 
 Pendente antes do cutover definitivo para o Worker SDK v2:
 
 1. MCP Inspector;
 2. credenciais de deploy Cloudflare do Worker isolado;
-3. validação de `get_arrecadacao`, `get_imobiliario` e das ferramentas analíticas com dados reais.
+3. validação de `get_arrecadacao`, `get_imobiliario` e das ferramentas analíticas com dados reais;
+4. substituição das amostras sintéticas de Contabilidade, Compras e Folha pelas APIs reais antes de tratar esses três módulos como produção.

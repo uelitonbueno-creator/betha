@@ -262,6 +262,42 @@ const BI_PAGE_MAPPING = [
         "accessControll": []
       },
       {
+        "id": "BIContabilVisaoGeralPage",
+        "description": "Contabilidade · Visão geral",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/contabil-visao-geral",
+            "methods": ["GET"]
+          }
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BIComprasVisaoGeralPage",
+        "description": "Compras · Visão geral",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/compras-visao-geral",
+            "methods": ["GET"]
+          }
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BIFolhaVisaoGeralPage",
+        "description": "Folha · Visão geral",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/folha-visao-geral",
+            "methods": ["GET"]
+          }
+        ],
+        "accessControll": []
+      },
+      {
         "id": "BIUsuariosPage",
         "description": "Usuários e acessos",
         "resources": [
@@ -395,6 +431,21 @@ const BI_PAGE_MAPPING = [
         "constraints": [
           "BIQualidadePage"
         ]
+      },
+      {
+        "id": "contabilidade",
+        "description": "Contabilidade",
+        "constraints": ["BIContabilVisaoGeralPage"]
+      },
+      {
+        "id": "compras",
+        "description": "Compras",
+        "constraints": ["BIComprasVisaoGeralPage"]
+      },
+      {
+        "id": "folha",
+        "description": "Folha de pagamento",
+        "constraints": ["BIFolhaVisaoGeralPage"]
       },
       {
         "id": "administracao",
@@ -6115,6 +6166,269 @@ async function buildDetailPage(env,tenant,resource,url,options={}) {
 }
 
 
+
+const MULTISYSTEM_SAMPLE_FILES=Object.freeze({
+  contabil:"contabil-100.json",
+  compras:"compras-100.json",
+  folha:"folha-100.json"
+});
+const MULTISYSTEM_SAMPLE_CACHE=new Map();
+
+async function loadMultiSystemSample(system) {
+  const key=String(system||"");
+  const file=MULTISYSTEM_SAMPLE_FILES[key];
+  if(!file) throw new Error("MULTISYSTEM_SAMPLE_NOT_FOUND");
+
+  const cached=MULTISYSTEM_SAMPLE_CACHE.get(key);
+  if(cached&&cached.expiresAt>Date.now()) return cached;
+
+  const sourceUrl=FRONT_SOURCE_BASE+"/data/samples/"+file;
+  const response=await fetch(sourceUrl,{
+    headers:{"Accept":"application/json"},
+    cf:{cacheTtl:300,cacheEverything:true}
+  });
+  if(!response.ok) throw new Error("MULTISYSTEM_SAMPLE_HTTP_"+response.status);
+  const body=await response.json();
+  if(!Array.isArray(body)) throw new Error("MULTISYSTEM_SAMPLE_INVALID");
+
+  const rows=body.slice(0,100);
+  const value={rows,sourceUrl,expiresAt:Date.now()+5*60*1000};
+  MULTISYSTEM_SAMPLE_CACHE.set(key,value);
+  return value;
+}
+
+function sampleNumber(row,field) {
+  const value=Number(row&&row[field]);
+  return Number.isFinite(value)?value:0;
+}
+
+function sampleSum(rows,field) {
+  return (rows||[]).reduce((sum,row)=>sum+sampleNumber(row,field),0);
+}
+
+function sampleDistinct(rows,field) {
+  return new Set((rows||[]).map(row=>String(row&&row[field]??"").trim()).filter(Boolean)).size;
+}
+
+function sampleFilterRows(rows,url,filterFields=[]) {
+  const periodo=String(url.searchParams.get("periodo")||"ano");
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  let out=(rows||[]).filter(row=>{
+    if(periodo==="todos") return true;
+    const mes=String(row&&row.mes||row&&row.competencia||row&&row.data||"");
+    return !Number.isFinite(exercicio) || !mes || mes.startsWith(String(exercicio));
+  });
+
+  for(const field of filterFields){
+    const selected=dashboardFilterValue(url,field);
+    if(!selected) continue;
+    const expected=String(selected).localeCompare("true","pt-BR",{sensitivity:"base"})===0
+      ? "true"
+      : String(selected).localeCompare("false","pt-BR",{sensitivity:"base"})===0
+        ? "false"
+        : String(selected);
+    out=out.filter(row=>String(row&&row[field]??"").localeCompare(expected,"pt-BR",{sensitivity:"base"})===0);
+  }
+  return out;
+}
+
+function sampleGroup(rows,groupField,valueField,{agg="sum",distinctField="",limit=12}={}) {
+  const map=new Map();
+  for(const row of rows||[]){
+    const label=String(row&&row[groupField]??"Não informado").trim()||"Não informado";
+    if(!map.has(label)) map.set(label,agg==="distinct"?new Set():0);
+    if(agg==="count"){
+      map.set(label,Number(map.get(label)||0)+1);
+    }else if(agg==="distinct"){
+      const set=map.get(label);
+      const value=String(row&&row[distinctField]??"").trim();
+      if(value) set.add(value);
+    }else{
+      map.set(label,Number(map.get(label)||0)+sampleNumber(row,valueField));
+    }
+  }
+  const entries=[...map.entries()].map(([label,value])=>[
+    label,
+    agg==="distinct" ? value.size : Number(value)||0
+  ]);
+  entries.sort((a,b)=>b[1]-a[1]||String(a[0]).localeCompare(String(b[0]),"pt-BR",{sensitivity:"base"}));
+  return entries.slice(0,Math.max(1,Math.min(20,Number(limit)||12)));
+}
+
+function sampleMonthlyChart(rows,fields) {
+  const map=new Map();
+  for(const row of rows||[]){
+    const month=String(row&&row.mes||row&&row.competencia||row&&row.data||"").slice(0,7);
+    if(!month) continue;
+    if(!map.has(month)) map.set(month,Object.fromEntries(fields.map(field=>[field.field,0])));
+    const bucket=map.get(month);
+    for(const field of fields) bucket[field.field]+=sampleNumber(row,field.field);
+  }
+  const labels=[...map.keys()].sort();
+  return {
+    format:"currency",
+    labels,
+    datasets:fields.map(field=>({
+      label:field.label,
+      data:labels.map(label=>Number(map.get(label)[field.field]||0))
+    }))
+  };
+}
+
+function sampleGroupChart(rows,groupField,valueField,label,format="currency",options={}) {
+  const entries=sampleGroup(rows,groupField,valueField,options);
+  return {
+    format,
+    labels:entries.map(([name])=>name),
+    datasets:[{label,data:entries.map(([,value])=>value)}]
+  };
+}
+
+function multiSystemSampleMeta(system,sample,rows) {
+  return {
+    dataMode:"sample",
+    sample:true,
+    sampleSystem:system,
+    sampleSize:Array.isArray(sample&&sample.rows)?sample.rows.length:0,
+    filteredRows:Array.isArray(rows)?rows.length:0,
+    source:sample&&sample.sourceUrl?sample.sourceUrl:"",
+    warning:"AMOSTRA LOCAL SINTÉTICA – 100 registros. Não representa dados reais da prefeitura."
+  };
+}
+
+async function buildAccountingSampleDashboard(env,tenant,url) {
+  const sample=await loadMultiSystemSample("contabil");
+  const periodo=url.searchParams.get("periodo")||"ano";
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const rows=sampleFilterRows(sample.rows,url,["unidade","status","fonteRecurso","credor"]);
+  const filters=activeFilterObject({
+    unidade:dashboardFilterValue(url,"unidade"),
+    status:dashboardFilterValue(url,"status"),
+    fonteRecurso:dashboardFilterValue(url,"fonteRecurso"),
+    credor:dashboardFilterValue(url,"credor")
+  });
+
+  const empenhado=sampleSum(rows,"valorEmpenhado");
+  const liquidado=sampleSum(rows,"valorLiquidado");
+  const pago=sampleSum(rows,"valorPago");
+  const receitaPrevista=sampleSum(rows,"receitaPrevista");
+  const receitaArrecadada=sampleSum(rows,"receitaArrecadada");
+
+  return {
+    view:"contabil-visao-geral",
+    tenant:{id:tenant.id,name:tenant.name},
+    period:{periodo,exercicio},
+    filters,
+    kpis:{
+      "receita-prevista":receitaPrevista,
+      "receita-arrecadada":receitaArrecadada,
+      "despesa-empenhada":empenhado,
+      "despesa-liquidada":liquidado,
+      "despesa-paga":pago,
+      resultado:receitaArrecadada-pago,
+      "restos-pagar":sampleSum(rows,"restosPagar"),
+      credores:sampleDistinct(rows,"credor")
+    },
+    charts:{
+      "execucao-mensal":sampleMonthlyChart(rows,[
+        {field:"valorEmpenhado",label:"Empenhado"},
+        {field:"valorLiquidado",label:"Liquidado"},
+        {field:"valorPago",label:"Pago"}
+      ]),
+      "receita-mensal":sampleMonthlyChart(rows,[
+        {field:"receitaPrevista",label:"Prevista"},
+        {field:"receitaArrecadada",label:"Arrecadada"}
+      ]),
+      "despesa-unidade":sampleGroupChart(rows,"unidade","valorEmpenhado","Empenhado"),
+      "despesa-natureza":sampleGroupChart(rows,"natureza","valorEmpenhado","Empenhado"),
+      "credor-pago":sampleGroupChart(rows,"credor","valorPago","Pago")
+    },
+    meta:multiSystemSampleMeta("contabil",sample,rows)
+  };
+}
+
+async function buildProcurementSampleDashboard(env,tenant,url) {
+  const sample=await loadMultiSystemSample("compras");
+  const periodo=url.searchParams.get("periodo")||"ano";
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const rows=sampleFilterRows(sample.rows,url,["secretaria","modalidade","status","fornecedor"]);
+  const filters=activeFilterObject({
+    secretaria:dashboardFilterValue(url,"secretaria"),
+    modalidade:dashboardFilterValue(url,"modalidade"),
+    status:dashboardFilterValue(url,"status"),
+    fornecedor:dashboardFilterValue(url,"fornecedor")
+  });
+
+  return {
+    view:"compras-visao-geral",
+    tenant:{id:tenant.id,name:tenant.name},
+    period:{periodo,exercicio},
+    filters,
+    kpis:{
+      processos:rows.length,
+      estimado:sampleSum(rows,"valorEstimado"),
+      homologado:sampleSum(rows,"valorHomologado"),
+      economia:sampleSum(rows,"economia"),
+      fornecedores:sampleDistinct(rows,"fornecedor"),
+      "contratos-ativos":rows.filter(row=>row&&row.contratoAtivo===true).length
+    },
+    charts:{
+      "compras-mensal":sampleMonthlyChart(rows,[
+        {field:"valorEstimado",label:"Estimado"},
+        {field:"valorHomologado",label:"Homologado"}
+      ]),
+      "compras-secretaria":sampleGroupChart(rows,"secretaria","valorHomologado","Homologado"),
+      "compras-modalidade":sampleGroupChart(rows,"modalidade","", "Processos","number",{agg:"count"}),
+      "compras-fornecedor":sampleGroupChart(rows,"fornecedor","valorHomologado","Homologado")
+    },
+    meta:multiSystemSampleMeta("compras",sample,rows)
+  };
+}
+
+async function buildPayrollSampleDashboard(env,tenant,url) {
+  const sample=await loadMultiSystemSample("folha");
+  const periodo=url.searchParams.get("periodo")||"ano";
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const rows=sampleFilterRows(sample.rows,url,["secretaria","vinculo","status","cargo"]);
+  const filters=activeFilterObject({
+    secretaria:dashboardFilterValue(url,"secretaria"),
+    vinculo:dashboardFilterValue(url,"vinculo"),
+    status:dashboardFilterValue(url,"status"),
+    cargo:dashboardFilterValue(url,"cargo")
+  });
+
+  const activeIds=new Set(rows.filter(row=>String(row&&row.status||"").toLocaleLowerCase("pt-BR")==="ativo").map(row=>String(row.servidorId||"")).filter(Boolean));
+  const awayIds=new Set(rows.filter(row=>/afast/i.test(String(row&&row.status||""))).map(row=>String(row.servidorId||"")).filter(Boolean));
+
+  return {
+    view:"folha-visao-geral",
+    tenant:{id:tenant.id,name:tenant.name},
+    period:{periodo,exercicio},
+    filters,
+    kpis:{
+      servidores:sampleDistinct(rows,"servidorId"),
+      bruto:sampleSum(rows,"bruto"),
+      liquido:sampleSum(rows,"liquido"),
+      descontos:sampleSum(rows,"descontos"),
+      encargos:sampleSum(rows,"encargos"),
+      ativos:activeIds.size,
+      afastados:awayIds.size
+    },
+    charts:{
+      "folha-mensal":sampleMonthlyChart(rows,[
+        {field:"bruto",label:"Bruto"},
+        {field:"liquido",label:"Líquido"},
+        {field:"encargos",label:"Encargos"}
+      ]),
+      "folha-secretaria":sampleGroupChart(rows,"secretaria","bruto","Bruto"),
+      "folha-vinculo":sampleGroupChart(rows,"vinculo","", "Servidores","number",{agg:"distinct",distinctField:"servidorId"}),
+      "folha-status":sampleGroupChart(rows,"status","", "Servidores","number",{agg:"distinct",distinctField:"servidorId"}),
+      "folha-cargo":sampleGroupChart(rows,"cargo","bruto","Bruto")
+    },
+    meta:multiSystemSampleMeta("folha",sample,rows)
+  };
+}
+
 const MCP_VIEW_LABELS = Object.freeze({
   "visao-geral":"Visão geral",
   arrecadacao:"Arrecadação",
@@ -6131,7 +6445,10 @@ const MCP_VIEW_LABELS = Object.freeze({
   "receitas-creditos":"Receitas e créditos",
   guias:"Guias e documentos",
   indexadores:"Indexadores",
-  territorio:"Território cadastral"
+  territorio:"Território cadastral",
+  "contabil-visao-geral":"Contabilidade · Visão geral",
+  "compras-visao-geral":"Compras · Visão geral",
+  "folha-visao-geral":"Folha · Visão geral"
 });
 
 const BI_VIEW_LABELS = Object.freeze({
@@ -6237,7 +6554,10 @@ function dashboardBuilder(view) {
     "receitas-creditos":buildRevenueCodesDashboard,
     guias:buildGuidesDashboard,
     indexadores:buildIndexersDashboard,
-    territorio:buildTerritoryDashboard
+    territorio:buildTerritoryDashboard,
+    "contabil-visao-geral":buildAccountingSampleDashboard,
+    "compras-visao-geral":buildProcurementSampleDashboard,
+    "folha-visao-geral":buildPayrollSampleDashboard
   };
   return builders[String(view||"")] || null;
 }
@@ -7866,6 +8186,54 @@ function mcpToolDefinitions(credential) {
     });
   }
 
+  if (credential.allowedViews.includes("contabil-visao-geral")) {
+    tools.push({
+      name:"bi_accounting_execution",
+      description:"Resumo executivo da Contabilidade com receita prevista/arrecadada, despesa empenhada/liquidada/paga, resultado, restos a pagar e distribuições. Atualmente usa AMOSTRA LOCAL SINTÉTICA de 100 registros.",
+      inputSchema:{
+        type:"object",
+        properties:{
+          periodo:{type:"string"},
+          exercicio:{type:"integer",minimum:2000,maximum:2100},
+          filters:{type:"object",additionalProperties:{type:["string","number","boolean"]}}
+        },
+        additionalProperties:false
+      }
+    });
+  }
+
+  if (credential.allowedViews.includes("compras-visao-geral")) {
+    tools.push({
+      name:"bi_procurement_summary",
+      description:"Resumo executivo de Compras com processos, valores estimados/homologados, economia, contratos ativos, fornecedores e distribuições. Atualmente usa AMOSTRA LOCAL SINTÉTICA de 100 registros.",
+      inputSchema:{
+        type:"object",
+        properties:{
+          periodo:{type:"string"},
+          exercicio:{type:"integer",minimum:2000,maximum:2100},
+          filters:{type:"object",additionalProperties:{type:["string","number","boolean"]}}
+        },
+        additionalProperties:false
+      }
+    });
+  }
+
+  if (credential.allowedViews.includes("folha-visao-geral")) {
+    tools.push({
+      name:"bi_payroll_summary",
+      description:"Resumo executivo da Folha com servidores, bruto, líquido, descontos, encargos e custo agregado por secretaria/vínculo/status/cargo. Não expõe nomes de servidores. Atualmente usa AMOSTRA LOCAL SINTÉTICA de 100 registros.",
+      inputSchema:{
+        type:"object",
+        properties:{
+          periodo:{type:"string"},
+          exercicio:{type:"integer",minimum:2000,maximum:2100},
+          filters:{type:"object",additionalProperties:{type:["string","number","boolean"]}}
+        },
+        additionalProperties:false
+      }
+    });
+  }
+
   return tools.map(mcpToolSecurity);
 }
 
@@ -8662,6 +9030,100 @@ async function mcpPersonProperties(env,credential,args) {
   };
 }
 
+function mcpDashboardSampleWarning(body) {
+  return body&&body.meta&&body.meta.warning
+    ? String(body.meta.warning)
+    : "AMOSTRA LOCAL SINTÉTICA – 100 registros. Não representa dados reais da prefeitura.";
+}
+
+async function mcpAccountingExecution(request,env,credential,args) {
+  mcpRequireViews(credential,["contabil-visao-geral"]);
+  const url=mcpDashboardUrl(request,{
+    view:"contabil-visao-geral",
+    periodo:args.periodo||"ano",
+    exercicio:args.exercicio||new Date().getFullYear(),
+    filters:args.filters||{}
+  });
+  const body=await buildAccountingSampleDashboard(env,credential.tenant,url);
+  return {
+    tenant:body.tenant,
+    period:body.period,
+    filters:body.filters||{},
+    dataMode:"sample",
+    warning:mcpDashboardSampleWarning(body),
+    receitaPrevista:Number(body.kpis&&body.kpis["receita-prevista"]||0),
+    receitaArrecadada:Number(body.kpis&&body.kpis["receita-arrecadada"]||0),
+    despesaEmpenhada:Number(body.kpis&&body.kpis["despesa-empenhada"]||0),
+    despesaLiquidada:Number(body.kpis&&body.kpis["despesa-liquidada"]||0),
+    despesaPaga:Number(body.kpis&&body.kpis["despesa-paga"]||0),
+    resultado:Number(body.kpis&&body.kpis.resultado||0),
+    restosAPagar:Number(body.kpis&&body.kpis["restos-pagar"]||0),
+    credores:Number(body.kpis&&body.kpis.credores||0),
+    execucaoMensal:mcpChartRows(body.charts&&body.charts["execucao-mensal"],12),
+    despesaPorUnidade:mcpChartRows(body.charts&&body.charts["despesa-unidade"],10),
+    despesaPorNatureza:mcpChartRows(body.charts&&body.charts["despesa-natureza"],10)
+  };
+}
+
+async function mcpProcurementSummary(request,env,credential,args) {
+  mcpRequireViews(credential,["compras-visao-geral"]);
+  const url=mcpDashboardUrl(request,{
+    view:"compras-visao-geral",
+    periodo:args.periodo||"ano",
+    exercicio:args.exercicio||new Date().getFullYear(),
+    filters:args.filters||{}
+  });
+  const body=await buildProcurementSampleDashboard(env,credential.tenant,url);
+  return {
+    tenant:body.tenant,
+    period:body.period,
+    filters:body.filters||{},
+    dataMode:"sample",
+    warning:mcpDashboardSampleWarning(body),
+    processos:Number(body.kpis&&body.kpis.processos||0),
+    valorEstimado:Number(body.kpis&&body.kpis.estimado||0),
+    valorHomologado:Number(body.kpis&&body.kpis.homologado||0),
+    economia:Number(body.kpis&&body.kpis.economia||0),
+    contratosAtivos:Number(body.kpis&&body.kpis["contratos-ativos"]||0),
+    fornecedores:Number(body.kpis&&body.kpis.fornecedores||0),
+    evolucaoMensal:mcpChartRows(body.charts&&body.charts["compras-mensal"],12),
+    porSecretaria:mcpChartRows(body.charts&&body.charts["compras-secretaria"],10),
+    porModalidade:mcpChartRows(body.charts&&body.charts["compras-modalidade"],10),
+    porFornecedor:mcpChartRows(body.charts&&body.charts["compras-fornecedor"],10)
+  };
+}
+
+async function mcpPayrollSummary(request,env,credential,args) {
+  mcpRequireViews(credential,["folha-visao-geral"]);
+  const url=mcpDashboardUrl(request,{
+    view:"folha-visao-geral",
+    periodo:args.periodo||"ano",
+    exercicio:args.exercicio||new Date().getFullYear(),
+    filters:args.filters||{}
+  });
+  const body=await buildPayrollSampleDashboard(env,credential.tenant,url);
+  return {
+    tenant:body.tenant,
+    period:body.period,
+    filters:body.filters||{},
+    dataMode:"sample",
+    warning:mcpDashboardSampleWarning(body),
+    servidores:Number(body.kpis&&body.kpis.servidores||0),
+    bruto:Number(body.kpis&&body.kpis.bruto||0),
+    liquido:Number(body.kpis&&body.kpis.liquido||0),
+    descontos:Number(body.kpis&&body.kpis.descontos||0),
+    encargos:Number(body.kpis&&body.kpis.encargos||0),
+    ativos:Number(body.kpis&&body.kpis.ativos||0),
+    afastados:Number(body.kpis&&body.kpis.afastados||0),
+    evolucaoMensal:mcpChartRows(body.charts&&body.charts["folha-mensal"],12),
+    custoPorSecretaria:mcpChartRows(body.charts&&body.charts["folha-secretaria"],10),
+    servidoresPorVinculo:mcpChartRows(body.charts&&body.charts["folha-vinculo"],10),
+    servidoresPorSituacao:mcpChartRows(body.charts&&body.charts["folha-status"],10),
+    custoPorCargo:mcpChartRows(body.charts&&body.charts["folha-cargo"],10),
+    privacy:"Resumo agregado; nomes de servidores não são retornados."
+  };
+}
+
 async function executeMcpTool(request,env,credential,name,args={}) {
   if (name==="bi_context") {
     return {
@@ -8756,6 +9218,18 @@ async function executeMcpTool(request,env,credential,name,args={}) {
 
   if (name==="bi_subject_financial_summary") {
     return mcpSubjectFinancialSummary(request,env,credential,args);
+  }
+
+  if (name==="bi_accounting_execution") {
+    return mcpAccountingExecution(request,env,credential,args);
+  }
+
+  if (name==="bi_procurement_summary") {
+    return mcpProcurementSummary(request,env,credential,args);
+  }
+
+  if (name==="bi_payroll_summary") {
+    return mcpPayrollSummary(request,env,credential,args);
   }
 
   throw new Error("MCP_TOOL_NOT_FOUND");

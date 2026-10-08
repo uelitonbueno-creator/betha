@@ -237,6 +237,48 @@
         "accessControll": []
       },
       {
+        "id": "BIContabilVisaoGeralPage",
+        "description": "Contabilidade · Visão geral",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/contabil-visao-geral",
+            "methods": [
+              "GET"
+            ]
+          }
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BIComprasVisaoGeralPage",
+        "description": "Compras · Visão geral",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/compras-visao-geral",
+            "methods": [
+              "GET"
+            ]
+          }
+        ],
+        "accessControll": []
+      },
+      {
+        "id": "BIFolhaVisaoGeralPage",
+        "description": "Folha · Visão geral",
+        "resources": [
+          {
+            "accessControll": null,
+            "urlPattern": "/api/dashboard/folha-visao-geral",
+            "methods": [
+              "GET"
+            ]
+          }
+        ],
+        "accessControll": []
+      },
+      {
         "id": "BIUsuariosPage",
         "description": "Usuários e acessos",
         "resources": [
@@ -369,6 +411,27 @@
         "description": "Auditoria",
         "constraints": [
           "BIQualidadePage"
+        ]
+      },
+      {
+        "id": "contabilidade",
+        "description": "Contabilidade",
+        "constraints": [
+          "BIContabilVisaoGeralPage"
+        ]
+      },
+      {
+        "id": "compras",
+        "description": "Compras",
+        "constraints": [
+          "BIComprasVisaoGeralPage"
+        ]
+      },
+      {
+        "id": "folha",
+        "description": "Folha de pagamento",
+        "constraints": [
+          "BIFolhaVisaoGeralPage"
         ]
       },
       {
