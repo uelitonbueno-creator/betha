@@ -6207,7 +6207,7 @@ function sampleSum(rows,field) {
 }
 
 function sampleDistinct(rows,field) {
-  return new Set((rows||[]).map(row=>String(row&&row[field]??"").trim()).filter(Boolean)).size;
+  return new Set((rows||[]).map(row=>String((row&&row[field])??"").trim()).filter(Boolean)).size;
 }
 
 function sampleFilterRows(rows,url,filterFields=[]) {
@@ -6227,7 +6227,7 @@ function sampleFilterRows(rows,url,filterFields=[]) {
       : String(selected).localeCompare("false","pt-BR",{sensitivity:"base"})===0
         ? "false"
         : String(selected);
-    out=out.filter(row=>String(row&&row[field]??"").localeCompare(expected,"pt-BR",{sensitivity:"base"})===0);
+    out=out.filter(row=>String((row&&row[field])??"").localeCompare(expected,"pt-BR",{sensitivity:"base"})===0);
   }
   return out;
 }
@@ -6235,13 +6235,13 @@ function sampleFilterRows(rows,url,filterFields=[]) {
 function sampleGroup(rows,groupField,valueField,{agg="sum",distinctField="",limit=12}={}) {
   const map=new Map();
   for(const row of rows||[]){
-    const label=String(row&&row[groupField]??"Não informado").trim()||"Não informado";
+    const label=String((row&&row[groupField])??"Não informado").trim()||"Não informado";
     if(!map.has(label)) map.set(label,agg==="distinct"?new Set():0);
     if(agg==="count"){
       map.set(label,Number(map.get(label)||0)+1);
     }else if(agg==="distinct"){
       const set=map.get(label);
-      const value=String(row&&row[distinctField]??"").trim();
+      const value=String((row&&row[distinctField])??"").trim();
       if(value) set.add(value);
     }else{
       map.set(label,Number(map.get(label)||0)+sampleNumber(row,valueField));
