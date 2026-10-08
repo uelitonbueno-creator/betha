@@ -7089,23 +7089,93 @@ function safeAuditMeta(meta) {
   return out;
 }
 
-async function writeAuditEvent(env,{tenantId="",actor="",category="system",action="",status="ok",subject="",meta={}}={}) {
-  if(!env.BI_SESSIONS || !tenantId || !action) return;
+let auditStoreReadyPromise=null;
+
+async function ensureAuditStore(env) {
+  if(!env.AUTH_DB) return false;
+  if(!auditStoreReadyPromise){
+    auditStoreReadyPromise=(async()=>{
+      await env.AUTH_DB.prepare(
+        "CREATE TABLE IF NOT EXISTS bi_audit_events ("+
+        "tenant_id TEXT NOT NULL,"+
+        "event_id TEXT NOT NULL,"+
+        "ts TEXT NOT NULL,"+
+        "actor TEXT NOT NULL,"+
+        "category TEXT NOT NULL,"+
+        "action TEXT NOT NULL,"+
+        "status TEXT NOT NULL,"+
+        "subject TEXT NOT NULL,"+
+        "meta_json TEXT NOT NULL DEFAULT '{}',"+
+        "created_at TEXT NOT NULL,"+
+        "PRIMARY KEY (tenant_id,event_id))"
+      ).run();
+      await env.AUTH_DB.prepare(
+        "CREATE INDEX IF NOT EXISTS idx_bi_audit_events_tenant_ts ON bi_audit_events(tenant_id,ts DESC)"
+      ).run();
+      return true;
+    })().catch(error=>{
+      auditStoreReadyPromise=null;
+      console.error("audit store init",error&&error.message?error.message:String(error));
+      return false;
+    });
+  }
+  return auditStoreReadyPromise;
+}
+
+async function pruneAuditStore(env,tenantId) {
+  if(!env.AUTH_DB || !tenantId) return;
   try{
-    const ts=Date.now();
-    const key="audit:"+String(tenantId)+":"+String(ts).padStart(13,"0")+":"+createSessionId().slice(0,8);
-    const event={
-      ts:new Date(ts).toISOString(),
-      tenantId:String(tenantId),
-      actor:String(actor||"authenticated-user").slice(0,120),
-      category:String(category||"system").slice(0,60),
-      action:String(action||"").slice(0,120),
-      status:String(status||"ok").slice(0,30),
-      subject:String(subject||"").slice(0,160),
-      meta:safeAuditMeta(meta)
-    };
-    await env.BI_SESSIONS.put(key,JSON.stringify(event),{expirationTtl:30*24*60*60});
-  }catch{}
+    const cutoff=new Date(Date.now()-30*24*60*60*1000).toISOString();
+    await env.AUTH_DB.prepare(
+      "DELETE FROM bi_audit_events WHERE tenant_id=?1 AND ts<?2"
+    ).bind(String(tenantId),cutoff).run();
+  }catch(error){
+    console.warn("audit store prune",error&&error.message?error.message:String(error));
+  }
+}
+
+async function writeAuditEvent(env,{tenantId="",actor="",category="system",action="",status="ok",subject="",meta={}}={}) {
+  if(!tenantId || !action) return;
+  const ts=Date.now();
+  const eventId=createSessionId();
+  const event={
+    eventId,
+    ts:new Date(ts).toISOString(),
+    tenantId:String(tenantId),
+    actor:String(actor||"authenticated-user").slice(0,120),
+    category:String(category||"system").slice(0,60),
+    action:String(action||"").slice(0,120),
+    status:String(status||"ok").slice(0,30),
+    subject:String(subject||"").slice(0,160),
+    meta:safeAuditMeta(meta)
+  };
+
+  let d1Stored=false;
+  if(env.AUTH_DB && await ensureAuditStore(env)){
+    try{
+      await env.AUTH_DB.prepare(
+        "INSERT OR REPLACE INTO bi_audit_events "+
+        "(tenant_id,event_id,ts,actor,category,action,status,subject,meta_json,created_at) "+
+        "VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)"
+      ).bind(
+        event.tenantId,event.eventId,event.ts,event.actor,event.category,event.action,
+        event.status,event.subject,JSON.stringify(event.meta||{}),event.ts
+      ).run();
+      d1Stored=true;
+      if((ts%17)===0) await pruneAuditStore(env,event.tenantId);
+    }catch(error){
+      console.error("audit d1 write",error&&error.message?error.message:String(error));
+    }
+  }
+
+  if(env.BI_SESSIONS){
+    try{
+      const key="audit:"+event.tenantId+":"+String(ts).padStart(13,"0")+":"+eventId.slice(0,8);
+      await env.BI_SESSIONS.put(key,JSON.stringify(event),{expirationTtl:30*24*60*60});
+    }catch(error){
+      if(!d1Stored) console.error("audit kv write",error&&error.message?error.message:String(error));
+    }
+  }
 }
 
 async function writeSecurityDenial(env,tenant,auth,{surface="",subject="",code="",view="",source="",resource="",part=""}={}) {
@@ -7121,45 +7191,116 @@ async function writeSecurityDenial(env,tenant,auth,{surface="",subject="",code="
   });
 }
 
+function normalizeAuditRow(row) {
+  if(!row) return null;
+  let meta={};
+  try { meta=JSON.parse(String(row.meta_json||"{}")); } catch {}
+  return {
+    eventId:String(row.event_id||""),
+    ts:String(row.ts||""),
+    tenantId:String(row.tenant_id||""),
+    actor:String(row.actor||""),
+    category:String(row.category||""),
+    action:String(row.action||""),
+    status:String(row.status||""),
+    subject:String(row.subject||""),
+    meta
+  };
+}
+
+function auditEventDedupeKey(event) {
+  return String(event&&event.eventId||"") ||
+    [event&&event.ts,event&&event.tenantId,event&&event.actor,event&&event.category,event&&event.action,event&&event.subject]
+      .map(value=>String(value||"")).join("|");
+}
+
 async function listAuditEvents(env,tenantId,limit=100) {
-  if(!env.BI_SESSIONS) throw new Error("SESSION_STORE_NOT_CONFIGURED");
-
   const safeLimit=Math.max(10,Math.min(Number(limit)||100,1000));
-  const prefix="audit:"+String(tenantId)+":";
-  const keyNames=[];
-  let cursor="";
-  let listComplete=false;
-  let pages=0;
+  const events=[];
+  const seen=new Set();
+  let d1Count=0;
+  let d1Ready=false;
 
-  while(!listComplete && pages<10){
-    const options={prefix,limit:1000};
-    if(cursor) options.cursor=cursor;
-    const listed=await env.BI_SESSIONS.list(options);
-    for(const item of (listed.keys||[])){
-      if(item&&item.name) keyNames.push(item.name);
+  if(env.AUTH_DB && await ensureAuditStore(env)){
+    d1Ready=true;
+    try{
+      const [rows,countRow]=await Promise.all([
+        env.AUTH_DB.prepare(
+          "SELECT tenant_id,event_id,ts,actor,category,action,status,subject,meta_json "+
+          "FROM bi_audit_events WHERE tenant_id=?1 ORDER BY ts DESC LIMIT ?2"
+        ).bind(String(tenantId),safeLimit).all(),
+        env.AUTH_DB.prepare(
+          "SELECT COUNT(*) AS total FROM bi_audit_events WHERE tenant_id=?1"
+        ).bind(String(tenantId)).first()
+      ]);
+      d1Count=Number(countRow&&countRow.total||0);
+      for(const row of (rows.results||[])){
+        const event=normalizeAuditRow(row);
+        if(!event) continue;
+        const key=auditEventDedupeKey(event);
+        if(seen.has(key)) continue;
+        seen.add(key);
+        events.push(event);
+      }
+    }catch(error){
+      d1Ready=false;
+      console.error("audit d1 read",error&&error.message?error.message:String(error));
     }
-    listComplete=Boolean(listed.list_complete);
-    cursor=listed.cursor||"";
-    pages++;
-    if(listComplete || !cursor) break;
   }
 
-  keyNames.sort().reverse();
-  const selectedKeys=keyNames.slice(0,safeLimit);
-  const values=await Promise.all(selectedKeys.map(key=>env.BI_SESSIONS.get(key)));
-  const events=values.map(raw=>{
-    try{return JSON.parse(raw||"null");}catch{return null;}
-  }).filter(Boolean);
+  let kvIndexed=0;
+  let kvTruncated=false;
+  if(env.BI_SESSIONS && events.length<safeLimit){
+    const prefix="audit:"+String(tenantId)+":";
+    const keyNames=[];
+    let cursor="";
+    let listComplete=false;
+    let pages=0;
+
+    while(!listComplete && pages<10){
+      const options={prefix,limit:1000};
+      if(cursor) options.cursor=cursor;
+      const listed=await env.BI_SESSIONS.list(options);
+      for(const item of (listed.keys||[])){
+        if(item&&item.name) keyNames.push(item.name);
+      }
+      listComplete=Boolean(listed.list_complete);
+      cursor=listed.cursor||"";
+      pages++;
+      if(listComplete || !cursor) break;
+    }
+
+    keyNames.sort().reverse();
+    kvIndexed=keyNames.length;
+    kvTruncated=!listComplete;
+    const values=await Promise.all(
+      keyNames.slice(0,Math.max(safeLimit*2,100)).map(key=>env.BI_SESSIONS.get(key))
+    );
+    for(const raw of values){
+      let event=null;
+      try { event=JSON.parse(raw||"null"); } catch {}
+      if(!event) continue;
+      const key=auditEventDedupeKey(event);
+      if(seen.has(key)) continue;
+      seen.add(key);
+      events.push(event);
+      if(events.length>=safeLimit) break;
+    }
+  }
+
+  events.sort((a,b)=>String(b.ts||"").localeCompare(String(a.ts||"")));
+  if(events.length>safeLimit) events.length=safeLimit;
 
   return {
     events,
     loaded:events.length,
-    totalIndexed:keyNames.length,
-    indexTruncated:!listComplete,
-    hasMore:keyNames.length>safeLimit || !listComplete,
+    totalIndexed:d1Ready?Math.max(d1Count,events.length):kvIndexed,
+    indexTruncated:d1Ready?false:kvTruncated,
+    hasMore:d1Ready?d1Count>safeLimit:(kvIndexed>safeLimit||kvTruncated),
     limit:safeLimit,
     maxLimit:1000,
-    retentionDays:30
+    retentionDays:30,
+    storage:d1Ready?"d1-primary+kv-mirror":"kv-fallback"
   };
 }
 
@@ -8201,6 +8342,7 @@ export default {
         detailAuthorization:"betha-session+tenant+resource-permission",
         dataAuthorization:"betha-session+tenant+source-resource-permission",
         securityAudit:"blocked-permission-events-30d",
+        auditPersistence:env.AUTH_DB?"d1-primary+kv-mirror":"kv-fallback",
         securityAnomalyDetection:"10m:attention>=5,high>=10,no-auto-block",
         securityExecutiveSummary:"current-vs-previous-window+top-surface+top-target",
         auditProductivity:"client-filtering+sanitized-csv-export",
@@ -9024,7 +9166,8 @@ export default {
             hasMore:audit.hasMore,
             limit:audit.limit,
             maxLimit:audit.maxLimit,
-            retentionDays:audit.retentionDays
+            retentionDays:audit.retentionDays,
+            storage:audit.storage
           }
         });
       } catch(error) {
