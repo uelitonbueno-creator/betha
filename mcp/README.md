@@ -33,13 +33,18 @@ npm install
 npm run check
 ```
 
-## Não liberar ainda
+## Estado de liberação
 
-A publicação fica bloqueada até:
+Concluído:
 
 1. OAuth 2.1 completo;
 2. endpoint de introspecção;
 3. auditoria persistente;
-4. teste tenant A × tenant B;
-5. MCP Inspector;
-6. validação de `get_arrecadacao` e `get_imobiliario` com dados reais.
+4. guard automático tenant A × tenant B;
+5. ferramentas analíticas especializadas em paridade com o endpoint de produção.
+
+Pendente antes do cutover definitivo para o Worker SDK v2:
+
+1. MCP Inspector;
+2. credenciais de deploy Cloudflare do Worker isolado;
+3. validação de `get_arrecadacao`, `get_imobiliario` e das ferramentas analíticas com dados reais.
