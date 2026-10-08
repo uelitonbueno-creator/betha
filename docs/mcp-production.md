@@ -53,7 +53,7 @@ Assim, painel novo implica ferramenta MCP nova ou falha explícita de autorizaç
 
 ## Comandos iniciais
 
-O catálogo atual possui 16 comandos principais:
+O catálogo gerado possui 16 comandos de painel:
 
 - get_visao_geral
 - get_arrecadacao
@@ -72,7 +72,16 @@ O catálogo atual possui 16 comandos principais:
 - get_indexadores
 - get_territorio
 
-Todos os 16 painéis atuais possuem constraints próprios no Page Mapping nesta branch. O gerador bloqueia a liberação futura se surgir painel novo sem permissão correspondente.
+Todos os 16 painéis atuais possuem constraints próprios no Page Mapping. O gerador bloqueia a liberação futura se surgir painel novo sem permissão correspondente.
+
+Além dos painéis, o MCP publica 4 ferramentas analíticas de alto nível:
+
+- `bi_revenue_breakdown`: arrecadação por receita, crédito tributário, tipo de pagamento, tipo de baixa ou classificação da guia;
+- `bi_debt_portfolio`: carteira de débitos abertos, vencidos ou pagos com aging, crédito, origem e receita;
+- `bi_active_debt_summary`: estoque e recuperação da dívida ativa sem ranking nominal de devedores;
+- `bi_installments_summary`: parcelamentos, parcelas vencidas, entradas e recebimentos.
+
+No Worker SDK v2 o total esperado passa a ser 20 ferramentas.
 
 ## Transporte e autenticação
 
