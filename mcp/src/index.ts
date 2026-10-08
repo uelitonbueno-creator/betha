@@ -271,6 +271,21 @@ async function audit(
   }
 }
 
+function safeAuditArgs(args: Record<string, unknown>) {
+  const out: Record<string, unknown> = {};
+  for (const key of ["periodo", "exercicio", "dimensao", "carteira", "limite", "comparar_periodo_anterior"]) {
+    const value = args[key];
+    if (["string", "number", "boolean"].includes(typeof value)) out[key] = value;
+  }
+  if (args.filters && typeof args.filters === "object" && !Array.isArray(args.filters)) {
+    out.filterKeys = Object.keys(args.filters as Record<string, unknown>).slice(0, 20);
+  }
+  if (args.busca !== undefined || args.empresa !== undefined) out.subjectLookup = true;
+  if (args.economico_id !== undefined) out.economicIdProvided = true;
+  if (args.contribuinte_id !== undefined) out.contributorIdProvided = true;
+  return out;
+}
+
 async function callBi(
   env: Env,
   principal: Principal,
@@ -317,9 +332,6 @@ async function callBi(
     ok = true;
     return { tenant, body };
   } finally {
-    const filters = Object.fromEntries(
-      Object.entries(args).filter(([key]) => key !== "tenant_id")
-    );
     await audit(env, {
       subject: principal.subject,
       clientId: principal.clientId,
@@ -329,7 +341,7 @@ async function callBi(
       ok,
       durationMs: Date.now() - started,
       error: failure || undefined,
-      filters,
+      filters: safeAuditArgs(args),
     });
   }
 }
