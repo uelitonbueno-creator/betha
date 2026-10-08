@@ -13,6 +13,8 @@ on:
       - "scripts/generate-mcp-tools.mjs"
       - "scripts/check-mcp-contract.mjs"
       - "scripts/check-mcp-oauth.mjs"
+      - "scripts/check-mcp-audit-persistence.mjs"
+      - "scripts/check-mcp-tenant-isolation.mjs"
       - "mcp/**"
       - ".github/workflows/mcp-production-watch.yml"
       - ".github/workflows/mcp-sdk-v2-deploy.yml"
@@ -24,6 +26,8 @@ on:
       - "scripts/generate-mcp-tools.mjs"
       - "scripts/check-mcp-contract.mjs"
       - "scripts/check-mcp-oauth.mjs"
+      - "scripts/check-mcp-audit-persistence.mjs"
+      - "scripts/check-mcp-tenant-isolation.mjs"
       - "mcp/**"
       - ".github/workflows/mcp-production-watch.yml"
       - ".github/workflows/mcp-sdk-v2-deploy.yml"
@@ -60,6 +64,12 @@ jobs:
 
       - name: Validate MCP OAuth 2.1 contract
         run: node scripts/check-mcp-oauth.mjs
+
+      - name: Validate MCP tenant isolation
+        run: node scripts/check-mcp-tenant-isolation.mjs
+
+      - name: Validate MCP audit persistence
+        run: node scripts/check-mcp-audit-persistence.mjs
 
       - name: Install MCP Worker dependencies
         run: npm install --prefix mcp --ignore-scripts --no-audit --no-fund
