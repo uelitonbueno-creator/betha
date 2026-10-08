@@ -41,7 +41,8 @@ Concluído:
 2. endpoint de introspecção;
 3. auditoria persistente;
 4. guard automático tenant A × tenant B;
-5. ferramentas analíticas especializadas em paridade com o endpoint de produção.
+5. ferramentas analíticas especializadas em paridade com o endpoint de produção;
+6. resolução segura de contribuinte/econômico com desambiguação e documentos mascarados.
 
 Pendente antes do cutover definitivo para o Worker SDK v2:
 
