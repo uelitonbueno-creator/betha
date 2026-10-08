@@ -47,6 +47,21 @@
             "minimum": 1900,
             "maximum": 2200
           },
+          "periodo": {
+            "type": "string",
+            "description": "Período lógico do painel, por exemplo ano ou todos."
+          },
+          "filters": {
+            "type": "object",
+            "description": "Filtros simples autorizados pelo painel.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          },
           "comparar_periodo_anterior": {
             "type": "boolean",
             "default": false
@@ -86,6 +101,21 @@
             "type": "integer",
             "minimum": 1900,
             "maximum": 2200
+          },
+          "periodo": {
+            "type": "string",
+            "description": "Período lógico do painel, por exemplo ano ou todos."
+          },
+          "filters": {
+            "type": "object",
+            "description": "Filtros simples autorizados pelo painel.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
           },
           "comparar_periodo_anterior": {
             "type": "boolean",
@@ -127,6 +157,21 @@
             "minimum": 1900,
             "maximum": 2200
           },
+          "periodo": {
+            "type": "string",
+            "description": "Período lógico do painel, por exemplo ano ou todos."
+          },
+          "filters": {
+            "type": "object",
+            "description": "Filtros simples autorizados pelo painel.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          },
           "comparar_periodo_anterior": {
             "type": "boolean",
             "default": false
@@ -166,6 +211,21 @@
             "type": "integer",
             "minimum": 1900,
             "maximum": 2200
+          },
+          "periodo": {
+            "type": "string",
+            "description": "Período lógico do painel, por exemplo ano ou todos."
+          },
+          "filters": {
+            "type": "object",
+            "description": "Filtros simples autorizados pelo painel.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
           },
           "comparar_periodo_anterior": {
             "type": "boolean",
@@ -207,6 +267,21 @@
             "minimum": 1900,
             "maximum": 2200
           },
+          "periodo": {
+            "type": "string",
+            "description": "Período lógico do painel, por exemplo ano ou todos."
+          },
+          "filters": {
+            "type": "object",
+            "description": "Filtros simples autorizados pelo painel.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          },
           "comparar_periodo_anterior": {
             "type": "boolean",
             "default": false
@@ -246,6 +321,21 @@
             "type": "integer",
             "minimum": 1900,
             "maximum": 2200
+          },
+          "periodo": {
+            "type": "string",
+            "description": "Período lógico do painel, por exemplo ano ou todos."
+          },
+          "filters": {
+            "type": "object",
+            "description": "Filtros simples autorizados pelo painel.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
           },
           "comparar_periodo_anterior": {
             "type": "boolean",
@@ -287,6 +377,21 @@
             "minimum": 1900,
             "maximum": 2200
           },
+          "periodo": {
+            "type": "string",
+            "description": "Período lógico do painel, por exemplo ano ou todos."
+          },
+          "filters": {
+            "type": "object",
+            "description": "Filtros simples autorizados pelo painel.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          },
           "comparar_periodo_anterior": {
             "type": "boolean",
             "default": false
@@ -326,6 +431,21 @@
             "type": "integer",
             "minimum": 1900,
             "maximum": 2200
+          },
+          "periodo": {
+            "type": "string",
+            "description": "Período lógico do painel, por exemplo ano ou todos."
+          },
+          "filters": {
+            "type": "object",
+            "description": "Filtros simples autorizados pelo painel.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
           },
           "comparar_periodo_anterior": {
             "type": "boolean",
@@ -367,6 +487,21 @@
             "minimum": 1900,
             "maximum": 2200
           },
+          "periodo": {
+            "type": "string",
+            "description": "Período lógico do painel, por exemplo ano ou todos."
+          },
+          "filters": {
+            "type": "object",
+            "description": "Filtros simples autorizados pelo painel.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          },
           "comparar_periodo_anterior": {
             "type": "boolean",
             "default": false
@@ -406,6 +541,21 @@
             "type": "integer",
             "minimum": 1900,
             "maximum": 2200
+          },
+          "periodo": {
+            "type": "string",
+            "description": "Período lógico do painel, por exemplo ano ou todos."
+          },
+          "filters": {
+            "type": "object",
+            "description": "Filtros simples autorizados pelo painel.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
           },
           "comparar_periodo_anterior": {
             "type": "boolean",
@@ -447,6 +597,21 @@
             "minimum": 1900,
             "maximum": 2200
           },
+          "periodo": {
+            "type": "string",
+            "description": "Período lógico do painel, por exemplo ano ou todos."
+          },
+          "filters": {
+            "type": "object",
+            "description": "Filtros simples autorizados pelo painel.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          },
           "comparar_periodo_anterior": {
             "type": "boolean",
             "default": false
@@ -486,6 +651,21 @@
             "type": "integer",
             "minimum": 1900,
             "maximum": 2200
+          },
+          "periodo": {
+            "type": "string",
+            "description": "Período lógico do painel, por exemplo ano ou todos."
+          },
+          "filters": {
+            "type": "object",
+            "description": "Filtros simples autorizados pelo painel.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
           },
           "comparar_periodo_anterior": {
             "type": "boolean",
@@ -527,6 +707,21 @@
             "minimum": 1900,
             "maximum": 2200
           },
+          "periodo": {
+            "type": "string",
+            "description": "Período lógico do painel, por exemplo ano ou todos."
+          },
+          "filters": {
+            "type": "object",
+            "description": "Filtros simples autorizados pelo painel.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          },
           "comparar_periodo_anterior": {
             "type": "boolean",
             "default": false
@@ -566,6 +761,21 @@
             "type": "integer",
             "minimum": 1900,
             "maximum": 2200
+          },
+          "periodo": {
+            "type": "string",
+            "description": "Período lógico do painel, por exemplo ano ou todos."
+          },
+          "filters": {
+            "type": "object",
+            "description": "Filtros simples autorizados pelo painel.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
           },
           "comparar_periodo_anterior": {
             "type": "boolean",
@@ -607,6 +817,21 @@
             "minimum": 1900,
             "maximum": 2200
           },
+          "periodo": {
+            "type": "string",
+            "description": "Período lógico do painel, por exemplo ano ou todos."
+          },
+          "filters": {
+            "type": "object",
+            "description": "Filtros simples autorizados pelo painel.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          },
           "comparar_periodo_anterior": {
             "type": "boolean",
             "default": false
@@ -646,6 +871,21 @@
             "type": "integer",
             "minimum": 1900,
             "maximum": 2200
+          },
+          "periodo": {
+            "type": "string",
+            "description": "Período lógico do painel, por exemplo ano ou todos."
+          },
+          "filters": {
+            "type": "object",
+            "description": "Filtros simples autorizados pelo painel.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
           },
           "comparar_periodo_anterior": {
             "type": "boolean",
@@ -687,6 +927,21 @@
             "minimum": 1900,
             "maximum": 2200
           },
+          "periodo": {
+            "type": "string",
+            "description": "Período lógico do painel, por exemplo ano ou todos."
+          },
+          "filters": {
+            "type": "object",
+            "description": "Filtros simples autorizados pelo painel.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          },
           "comparar_periodo_anterior": {
             "type": "boolean",
             "default": false
@@ -727,6 +982,21 @@
             "minimum": 1900,
             "maximum": 2200
           },
+          "periodo": {
+            "type": "string",
+            "description": "Período lógico do painel, por exemplo ano ou todos."
+          },
+          "filters": {
+            "type": "object",
+            "description": "Filtros simples autorizados pelo painel.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          },
           "comparar_periodo_anterior": {
             "type": "boolean",
             "default": false
@@ -766,6 +1036,21 @@
             "type": "integer",
             "minimum": 1900,
             "maximum": 2200
+          },
+          "periodo": {
+            "type": "string",
+            "description": "Período lógico do painel, por exemplo ano ou todos."
+          },
+          "filters": {
+            "type": "object",
+            "description": "Filtros simples autorizados pelo painel.",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
           },
           "comparar_periodo_anterior": {
             "type": "boolean",
