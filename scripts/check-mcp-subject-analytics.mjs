@@ -31,6 +31,8 @@ requireText(sdk,'permissions: ["BIContribuintesPage", "BIDebitosPage", "BIDivida
 requireText(sdk,'upstream: "/api/mcp/analytics/company-iss"',"SDK_COMPANY_ISS_UPSTREAM_MISSING");
 requireText(sdk,'upstream: "/api/mcp/analytics/subject-financial"',"SDK_SUBJECT_FINANCIAL_UPSTREAM_MISSING");
 requireText(sdk,"required.every(permission => tenant.permissions!.includes(permission))","SDK_ALL_PERMISSIONS_NOT_ENFORCED");
+requireText(sdk,"function safeAuditArgs","SDK_SUBJECT_AUDIT_REDACTION_MISSING");
+requireText(sdk,"out.subjectLookup = true","SDK_SUBJECT_AUDIT_LOOKUP_FLAG_MISSING");
 
 if(errors.length){
   console.error(errors.join("\n"));
