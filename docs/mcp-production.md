@@ -81,7 +81,15 @@ Além dos painéis, o MCP publica 4 ferramentas analíticas de alto nível:
 - `bi_active_debt_summary`: estoque e recuperação da dívida ativa sem ranking nominal de devedores;
 - `bi_installments_summary`: parcelamentos, parcelas vencidas, entradas e recebimentos.
 
-No Worker SDK v2 o total esperado passa a ser 20 ferramentas.
+No Worker SDK v2 o total esperado passa a ser 23 ferramentas.
+
+A camada de consultas por sujeito adiciona:
+
+- `bi_resolve_subject`: resolve nome/documento em candidatos com IDs estáveis e documento mascarado;
+- `bi_company_iss_detail`: ISS de um econômico específico, com desambiguação, evolução mensal e composição;
+- `bi_subject_financial_summary`: resumo agregado de débitos e dívida ativa de um contribuinte, sem endereço, documento completo ou lançamentos individualizados.
+
+Ferramentas financeiras por sujeito exigem simultaneamente as permissões funcionais dos painéis envolvidos.
 
 ## Transporte e autenticação
 
