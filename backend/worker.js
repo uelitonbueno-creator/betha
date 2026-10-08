@@ -7728,6 +7728,77 @@ function mcpToolDefinitions(credential) {
     });
   }
 
+  if (credential.allowedViews.includes("arrecadacao")) {
+    tools.push({
+      name:"bi_revenue_breakdown",
+      description:"Analisa a arrecadação agrupada por receita, crédito tributário, tipo de pagamento, tipo de baixa ou classificação da guia, com totais e participação percentual.",
+      inputSchema:{
+        type:"object",
+        required:["dimensao"],
+        properties:{
+          dimensao:{type:"string",enum:["receita","credito","tipo_pagamento","tipo_baixa","classificacao_guia"]},
+          periodo:{type:"string",description:"Período, por exemplo ano, mes, trimestre ou todos."},
+          exercicio:{type:"integer",minimum:2000,maximum:2100},
+          limite:{type:"integer",minimum:1,maximum:20},
+          filters:{type:"object",additionalProperties:{type:["string","number","boolean"]}}
+        },
+        additionalProperties:false
+      }
+    });
+  }
+
+  if (credential.allowedViews.includes("debitos")) {
+    tools.push({
+      name:"bi_debt_portfolio",
+      description:"Resume a carteira de débitos lançados, permitindo consultar abertos, vencidos ou pagos e detalhar aging, crédito, origem e receita sem expor dados pessoais.",
+      inputSchema:{
+        type:"object",
+        properties:{
+          carteira:{type:"string",enum:["aberto","vencido","pago"],default:"aberto"},
+          periodo:{type:"string",description:"Período, por exemplo ano, mes, trimestre ou todos."},
+          exercicio:{type:"integer",minimum:2000,maximum:2100},
+          limite:{type:"integer",minimum:1,maximum:20},
+          filters:{type:"object",additionalProperties:{type:["string","number","boolean"]}}
+        },
+        additionalProperties:false
+      }
+    });
+  }
+
+  if (credential.allowedViews.includes("divida")) {
+    tools.push({
+      name:"bi_active_debt_summary",
+      description:"Resume o estoque da dívida ativa, composição do saldo, situação, aging, crédito tributário, cobrança e recuperação no período, sem retornar ranking nominal de devedores.",
+      inputSchema:{
+        type:"object",
+        properties:{
+          periodo:{type:"string",description:"Período, por exemplo ano, mes, trimestre ou todos."},
+          exercicio:{type:"integer",minimum:2000,maximum:2100},
+          limite:{type:"integer",minimum:1,maximum:20},
+          filters:{type:"object",additionalProperties:{type:["string","number","boolean"]}}
+        },
+        additionalProperties:false
+      }
+    });
+  }
+
+  if (credential.allowedViews.includes("parcelamentos")) {
+    tools.push({
+      name:"bi_installments_summary",
+      description:"Resume parcelamentos, quantidade de parcelas, parcelas vencidas, entradas, situações e recebimentos no período.",
+      inputSchema:{
+        type:"object",
+        properties:{
+          periodo:{type:"string",description:"Período, por exemplo ano, mes, trimestre ou todos."},
+          exercicio:{type:"integer",minimum:2000,maximum:2100},
+          limite:{type:"integer",minimum:1,maximum:20},
+          filters:{type:"object",additionalProperties:{type:["string","number","boolean"]}}
+        },
+        additionalProperties:false
+      }
+    });
+  }
+
   return tools.map(mcpToolSecurity);
 }
 
@@ -7898,6 +7969,169 @@ async function mcpCompanyIss(request,env,credential,args) {
   };
 }
 
+function mcpChartRows(chart,limit=12) {
+  if(!chart || !Array.isArray(chart.labels) || !Array.isArray(chart.datasets)) return [];
+  const safeLimit=Math.max(1,Math.min(20,Number(limit)||12));
+  return chart.labels.slice(0,safeLimit).map((label,index)=>{
+    const values={};
+    for(const dataset of chart.datasets){
+      const key=String(dataset&&dataset.label||"Valor");
+      const raw=Array.isArray(dataset&&dataset.data)?dataset.data[index]:null;
+      const value=Number(raw);
+      values[key]=Number.isFinite(value)?value:null;
+    }
+    const names=Object.keys(values);
+    return names.length===1
+      ? {label:String(label),value:values[names[0]]}
+      : {label:String(label),values};
+  });
+}
+
+function mcpSingleSeriesTotal(items) {
+  return (Array.isArray(items)?items:[]).reduce((sum,item)=>{
+    const value=Number(item&&item.value);
+    return Number.isFinite(value)?sum+value:sum;
+  },0);
+}
+
+function mcpWithParticipation(items,total) {
+  const denominator=Number(total)||0;
+  return (Array.isArray(items)?items:[]).map(item=>({
+    ...item,
+    ...(typeof item.value==="number" ? {
+      percentual:denominator>0 ? Number(((item.value/denominator)*100).toFixed(2)) : 0
+    } : {})
+  }));
+}
+
+async function mcpRevenueBreakdown(request,env,credential,args) {
+  mcpRequireViews(credential,["arrecadacao"]);
+  const dimension=String(args.dimensao||"");
+  const chartMap={
+    receita:"arrecadacao-receita",
+    credito:"arrecadacao-credito",
+    tipo_pagamento:"tipo-pagamento",
+    tipo_baixa:"tipo-baixa",
+    classificacao_guia:"guias"
+  };
+  const chartKey=chartMap[dimension];
+  if(!chartKey) throw new Error("MCP_DIMENSION_INVALID");
+
+  const url=mcpDashboardUrl(request,{
+    view:"arrecadacao",
+    periodo:args.periodo||"ano",
+    exercicio:args.exercicio||new Date().getFullYear(),
+    filters:args.filters||{}
+  });
+  const body=await buildRevenueDashboard(env,credential.tenant,url);
+  const total=Number(body.kpis&&body.kpis["total-pago"]||0);
+  const items=mcpChartRows(body.charts&&body.charts[chartKey],args.limite||12);
+
+  return {
+    tenant:body.tenant,
+    period:body.period,
+    filters:body.filters||{},
+    dimensao:dimension,
+    totalArrecadado:total,
+    grupos:mcpWithParticipation(items,total),
+    calculationBasis:body.meta&&body.meta.calculationBasis ? body.meta.calculationBasis : null
+  };
+}
+
+async function mcpDebtPortfolio(request,env,credential,args) {
+  mcpRequireViews(credential,["debitos"]);
+  const carteira=String(args.carteira||"aberto");
+  if(!["aberto","vencido","pago"].includes(carteira)) throw new Error("MCP_PORTFOLIO_INVALID");
+
+  const filters={
+    ...(args.filters&&typeof args.filters==="object"&&!Array.isArray(args.filters)?args.filters:{}),
+    carteira
+  };
+  const url=mcpDashboardUrl(request,{
+    view:"debitos",
+    periodo:args.periodo||"ano",
+    exercicio:args.exercicio||new Date().getFullYear(),
+    filters
+  });
+  const body=await buildDebtsDashboard(env,credential.tenant,url);
+  const limit=args.limite||12;
+
+  return {
+    tenant:body.tenant,
+    period:body.period,
+    filters:body.filters||{},
+    carteira,
+    totalLancado:Number(body.kpis&&body.kpis["vl-lancado"]||0),
+    quantidadeDebitos:Number(body.kpis&&body.kpis["qtd-debitos"]||0),
+    vencidos:Number(body.kpis&&body.kpis.vencidos||0),
+    pagos:Number(body.kpis&&body.kpis.pagos||0),
+    descontos:Number(body.kpis&&body.kpis["descontos-debito"]||0),
+    aging:mcpChartRows(body.charts&&body.charts["aging-debitos"],limit),
+    porCredito:mcpChartRows(body.charts&&body.charts["debitos-credito"],limit),
+    porOrigem:mcpChartRows(body.charts&&body.charts["origem-cadastro"],limit),
+    porReceita:mcpChartRows(body.charts&&body.charts["debitos-receita"],limit)
+  };
+}
+
+async function mcpActiveDebtSummary(request,env,credential,args) {
+  mcpRequireViews(credential,["divida"]);
+  const url=mcpDashboardUrl(request,{
+    view:"divida",
+    periodo:args.periodo||"ano",
+    exercicio:args.exercicio||new Date().getFullYear(),
+    filters:args.filters||{}
+  });
+  const body=await buildActiveDebtDashboard(env,credential.tenant,url);
+  const limit=args.limite||12;
+
+  return {
+    tenant:body.tenant,
+    period:body.period,
+    filters:body.filters||{},
+    saldoAtual:Number(body.kpis&&body.kpis["saldo-divida"]||0),
+    valorInscrito:Number(body.kpis&&body.kpis.inscrito||0),
+    quantidadeDividas:Number(body.kpis&&body.kpis["qtd-dividas"]||0),
+    executadas:Number(body.kpis&&body.kpis.executadas||0),
+    protestadas:Number(body.kpis&&body.kpis.protestadas||0),
+    comCda:Number(body.kpis&&body.kpis.cda||0),
+    composicao:mcpChartRows(body.charts&&body.charts["composicao-divida"],limit),
+    situacoes:mcpChartRows(body.charts&&body.charts["status-divida"],limit),
+    aging:mcpChartRows(body.charts&&body.charts["aging-divida"],limit),
+    porCredito:mcpChartRows(body.charts&&body.charts["divida-credito"],limit),
+    cobranca:mcpChartRows(body.charts&&body.charts.cobranca,limit),
+    recuperacaoMensal:mcpChartRows(body.charts&&body.charts.recuperacao,limit),
+    calculationBasis:body.meta&&body.meta.calculationBasis ? body.meta.calculationBasis : null
+  };
+}
+
+async function mcpInstallmentsSummary(request,env,credential,args) {
+  mcpRequireViews(credential,["parcelamentos"]);
+  const url=mcpDashboardUrl(request,{
+    view:"parcelamentos",
+    periodo:args.periodo||"ano",
+    exercicio:args.exercicio||new Date().getFullYear(),
+    filters:args.filters||{}
+  });
+  const body=await buildInstallmentsDashboard(env,credential.tenant,url);
+  const limit=args.limite||12;
+
+  return {
+    tenant:body.tenant,
+    period:body.period,
+    filters:body.filters||{},
+    quantidadeParcelamentos:Number(body.kpis&&body.kpis["qtd-parcelamentos"]||0),
+    ativos:Number(body.kpis&&body.kpis.ativos||0),
+    quantidadeParcelas:Number(body.kpis&&body.kpis["qtd-parcelas"]||0),
+    parcelasVencidas:Number(body.kpis&&body.kpis["parcelas-vencidas"]||0),
+    valorEntradas:Number(body.kpis&&body.kpis.entradas||0),
+    cancelados:Number(body.kpis&&body.kpis.cancelados||0),
+    situacoes:mcpChartRows(body.charts&&body.charts["situacao-parcelamentos"],limit),
+    faixaParcelas:mcpChartRows(body.charts&&body.charts["faixa-parcelas"],limit),
+    vencidasPorParcelamento:mcpChartRows(body.charts&&body.charts["vencidas-parcelamento"],limit),
+    recebimentosMensais:mcpChartRows(body.charts&&body.charts["pagamentos-parcelas"],limit)
+  };
+}
+
 async function mcpPersonProperties(env,credential,args) {
   mcpRequireViews(credential,["contribuintes","imobiliario"]);
   const query=String(args.busca||"").trim();
@@ -8065,6 +8299,22 @@ async function executeMcpTool(request,env,credential,name,args={}) {
 
   if (name==="bi_person_properties") {
     return mcpPersonProperties(env,credential,args);
+  }
+
+  if (name==="bi_revenue_breakdown") {
+    return mcpRevenueBreakdown(request,env,credential,args);
+  }
+
+  if (name==="bi_debt_portfolio") {
+    return mcpDebtPortfolio(request,env,credential,args);
+  }
+
+  if (name==="bi_active_debt_summary") {
+    return mcpActiveDebtSummary(request,env,credential,args);
+  }
+
+  if (name==="bi_installments_summary") {
+    return mcpInstallmentsSummary(request,env,credential,args);
   }
 
   throw new Error("MCP_TOOL_NOT_FOUND");
