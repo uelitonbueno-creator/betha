@@ -11,6 +11,7 @@ on:
       - "scripts/check-mcp-contract.mjs"
       - "scripts/check-mcp-oauth.mjs"
       - "scripts/check-mcp-analytics.mjs"
+      - "scripts/check-mcp-subject-analytics.mjs"
       - ".github/workflows/mcp-sdk-v2-deploy.yml"
 
 permissions:
@@ -39,6 +40,7 @@ jobs:
           node scripts/check-mcp-contract.mjs
           node scripts/check-mcp-oauth.mjs
           node scripts/check-mcp-analytics.mjs
+          node scripts/check-mcp-subject-analytics.mjs
 
       - name: Install MCP dependencies
         run: npm install --prefix mcp --ignore-scripts --no-audit --no-fund
@@ -81,7 +83,7 @@ jobs:
             const j=JSON.parse(fs.readFileSync("/tmp/mcp-health.json","utf8"));
             if(!j.ok) process.exit(1);
             if(j.service!=="bi-vella-mcp") process.exit(1);
-            if(j.toolCount!==20) process.exit(1);
+            if(j.toolCount!==23) process.exit(1);
             if(j.authReady!==false) process.exit(1);
             if(!j.introspectionConfigured) process.exit(1);
           '
