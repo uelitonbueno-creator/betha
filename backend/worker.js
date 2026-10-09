@@ -9680,7 +9680,7 @@ async function handlePanelDrafts(request,env,url){
   if(!env.BI_PANEL_DB)return json(request,env,503,{error:"PANEL_D1_NOT_CONFIGURED"});
   let tenant,auth;
   try{tenant=await resolveTenant(env,getTenantId(request,url));auth=await authorizeTenant(request,env,tenant);}
-  catch(err){return respondApiError(request,env,err);}
+  catch(err){return errorResponse(request,env,err);}
   const owner=String(auth.userId||"").trim();
   if(!owner)return json(request,env,403,{error:"USER_ID_REQUIRED"});
   const system=String(url.searchParams.get("system")||"");
