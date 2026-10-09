@@ -2215,17 +2215,30 @@
       title.textContent="Resumo não atualizado";
       detail.textContent=friendlySourceErrorDetail(payload.meta.refreshError);
     } else if(state.kind==="error"){
-      title.textContent="Fonte indisponível";
+      title.textContent=/temporária|temporário|normalizar/i.test(state.detail)
+        ? "Fonte temporariamente indisponível"
+        : "Fonte indisponível";
       detail.textContent=state.detail;
     } else if(state.kind==="partial"){
       title.textContent="Carga parcial";
       detail.textContent=state.detail;
     } else if(state.kind==="unavailable"){
-      title.textContent="Fonte não carregada";
-      detail.textContent=state.detail;
+      const audits=Object.values(payload?.meta?.sourceAudit||{});
+      const stillLoading=payload?.loading?.hasMore===true ||
+        payload?.meta?.batchPaused===true ||
+        audits.some(a=>a&&a.complete!==true&&!a.error);
+      if(stillLoading){
+        title.textContent="Carga em andamento";
+        detail.textContent="Esta fonte ainda está sendo processada. O gráfico será preenchido automaticamente conforme a carga avançar.";
+      }else{
+        title.textContent="Fonte ainda não disponível";
+        detail.textContent="A carga atual ainda não trouxe esta fonte para o painel.";
+      }
     } else {
       title.textContent="Sem registros para o filtro atual";
-      detail.textContent=state.detail;
+      detail.textContent=state.kind==="loaded"
+        ? state.detail.replace(/\.\s*$/,"")+" na fonte, mas nenhum registro atende ao período/filtros selecionados."
+        : state.detail;
     }
     empty.hidden=false;
   }
