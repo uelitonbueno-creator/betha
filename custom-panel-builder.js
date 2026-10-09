@@ -2,13 +2,14 @@
 (() => {
   "use strict";
   const SOURCES = {
-    "bi:debitos": {label:"Débitos",system:"tributos",dimensions:{situacao:"Situação",ano:"Exercício",bairro:"Bairro",receita:"Receita"},measures:{vlLancado:"Valor lançado",valorSaldo:"Saldo"}},
-    "bi:pagamentos": {label:"Pagamentos",system:"tributos",dimensions:{ano:"Exercício",receita:"Receita",dataPagamento:"Data do pagamento"},measures:{valorPago:"Valor pago"}},
+    "bi:debitos": {label:"Débitos",system:"tributos",dimensions:{situacao:"Situação",ano:"Exercício",bairro:"Bairro",receita:"Receita"},measures:{lancado:"Valor lançado",saldo:"Saldo"}},
+    "bi:pagamentos": {label:"Pagamentos",system:"tributos",dimensions:{ano:"Exercício",receita:"Receita",pagamento:"Data do pagamento"},measures:{pago:"Valor pago"}},
     "bi:imoveis": {label:"Imóveis",system:"tributos",dimensions:{bairro:"Bairro",zona:"Zona",situacao:"Situação"},measures:{count:"Quantidade"}},
     "bi:parcelamentos": {label:"Parcelamentos",system:"tributos",dimensions:{situacao:"Situação",ano:"Exercício"},measures:{count:"Quantidade"}}
   };
-  const state={id:null,source:"bi:debitos",chart:"bar",dimension:"bairro",measure:"valorSaldo",aggregation:"sum",filterField:"",filterValue:"",filters:[],limit:20,name:"Débitos por bairro",panels:[],chartInstance:null,loading:false,previewRows:[],previewPartial:false,previewSeq:0};
+  const state={id:null,source:"bi:debitos",chart:"bar",dimension:"bairro",measure:"saldo",aggregation:"sum",filterField:"",filterValue:"",filters:[],limit:20,name:"Débitos por bairro",panels:[],chartInstance:null,loading:false,previewRows:[],previewPartial:false,previewSeq:0};
   const byId=id=>document.getElementById(id);
+  let authorizedSources=new Set(), catalogScope="",sidebarScope="";
   const safe=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   function context(){const s=window.BIVellaSearchContext?.getState?.()||{};return {tenant:String(s.tenantId||s.tenant?.id||new URLSearchParams(location.search).get("tenant")||""),system:s.currentSystemId||"tributos"};}
   function apiUrl(path){return String(window.BI_CONFIG?.BACKEND_URL||"").replace(/\/$/,"")+path;}
@@ -23,7 +24,7 @@
   function ensureUi(){
     if(byId("biCustomOpen"))return;
     const style=document.createElement("link");style.rel="stylesheet";style.href="custom-panel-builder.css?v=1";document.head.appendChild(style);
-    const open=document.createElement("button");open.id="biCustomOpen";open.className="bi-custom-open";open.type="button";open.textContent="+ Novo painel";open.onclick=()=>show();document.body.appendChild(open);
+    const open=document.createElement("button");open.id="biCustomOpen";open.className="bi-custom-open";open.type="button";open.textContent="+ Novo painel";open.onclick=()=>show("new");document.body.appendChild(open);
     const root=document.createElement("section");root.id="biCustomRoot";root.className="bi-custom-root";root.hidden=true;root.innerHTML=`
       <div class="bi-custom-dialog" role="dialog" aria-modal="true" aria-labelledby="biCustomTitle">
         <header><div><strong id="biCustomTitle">Construtor de Painéis</strong><p>Crie suas análises sem programação</p></div><button type="button" id="biCustomClose" aria-label="Fechar">×</button></header>
@@ -43,7 +44,7 @@
       </div>`;
     document.body.appendChild(root);
     byId("biCustomClose").onclick=()=>{root.hidden=true;destroyChart();if(location.hash.includes("painel="))history.replaceState(null,"",location.pathname+location.search);};
-    byId("biCustomNew").onclick=()=>{state.id=null;state.name="Novo painel";state.filters=[];state.limit=20;renderFields();byId("biCustomList").hidden=true;};
+    byId("biCustomNew").onclick=()=>resetDraft();
     byId("biCustomListButton").onclick=loadList;
     byId("biCustomSource").onchange=e=>{state.source=e.target.value;const def=SOURCES[state.source];state.dimension=Object.keys(def.dimensions)[0];state.measure=Object.keys(def.measures)[0];state.filters=[];renderFields();};
     for(const [id,key] of [["biCustomName","name"],["biCustomDimension","dimension"],["biCustomMeasure","measure"],["biCustomAggregation","aggregation"],["biCustomChart","chart"]])byId(id).addEventListener("change",e=>{state[key]=e.target.value;});
@@ -51,9 +52,77 @@
     byId("biCustomLimit").onchange=e=>{state.limit=Number(e.target.value);};
     byId("biCustomPreview").onclick=preview;
     byId("biCustomExport").onclick=exportPreview;
-    byId("biCustomForm").onsubmit=async e=>{e.preventDefault();try{state.name=byId("biCustomName").value;const result=await request(state.id?"/api/custom-panels/"+encodeURIComponent(state.id):"/api/custom-panels",state.id?"PUT":"POST",cfg());state.id=result.panel.id;history.replaceState(null,"",location.pathname+location.search+"#painel="+encodeURIComponent(state.id));status("Painel salvo. O endereço desta página permite reabrir a análise.");}catch(e){status(e.message,true);}};
+    const navNew=byId("customPanelSidebarNew"),navList=byId("customPanelSidebarList"),mobile=byId("mobileCustomPanelButton");
+    if(navNew)navNew.onclick=()=>show("new");
+    if(navList)navList.onclick=()=>show("list");
+    if(mobile)mobile.onclick=()=>show("list");
+    byId("biCustomForm").onsubmit=async e=>{e.preventDefault();try{state.name=byId("biCustomName").value;const result=await request(state.id?"/api/custom-panels/"+encodeURIComponent(state.id):"/api/custom-panels",state.id?"PUT":"POST",cfg());state.id=result.panel.id;history.replaceState(null,"",location.pathname+location.search+"#painel="+encodeURIComponent(state.id));status("Painel salvo. O endereço desta página permite reabrir a análise.");await loadSidebar(true);}catch(e){status(e.message,true);}};
   }
   function status(message,error=false){const el=byId("biCustomStatus");el.textContent=message;el.classList.toggle("error",error);}
+
+  async function refreshCatalog(force=false){
+    const {tenant,system}=context(),scope=tenant+":"+system;
+    if(!tenant||system!=="tributos"){authorizedSources=new Set();catalogScope="";return;}
+    if(!force&&catalogScope===scope)return;
+    const result=await request("/api/custom-panels/catalog");
+    if(scope!==context().tenant+":"+context().system)return;
+    authorizedSources=new Set((result.sources||[]).map(source=>String(source.id)).filter(id=>SOURCES[id]));
+    catalogScope=scope;
+  }
+  function resetDraft(){
+    state.id=null;state.name="Novo painel";state.filters=[];state.limit=20;
+    state.chart="bar";state.aggregation="sum";
+    const first=[...authorizedSources][0]||"";
+    state.source=first;
+    if(first){state.dimension=Object.keys(SOURCES[first].dimensions)[0];state.measure=Object.keys(SOURCES[first].measures)[0];}
+    state.previewRows=[];state.previewSeq++;
+    destroyChart();
+    renderFields();byId("biCustomList").hidden=true;
+    byId("biCustomTable").replaceChildren();byId("biCustomDrill").hidden=true;
+  }
+  async function loadSidebar(force=false){
+    const side=byId("customPanelSidebar"),mobile=byId("mobileCustomPanelButton");
+    const {tenant,system}=context(),scope=tenant+":"+system;
+    const auth=byId("authGate");
+    const visible=Boolean(tenant)&&system==="tributos"&&(!auth||auth.hidden);
+    if(!visible){
+      if(side)side.hidden=true;if(mobile)mobile.hidden=true;sidebarScope="";
+      return;
+    }
+    if(!force&&sidebarScope===scope)return;
+    try{
+      await refreshCatalog();
+      if(scope!==context().tenant+":"+context().system)return;
+      const result=await request("/api/custom-panels");
+      if(scope!==context().tenant+":"+context().system)return;
+      const list=byId("customPanelSidebarItems");
+      if(list){
+        list.replaceChildren();
+        for(const panel of result.panels||[]){
+          const button=document.createElement("button");
+          button.className="sidebar-panel-option custom-panel-saved-option";button.type="button";
+          const icon=document.createElement("i");icon.className="mdi mdi-chart-box-outline";icon.setAttribute("aria-hidden","true");
+          const label=document.createElement("span");label.textContent=panel.name;label.title=panel.name;
+          button.append(icon,label);
+          button.onclick=async()=>{await show("existing");openPanel(panel);};
+          list.appendChild(button);
+        }
+      }
+      sidebarScope=scope;
+      if(side)side.hidden=!authorizedSources.size;
+      if(mobile)mobile.hidden=!authorizedSources.size;
+    }catch(error){
+      sidebarScope="";if(side)side.hidden=true;if(mobile)mobile.hidden=true;
+    }
+  }
+  async function show(mode="new"){
+    ensureUi();byId("biCustomRoot").hidden=false;
+    try{
+      await refreshCatalog();
+      if(mode==="new")resetDraft();else renderFields();
+      if(mode==="list")await loadList();
+    }catch(error){status(error.message,true);}
+  }
   function renderFilters(){
     const el=byId("biCustomFilters"),src=SOURCES[state.source];if(!el||!src)return;
     el.replaceChildren();
@@ -70,10 +139,11 @@
     });
   }
   function renderFields(){
-    const system=context().system;const available=Object.entries(SOURCES).filter(([,v])=>v.system===system);
+    const system=context().system;const available=Object.entries(SOURCES).filter(([id,v])=>v.system===system&&authorizedSources.has(id));
     byId("biCustomSource").innerHTML=available.map(([k,v])=>option(k,v.label,state.source)).join("");
     if(!available.some(([k])=>k===state.source)){state.source=available[0]?.[0]||"";}
-    const src=SOURCES[state.source];if(!src){status("Ainda não há fontes habilitadas para este sistema.");return;}
+    const src=SOURCES[state.source];if(!src||!authorizedSources.has(state.source)){byId("biCustomPreview").disabled=true;byId("biCustomForm").querySelector("[type=submit]").disabled=true;status("Nenhuma fonte autorizada está disponível para este sistema.",true);return;}
+    byId("biCustomPreview").disabled=false;byId("biCustomForm").querySelector("[type=submit]").disabled=false;
     byId("biCustomSource").value=state.source;
     if(!(state.dimension in src.dimensions))state.dimension=Object.keys(src.dimensions)[0];
     if(!(state.measure in src.measures))state.measure=Object.keys(src.measures)[0];
@@ -137,7 +207,7 @@
       box.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>openPanel(response.panels.find(p=>p.id===b.dataset.edit)));
       box.querySelectorAll("[data-link]").forEach(b=>b.onclick=async()=>{const link=new URL(location.href);link.hash="painel="+encodeURIComponent(b.dataset.link);try{await navigator.clipboard.writeText(link.toString());status("Link copiado.");}catch(error){status("Não foi possível copiar. Use o endereço: "+link.toString(),true);}});
       box.querySelectorAll("[data-dup]").forEach(b=>b.onclick=()=>openPanel(response.panels.find(p=>p.id===b.dataset.dup),true));
-      box.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(!confirm("Excluir este painel?"))return;try{await request("/api/custom-panels/"+encodeURIComponent(b.dataset.del),"DELETE");await loadList();}catch(e){status(e.message,true);}});
+      box.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(!confirm("Excluir este painel?"))return;try{await request("/api/custom-panels/"+encodeURIComponent(b.dataset.del),"DELETE");await loadList();await loadSidebar(true);}catch(e){status(e.message,true);}});
       status("");
     }catch(e){status(e.message,true);}
   }
@@ -151,20 +221,21 @@
     const id=params.get("painel");
     if(!id||!/^[a-f0-9-]{36}$/i.test(id))return;
     ensureUi();
-    if(!context().tenant)return;
+    if(!context().tenant||context().system!=="tributos")return;
     try {
       const scope=context().tenant+":"+context().system;
+      await refreshCatalog();
       const result=await request("/api/custom-panels/"+encodeURIComponent(id));
       if(scope!==context().tenant+":"+context().system||context().system!=="tributos")return;
       byId("biCustomRoot").hidden=false;
       openPanel(result.panel);
     }catch(error){status(error.message,true);}
   }
-  function show(){ensureUi();byId("biCustomRoot").hidden=false;renderFields();}
+
   window.addEventListener("hashchange",openSavedFromUrl);
   window.addEventListener("popstate",openSavedFromUrl);
   let lastContext="";
-  const timer=setInterval(()=>{const gate=byId("authGate");const open=byId("biCustomOpen");if(open)open.hidden=Boolean(gate&&!gate.hidden)||!context().tenant||context().system!=="tributos";const scope=context().tenant+":"+context().system;if(scope!==lastContext){lastContext=scope;if(byId("biCustomRoot"))byId("biCustomRoot").hidden=true;state.id=null;state.previewRows=[];state.previewSeq++;destroyChart();if(scope.split(":")[0])openSavedFromUrl();}},1500);
+  const timer=setInterval(()=>{const gate=byId("authGate");const open=byId("biCustomOpen");if(open)open.hidden=Boolean(gate&&!gate.hidden)||!context().tenant||context().system!=="tributos";const scope=context().tenant+":"+context().system;if(scope!==lastContext){lastContext=scope;if(byId("biCustomRoot"))byId("biCustomRoot").hidden=true;state.id=null;state.previewRows=[];state.previewSeq++;destroyChart();if(scope.split(":")[0]){loadSidebar(true);openSavedFromUrl();}}},1500);
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",ensureUi);else ensureUi();
   window.BIVellaCustomPanels={open:show};
 })();
