@@ -6167,6 +6167,170 @@ async function buildDetailPage(env,tenant,resource,url,options={}) {
 
 
 
+const MULTISYSTEM_BOOTSTRAP_TENANT="paulafreitas";
+const MULTISYSTEM_BOOTSTRAP_TARGET=100;
+const MULTISYSTEM_BOOTSTRAP_SOURCES=Object.freeze({
+  contabil:[
+    {resource:"empenhos",base:"https://contabil.suite.betha.cloud",path:"/dados/v1/empenhos"},
+    {resource:"movimentacoes-despesas",base:"https://contabil.suite.betha.cloud",path:"/dados/v1/movimentacoes/despesas"},
+    {resource:"movimentacoes-receitas",base:"https://contabil.suite.betha.cloud",path:"/dados/v1/movimentacoes/receitas"},
+    {resource:"credores",base:"https://contabil.suite.betha.cloud",path:"/dados/v1/credores"}
+  ],
+  compras:[
+    {resource:"processos-administrativos",base:"https://compras.suite.betha.cloud",path:"/dados/v1/processos-administrativos"},
+    {resource:"fornecedores",base:"https://compras.suite.betha.cloud",path:"/dados/v1/fornecedores"}
+  ],
+  folha:[
+    {resource:"matriculas",base:"https://folha.suite.betha.cloud",path:"/dados/v1/matriculas"},
+    {resource:"funcionarios-cargos",base:"https://folha.suite.betha.cloud",path:"/dados/v1/funcionarios-cargos"},
+    {resource:"remuneracoes",base:"https://folha.suite.betha.cloud",path:"/dados/v1/remuneracoes"}
+  ]
+});
+
+async function ensureMultiSystemLoadSchema(env){
+  if(!env.AUTH_DB)return;
+  await env.AUTH_DB.prepare(
+    "CREATE TABLE IF NOT EXISTS bi_multisystem_loads (tenant_id TEXT NOT NULL, system TEXT NOT NULL, resource TEXT NOT NULL, status TEXT NOT NULL, loaded INTEGER NOT NULL DEFAULT 0, pages INTEGER NOT NULL DEFAULT 0, http_status INTEGER, error TEXT, object_key TEXT, fields_json TEXT, updated_at TEXT NOT NULL, PRIMARY KEY (tenant_id,system,resource))"
+  ).run();
+  await env.AUTH_DB.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_bi_multisystem_loads_status ON bi_multisystem_loads (tenant_id,system,status)"
+  ).run();
+}
+
+function multiSystemObjectKey(tenantId,system,resource){
+  return "multisystem/"+encodeURIComponent(String(tenantId))+"/"+encodeURIComponent(String(system))+"/"+encodeURIComponent(String(resource))+"/bootstrap.json";
+}
+
+function multiSystemFieldNames(rows){
+  const fields=new Set();
+  for(const row of (rows||[]).slice(0,20)){
+    if(!row||typeof row!=="object"||Array.isArray(row))continue;
+    for(const key of Object.keys(row))fields.add(key);
+    if(fields.size>=200)break;
+  }
+  return [...fields].slice(0,200);
+}
+
+async function multiSystemGetPage(env,tenant,source,offset,limit){
+  const query=new URLSearchParams({limit:String(limit),offset:String(offset)});
+  const target=String(source.base).replace(/\/$/,"")+source.path+"?"+query.toString();
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),30000);
+  try{
+    const response=await fetch(target,{
+      method:"GET",
+      signal:controller.signal,
+      headers:{
+        "Accept":"application/json",
+        "Authorization":"Bearer "+tenant.accessToken,
+        "User-Access":tenant.userAccess
+      }
+    });
+    const parsed=await readJsonResponse(response);
+    if(!response.ok){
+      const error=new Error("BETHA_HTTP_"+response.status);
+      error.status=response.status;
+      throw error;
+    }
+    return {rows:payloadRows(parsed.body),body:parsed.body,status:response.status};
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
+async function loadMultiSystemBootstrapResource(env,tenant,system,source){
+  const rows=[];
+  const seen=new Set();
+  let pages=0;
+  let offset=0;
+  let httpStatus=200;
+  while(rows.length<MULTISYSTEM_BOOTSTRAP_TARGET&&pages<4){
+    const remaining=MULTISYSTEM_BOOTSTRAP_TARGET-rows.length;
+    const limit=Math.min(50,remaining);
+    const result=await multiSystemGetPage(env,tenant,source,offset,limit);
+    httpStatus=result.status;
+    pages++;
+    const pageRows=result.rows||[];
+    for(const row of pageRows){
+      const id=firstValue(row,["id","codigo","idIntegracao","uuid","matricula.id"]);
+      const key=id===undefined||id===null||id===""?null:String(id);
+      if(key&&seen.has(key))continue;
+      if(key)seen.add(key);
+      rows.push(row);
+      if(rows.length>=MULTISYSTEM_BOOTSTRAP_TARGET)break;
+    }
+    if(pageRows.length<limit)break;
+    offset+=limit;
+  }
+
+  const objectKey=multiSystemObjectKey(tenant.id,system,source.resource);
+  if(rows.length&&env.BI_SYNC_RAW){
+    await env.BI_SYNC_RAW.put(objectKey,JSON.stringify({
+      tenantId:tenant.id,
+      system,
+      resource:source.resource,
+      source:"betha-api",
+      loaded:rows.length,
+      loadedAt:new Date().toISOString(),
+      rows
+    }),{httpMetadata:{contentType:"application/json"}});
+  }
+  return {loaded:rows.length,pages,httpStatus,objectKey,fields:multiSystemFieldNames(rows)};
+}
+
+async function multiSystemBootstrapTotals(env,tenantId){
+  if(!env.AUTH_DB)return {};
+  const result=await env.AUTH_DB.prepare(
+    "SELECT system,SUM(CASE WHEN status='complete' THEN loaded ELSE 0 END) AS loaded FROM bi_multisystem_loads WHERE tenant_id=?1 GROUP BY system"
+  ).bind(String(tenantId)).all();
+  return Object.fromEntries((result.results||[]).map(row=>[String(row.system),Number(row.loaded)||0]));
+}
+
+async function runMultiSystemBootstrap(env){
+  if(!env.AUTH_DB||!env.BI_SYNC_RAW)return;
+  await ensureMultiSystemLoadSchema(env);
+  let tenant;
+  try{
+    tenant=await resolveTenant(env,MULTISYSTEM_BOOTSTRAP_TENANT);
+  }catch(error){
+    console.warn("Multi-system bootstrap tenant unavailable",error?.message||error);
+    return;
+  }
+
+  const totals=await multiSystemBootstrapTotals(env,tenant.id);
+  for(const system of ["contabil","compras","folha"]){
+    if((totals[system]||0)>=MULTISYSTEM_BOOTSTRAP_TARGET)continue;
+    const sources=MULTISYSTEM_BOOTSTRAP_SOURCES[system]||[];
+    const states=await env.AUTH_DB.prepare(
+      "SELECT resource,status,loaded FROM bi_multisystem_loads WHERE tenant_id=?1 AND system=?2"
+    ).bind(String(tenant.id),system).all();
+    const byResource=new Map((states.results||[]).map(row=>[String(row.resource),row]));
+    const source=sources.find(item=>byResource.get(item.resource)?.status!=="complete"&&byResource.get(item.resource)?.status!=="error");
+    const retrySource=source||sources.find(item=>byResource.get(item.resource)?.status!=="complete");
+    if(!retrySource)continue;
+
+    const startedAt=new Date().toISOString();
+    await env.AUTH_DB.prepare(
+      "INSERT INTO bi_multisystem_loads (tenant_id,system,resource,status,loaded,pages,updated_at) VALUES (?1,?2,?3,'running',0,0,?4) ON CONFLICT(tenant_id,system,resource) DO UPDATE SET status='running',error=NULL,updated_at=excluded.updated_at"
+    ).bind(String(tenant.id),system,retrySource.resource,startedAt).run();
+
+    try{
+      const result=await loadMultiSystemBootstrapResource(env,tenant,system,retrySource);
+      const status=result.loaded>0?"complete":"empty";
+      await env.AUTH_DB.prepare(
+        "UPDATE bi_multisystem_loads SET status=?1,loaded=?2,pages=?3,http_status=?4,error=NULL,object_key=?5,fields_json=?6,updated_at=?7 WHERE tenant_id=?8 AND system=?9 AND resource=?10"
+      ).bind(status,result.loaded,result.pages,result.httpStatus,result.objectKey,JSON.stringify(result.fields),new Date().toISOString(),String(tenant.id),system,retrySource.resource).run();
+    }catch(error){
+      const code=String(error?.message||error||"MULTISYSTEM_LOAD_FAILED");
+      const httpStatus=Number(error?.status)||null;
+      await env.AUTH_DB.prepare(
+        "UPDATE bi_multisystem_loads SET status='error',http_status=?1,error=?2,updated_at=?3 WHERE tenant_id=?4 AND system=?5 AND resource=?6"
+      ).bind(httpStatus,code.slice(0,240),new Date().toISOString(),String(tenant.id),system,retrySource.resource).run();
+    }
+    break;
+  }
+}
+
 const MULTISYSTEM_SAMPLE_FILES=Object.freeze({
   contabil:"contabil-100.json",
   compras:"compras-100.json",
@@ -9432,7 +9596,7 @@ function errorResponse(request,env,error) {
 }
 
 export default {
-  async scheduled(event,env,ctx){ctx.waitUntil(runBackgroundSync(env));},
+  async scheduled(event,env,ctx){ctx.waitUntil(Promise.allSettled([runBackgroundSync(env),runMultiSystemBootstrap(env)]));},
   async fetch(request,env) {
     const url=new URL(request.url);
     if (request.method==="OPTIONS") return new Response(null,{status:204,headers:corsHeaders(request,env)});
