@@ -22,7 +22,7 @@ const sandbox = {
   panelReadAuthorized(auth, source) {
     if (auth.denied?.includes(source)) throw Error("DATA_RESOURCE_PERMISSION_DENIED");
   },
-  permissionViewsForAccess(access){return access.views||[];}
+  permissionViewsForAccess(access){return access?.views||[];}
 };
 vm.createContext(sandbox);
 vm.runInContext(catalogCode + validateCode + "\nthis.validatePanel=validateCustomPanel;this.catalog=CUSTOM_PANEL_SOURCES;", sandbox);
@@ -181,7 +181,7 @@ test("integração preserva cargas multissistema e as rotas de painéis", () => 
 });
 
 test("fontes multissistema exigem permissão por painel e não incluem campos pessoais", () => {
-  sandbox.permissionViewsForAccess=access=>access.views||[];
+  sandbox.permissionViewsForAccess=access=>access?.views||[];
   const billing={system:"contabil",source:"contabil:empenhos",dimension:"situacao",measure:"count",aggregation:"count"};
   assert.throws(()=>validate(billing),/DATA_RESOURCE_PERMISSION_DENIED/);
   const checked=validate(billing,{views:["contabil-empenhos"]});
