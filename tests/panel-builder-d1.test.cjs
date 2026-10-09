@@ -58,6 +58,7 @@ const context={
  permissionViewsForAccess:()=>[],
  validatePanelDraftPayload:input=>input.definition,
  authorizePanelDefinition:async()=>{},
+ ensurePanelDraftSchema:async()=>{},
  json:(_req,_env,status,body)=>({status,body}),
  errorResponse:(_req,_env,error)=>({status:403,body:{error:error.message}}),
  crypto:{randomUUID:()=>String(++seq).padStart(8,"0")+"-1111-4111-8111-111111111111"},
@@ -65,7 +66,8 @@ const context={
 };
 vm.createContext(context);
 vm.runInContext(worker.slice(start,end),context);
-const env={BI_PANEL_DB:database};
+// Testa a configuração real, que possui somente AUTH_DB.
+const env={AUTH_DB:database};
 async function call(method,tenant,user,uri,body){
  const req=new Request("https://bi.example"+uri,{method,headers:{"X-Tenant-Id":tenant,"X-User-Id":user,"X-Admin":"yes",...(body?{"Content-Type":"application/json"}:{})},...(body?{body:JSON.stringify(body)}:{})});
  return context.handlePanelDrafts(req,env,new URL(req.url));
