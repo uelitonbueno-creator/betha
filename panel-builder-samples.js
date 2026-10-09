@@ -10,7 +10,7 @@ const definitions={
 function catalog(system){
  const d=definitions[system];if(!d)return[];
  return [{id:"sample:"+system,systemId:system,mode:"sample",file:d.file,fields:[
- ...d.dimensions.map(id=>({id,type:"string",dimension:true,filterable:false})),
+ ...d.dimensions.map(id=>({id,type:"string",dimension:true,filterable:true})),
  ...d.numbers.map(id=>({id,type:"number",measure:true,filterable:false}))
  ]}];
 }
