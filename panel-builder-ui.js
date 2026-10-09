@@ -36,11 +36,13 @@ const output=make("pre",{className:"bi-builder-json","aria-label":"Definição J
 const actions=make("div",{className:"bi-builder-actions"});
 const build=make("button",{type:"submit"},"Validar definição");
 const download=make("button",{type:"button"},"Exportar JSON");download.disabled=true;
+const preview=make("button",{type:"button"},"Prévia de dados");preview.disabled=true;
+const previewOutput=make("div",{className:"bi-builder-preview",role:"status","aria-live":"polite"});
 const save=make("button",{type:"button"},"Salvar rascunho");save.disabled=true;
 const drafts=make("select",{"aria-label":"Rascunhos salvos"});drafts.append(make("option",{value:""},"Rascunhos salvos"));
 const load=make("button",{type:"button"},"Abrir rascunho");
 const remove=make("button",{type:"button"},"Excluir rascunho");
-actions.append(build,download,save,drafts,load,remove);form.append(actions,status,output);panel.append(form);dialog.append(panel);document.body.append(trigger,dialog);
+actions.append(build,preview,download,save,drafts,load,remove);form.append(actions,status,output,previewOutput);panel.append(form);dialog.append(panel);document.body.append(trigger,dialog);
 let catalog=[],context=null,current=null,selectedDraftId="";
 function remote(){
   const tenant=new URLSearchParams(location.search).get("tenant")||new URLSearchParams(location.search).get("entidadeId")||"";
@@ -53,6 +55,16 @@ async function requestDraft(method,id,payload){
   const response=await fetch(address,{method,credentials:"include",headers:{"X-Tenant-Id":tenant,...(payload?{"Content-Type":"application/json"}:{})},...(payload?{body:JSON.stringify(payload)}:{})});
   const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||"Falha ao acessar rascunhos.");return result;
 }
+async function requestBuilder(method,action,payload){
+  const {tenant}=remote(),base=String(window.BI_CONFIG?.BACKEND_URL||"").replace(/\/$/,"");
+  const response=await fetch(base+"/api/panel-builder/"+action+"?system="+encodeURIComponent(context.currentSystemId),{
+    method,credentials:"include",headers:{"X-Tenant-Id":tenant,...(payload?{"Content-Type":"application/json"}:{})},
+    ...(payload?{body:JSON.stringify(payload)}:{})
+  });
+  const body=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(body.error||"Serviço de prévia indisponível.");
+  return body;
+}
 async function refreshDrafts(){try{const result=await requestDraft("GET");options(drafts,[["","Rascunhos salvos"],...(result.items||[]).map(x=>[x.id,x.title])]);drafts._items=result.items||[];}catch(err){status.textContent="Rascunhos remotos: "+err.message;}}
 
 function options(element,values){element.replaceChildren(...values.map(([v,l])=>make("option",{value:v},l)));}
@@ -64,12 +76,11 @@ options(measure,[["*","Total de registros"],...fields.filter(f=>f.measure).map(f
 const usable=Boolean(selected&&fields.some(f=>f.dimension));build.disabled=!usable;
 if(!usable)status.textContent="Esta fonte ainda não possui dimensões disponíveis para edição.";
 }
-function open(){
+async function open(){
 context=window.BIVellaSearchContext.getState();
-catalog=core.sourcesFromDashboards(window.BI_DASHBOARDS,context.currentSystemId)
-.filter(s=>s.fields.some(f=>f.dimension)&&s.fields.some(f=>f.measure));
+catalog=[];try{const response=await requestBuilder("GET","catalog");catalog=(response.sources||[]).filter(s=>s.fields.some(f=>f.dimension)&&s.fields.some(f=>f.measure));}catch(err){status.textContent="Catálogo não disponível: "+err.message;}
 options(source,catalog.map(s=>[s.id,s.id]));
-title.value="";type.value="bar";agg.value="sum";status.textContent="";output.textContent="";current=null;download.disabled=true;
+title.value="";type.value="bar";agg.value="sum";status.textContent="";output.textContent="";previewOutput.replaceChildren();current=null;download.disabled=true;preview.disabled=true;
 fillFields();dialog.hidden=false;dirty=false;selectedDraftId="";save.disabled=true;close.focus();refreshDrafts();
 }
 function dismiss(){dialog.hidden=true;trigger.focus();}
@@ -85,8 +96,21 @@ const definition={title:title.value.trim(),sourceId:source.value,type:type.value
 dimension:dimension.value,measures:[metric],filters:[]};
 const result=core.validate(definition,catalog,{tenantId:"editor-local",systemId:context.currentSystemId});
 if(!result.ok){status.textContent=result.errors.join(" ");download.disabled=true;current=null;return;}
-current=definition;output.textContent=JSON.stringify(definition,null,2);save.disabled=false;
+current=definition;output.textContent=JSON.stringify(definition,null,2);save.disabled=false;preview.disabled=false;
 status.textContent="Definição validada localmente. Não publicada.";download.disabled=false;
+});
+preview.addEventListener("click",async()=>{
+if(!current)return;preview.disabled=true;previewOutput.replaceChildren();
+try{
+const result=await requestBuilder("POST","preview",{definition:current});
+const h=make("strong",{},"Prévia parcial — "+result.scanned+" registros examinados");previewOutput.append(h);
+const table=make("table",{"aria-label":"Resultado preliminar do painel"});
+const head=make("tr");head.append(make("th",{},"Dimensão"));
+current.measures.forEach(m=>head.append(make("th",{},m.aggregation+"("+m.field+")")));
+const thead=make("thead");thead.append(head);table.append(thead);
+const tbody=make("tbody");for(const row of (result.rows||[]).slice(0,40)){const tr=make("tr");tr.append(make("td",{},row.dimension));for(const v of row.values)tr.append(make("td",{},v==null?"—":String(v)));tbody.append(tr);}
+table.append(tbody);previewOutput.append(table,make("p",{},"Resultados ilustrativos e parciais; não representam totais consolidados."));
+}catch(err){previewOutput.textContent="Prévia indisponível: "+err.message;}finally{preview.disabled=false;}
 });
 save.addEventListener("click",async()=>{if(!current)return;save.disabled=true;try{const result=await requestDraft(selectedDraftId?"PUT":"POST",selectedDraftId||"",{definition:current});selectedDraftId=result.id||selectedDraftId;status.textContent="Rascunho salvo no D1.";await refreshDrafts();drafts.value=selectedDraftId;}catch(err){status.textContent="Não foi possível salvar: "+err.message;}finally{save.disabled=false;}});
 load.addEventListener("click",()=>{const item=(drafts._items||[]).find(x=>x.id===drafts.value);if(!item)return;const d=item.definition;if(!catalog.some(x=>x.id===d.sourceId)){status.textContent="Fonte não disponível neste sistema.";return;}title.value=d.title;source.value=d.sourceId;fillFields();type.value=d.type;dimension.value=d.dimension;measure.value=d.measures?.[0]?.field||"*";agg.value=d.measures?.[0]?.aggregation||"count";selectedDraftId=item.id;current=null;save.disabled=true;output.textContent="";status.textContent="Rascunho carregado. Valide antes de salvar alterações.";});
