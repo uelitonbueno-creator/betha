@@ -98,7 +98,7 @@ if(window.BIPanelSampleBuilder?.catalog(context.currentSystemId).length){
 else try{const response=await requestBuilder("GET","catalog");catalog=(response.sources||[]).filter(s=>s.fields.some(f=>f.dimension)&&s.fields.some(f=>f.measure));}catch(err){status.textContent="Catálogo não disponível: "+err.message;}
 options(source,catalog.map(s=>[s.id,s.id]));
 title.value="";type.value="bar";agg.value="sum";if(!catalog.some(x=>x.mode==="sample"))status.textContent="";output.textContent="";clearPreview();current=null;download.disabled=true;preview.disabled=true;
-fillFields();dialog.hidden=false;dirty=false;selectedDraftId="";selectedSortOrder=0;placement.value="";save.disabled=true;close.focus();refreshDrafts();
+fillFields();dialog.hidden=false;dirty=false;selectedDraftId="";selectedSortOrder=0;placement.value="";save.disabled=true;close.focus();await refreshDrafts();
 }
 function dismiss(){clearPreview();dialog.hidden=true;trigger.focus();}
 trigger.addEventListener("click",open);
@@ -165,13 +165,10 @@ window.addEventListener("bi-open-panel-draft",async(event)=>{
   const id=String(event.detail?.id||"");
   if(!id)return;
   await open();
-  try{
-    const result=await requestDraft("GET");
-    const found=(result.items||[]).find(item=>item.id===id);
-    if(!found){status.textContent="Rascunho não encontrado para este usuário.";return;}
-    drafts.value=id;
-    load.click();
-  }catch(err){status.textContent="Erro ao carregar gráfico: "+err.message;}
+  const found=(drafts._items||[]).find(item=>item.id===id);
+  if(!found){status.textContent="Rascunho não encontrado para este usuário.";return;}
+  drafts.value=id;
+  load.click();
 });
 remove.addEventListener("click",async()=>{if(!drafts.value||!window.confirm("Excluir o rascunho selecionado?"))return;try{await requestDraft("DELETE",drafts.value);selectedDraftId="";status.textContent="Rascunho excluído.";window.dispatchEvent(new Event("bi-panel-drafts-changed"));await refreshDrafts();}catch(err){status.textContent=err.message;}});
 download.addEventListener("click",()=>{
