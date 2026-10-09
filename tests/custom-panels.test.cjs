@@ -88,7 +88,7 @@ test("HTML e construtor oferecem entradas de navegação desktop e mobile", () =
 });
 
 test("motor paginado soma blocos sucessivos sem enviar registros brutos", async () => {
-  const engineCode=sliceBetween(worker,"function customPanelRowMatches(","async function handleCustomPanelRequest(");
+  const engineCode=sliceBetween(worker,"function customPanelDimensionValue(","async function handleCustomPanelRequest(");
   const runtime={
     panelNumber(value){return value==null||value===""?null:Number(value);},
     normalizePanelRow(row){return row;},
@@ -124,7 +124,7 @@ test("motor paginado soma blocos sucessivos sem enviar registros brutos", async 
 });
 
 test("consulta paginada rejeita cursor inválido e não declara carga parcial como completa", async () => {
-  const engineCode=sliceBetween(worker,"function customPanelRowMatches(","async function handleCustomPanelRequest(");
+  const engineCode=sliceBetween(worker,"function customPanelDimensionValue(","async function handleCustomPanelRequest(");
   let completed=false;
   const runtime={
     panelNumber(value){return value==null?null:Number(value);},
