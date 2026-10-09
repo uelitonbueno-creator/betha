@@ -1151,9 +1151,10 @@
     document.title="BI Vella | "+systemName+" / "+(def?.title||"Painel");
     const sampleModeBadge=document.getElementById("sampleModeBadge");
     if(sampleModeBadge){
-      sampleModeBadge.hidden=!def?.localSample;
+      const expectsReal=REAL_MULTI_SYSTEM_HOME_VIEWS.has(view);
+      sampleModeBadge.hidden=expectsReal||!def?.localSample;
       const sampleText=sampleModeBadge.querySelector("span");
-      if(sampleText&&def?.localSample) sampleText.textContent="Amostra de teste · sem consumo da API";
+      if(sampleText&&def?.localSample&&!expectsReal) sampleText.textContent="Amostra de teste · sem consumo da API";
     }
     const tableGrid=document.getElementById("tableGrid");
     if(tableGrid){tableGrid.innerHTML="";tableGrid.hidden=true;}
@@ -1324,7 +1325,7 @@
       coverage.className = "integration-coverage";
       kpiGrid.insertAdjacentElement("afterend", coverage);
     }
-    const sampleCoverage=Boolean(def.localSample);
+    const sampleCoverage=Boolean(def.localSample)&&!REAL_MULTI_SYSTEM_HOME_VIEWS.has(view);
     coverage.classList.toggle("is-sample",sampleCoverage);
     coverage.innerHTML = `
       <div class="coverage-title">
@@ -2230,7 +2231,10 @@
     const title=empty.querySelector("strong");
     const detail=empty.querySelector("span");
     const hasSeries=Boolean(data&&Array.isArray(data.labels)&&data.labels.length&&Array.isArray(data.datasets)&&data.datasets.some(ds=>Array.isArray(ds.data)&&ds.data.length));
-    if(payload?.meta?.refreshError&&!hasSeries){
+    if(payload?.meta?.realData===true&&!data){
+      title.textContent="Indicador em preparação";
+      detail.textContent=payload?.meta?.note||"Os dados reais já estão conectados, mas os campos necessários para este indicador ainda não foram consolidados.";
+    } else if(payload?.meta?.refreshError&&!hasSeries){
       title.textContent="Resumo não atualizado";
       detail.textContent=friendlySourceErrorDetail(payload.meta.refreshError);
     } else if(state.kind==="error"){
