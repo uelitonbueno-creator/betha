@@ -10183,51 +10183,76 @@ async function panelMultiSystemStatus(env,tenant,system){
 
 
 // Primeira fonte real do construtor: somente cache R2 existente, nunca consulta Betha.
-const PANEL_CACHED_ACCOUNTING=Object.freeze({
-  resource:"empenhos",dimensions:["ano","situacao","dataEmpenho","numero"],
-  measures:["valor","valorEmpenhado"]
+const PANEL_CACHED_SOURCES=Object.freeze({
+ contabil:{
+  empenhos:{dimensions:["ano","situacao","dataEmpenho","numero","unidadeOrcamentaria","funcao"],measures:["valor","valorEmpenhado"]},
+  "movimentacoes-despesas":{dimensions:["ano","situacao","tipo","unidadeOrcamentaria"],measures:["valor"]},
+  "movimentacoes-receitas":{dimensions:["ano","tipo","situacao","unidadeOrcamentaria"],measures:["valor"]}
+ },
+ compras:{
+  "processos-administrativos":{dimensions:["ano","situacao","modalidade","secretaria","formaContratacao"],measures:["valorEstimado","valorHomologado"]}
+ },
+ folha:{
+  remuneracoes:{dimensions:["competencia","evento"],measures:["valor","valorBruto","valorLiquido","descontos","encargos"]}
+ }
 });
-async function cachedAccountingSource(env,tenant,auth){
-  if(!env.AUTH_DB||!env.BI_SYNC_RAW)return null;
-  // Habilitação conservadora enquanto as permissões por visão são consolidadas.
-  if(auth.access?.admin!==true&&auth.access?.technical!==true&&!auth.tenantAdmin)return null;
-  const state=await env.AUTH_DB.prepare("SELECT loaded,pages,status,fields_json FROM bi_multisystem_loads WHERE tenant_id=? AND system='contabil' AND resource='empenhos' LIMIT 1").bind(tenant.id).first();
-  if(!state||Number(state.loaded)<=0||Number(state.pages)<=0)return null;
+async function cachedPanelSources(env,tenant,auth,system){
+ if(!env.AUTH_DB||!env.BI_SYNC_RAW||!PANEL_CACHED_SOURCES[system])return [];
+ if(auth.access?.admin!==true&&auth.access?.technical!==true&&!auth.tenantAdmin)return [];
+ const allowed=PANEL_CACHED_SOURCES[system];
+ const results=await env.AUTH_DB.prepare("SELECT resource,loaded,pages,status,fields_json FROM bi_multisystem_loads WHERE tenant_id=? AND system=? ORDER BY resource LIMIT 30").bind(tenant.id,system).all();
+ const sources=[];
+ for(const state of results.results||[]){
+  const spec=allowed[state.resource];if(!spec||Number(state.loaded)<=0||Number(state.pages)<=0)continue;
   const selected=new Set(parseMultiSystemFieldProfile(state.fields_json).selected);
-  const dimensions=PANEL_CACHED_ACCOUNTING.dimensions.filter(field=>selected.has(field)).map(id=>({id,type:"string",dimension:true}));
-  const measures=PANEL_CACHED_ACCOUNTING.measures.filter(field=>selected.has(field)).map(id=>({id,type:"number",measure:true}));
-  if(!dimensions.length||!measures.length)return null;
-  return {id:"cache:contabil:empenhos",systemId:"contabil",mode:"cached-real",fields:[...dimensions,...measures],
-    availablePages:Math.min(5,Number(state.pages)),loaded:Number(state.loaded),status:state.status};
+  const dimensions=spec.dimensions.filter(id=>selected.has(id)).map(id=>({id,type:"string",dimension:true}));
+  const measures=spec.measures.filter(id=>selected.has(id)).map(id=>({id,type:"number",measure:true}));
+  if(!dimensions.length||!measures.length)continue;
+  sources.push({id:"cache:"+system+":"+state.resource,systemId:system,mode:"cached-real",
+   fields:[...dimensions,...measures],availablePages:Math.min(5,Number(state.pages)),loaded:Number(state.loaded),status:state.status});
+ }
+ return sources;
 }
-async function cachedAccountingPreview(env,tenant,auth,definition){
-  const source=await cachedAccountingSource(env,tenant,auth);
-  if(!source||definition.sourceId!==source.id)throw new Error("PANEL_SOURCE_NOT_ALLOWED");
-  const fields=new Map(source.fields.map(f=>[f.id,f]));
-  if(!fields.get(definition.dimension)?.dimension||!Array.isArray(definition.measures)||definition.measures.length!==1)throw new Error("INVALID_PANEL_DRAFT");
-  const metric=definition.measures[0];
-  if(!metric||!["count","sum","avg","min","max"].includes(metric.aggregation)||
-    !(metric.field==="*"&&metric.aggregation==="count")&&!fields.get(metric.field)?.measure)throw new Error("INVALID_PANEL_DRAFT");
-  if(!Array.isArray(definition.filters)||definition.filters.length!==0)throw new Error("INVALID_PANEL_DRAFT");
-  const groups=new Map();let scanned=0;
-  for(let page=0;page<source.availablePages&&scanned<500;page++){
-    const object=await env.BI_SYNC_RAW.get(multiSystemPageObjectKey(tenant.id,"contabil","empenhos",page));
-    if(!object)break;
-    const saved=await object.json();
-    if(saved.tenantId!==tenant.id||saved.system!=="contabil"||saved.resource!=="empenhos"||!Array.isArray(saved.rows))throw new Error("PANEL_CACHE_INVALID");
-    for(const row of saved.rows){
-      if(scanned>=500)break;
-      scanned++;
-      const label=String(row?.[definition.dimension]??"Não informado").slice(0,100);
-      if(!groups.has(label)){if(groups.size>=100)break;groups.set(label,{dimension:label,n:0,sum:0,min:Infinity,max:-Infinity});}
-      const bucket=groups.get(label),value=metric.field==="*"?1:row?.[metric.field];
-      if(metric.aggregation==="count"){if(metric.field==="*"||value!=null)bucket.n++;}
-      else if(typeof value==="number"&&Number.isFinite(value)){bucket.n++;bucket.sum+=value;bucket.min=Math.min(bucket.min,value);bucket.max=Math.max(bucket.max,value);}
-    }
+async function previewCachedPanel(env,tenant,auth,system,definition){
+ const sources=await cachedPanelSources(env,tenant,auth,system);
+ const source=sources.find(x=>x.id===definition?.sourceId);
+ if(!source)throw new Error("PANEL_SOURCE_NOT_ALLOWED");
+ const spec=source.id.split(":")[2];
+ const fields=new Map(source.fields.map(x=>[x.id,x]));
+ if(typeof definition.title!=="string"||definition.title.length>120||
+ !["bar","line","doughnut","table","kpi"].includes(definition.type)||
+ !fields.get(definition.dimension)?.dimension||
+ !Array.isArray(definition.measures)||definition.measures.length!==1||
+ !Array.isArray(definition.filters)||definition.filters.length!==0)throw new Error("INVALID_PANEL_DRAFT");
+ const metric=definition.measures[0];
+ if(!metric||!["count","sum","avg","min","max"].includes(metric.aggregation)||
+ !(metric.field==="*"&&metric.aggregation==="count")&&!fields.get(metric.field)?.measure||
+ (metric.field==="*"&&metric.aggregation!=="count"))throw new Error("INVALID_PANEL_DRAFT");
+ const groups=new Map();let scanned=0,pagesRead=0;
+ for(let page=0;page<source.availablePages&&scanned<500;page++){
+  const object=await env.BI_SYNC_RAW.get(multiSystemPageObjectKey(tenant.id,system,spec,page));
+  if(!object)break;
+  const saved=await object.json();
+  if(saved.tenantId!==tenant.id||saved.system!==system||saved.resource!==spec||!Array.isArray(saved.rows))throw new Error("PANEL_CACHE_INVALID");
+  pagesRead++;
+  for(const row of saved.rows){
+   if(scanned>=500)break;
+   scanned++;
+   const raw=multiSystemSimpleValue(row?.[definition.dimension]);
+   const label=String(raw??"Não informado").slice(0,100);
+   if(!groups.has(label)){if(groups.size>=100)continue;groups.set(label,{dimension:label,n:0,sum:0,min:Infinity,max:-Infinity});}
+   const bucket=groups.get(label);
+   const rawValue=metric.field==="*"?1:multiSystemSimpleValue(row?.[metric.field]);
+   if(metric.aggregation==="count"){if(metric.field==="*"||rawValue!=null)bucket.n++;}
+   else if(rawValue!==null&&rawValue!==""&&Number.isFinite(Number(rawValue))){
+    const value=Number(rawValue);bucket.n++;bucket.sum+=value;bucket.min=Math.min(bucket.min,value);bucket.max=Math.max(bucket.max,value);
+   }
   }
-  return {source:source.id,mode:"cached-real",partial:true,scanned,rows:[...groups.values()].map(v=>({dimension:v.dimension,values:[metric.aggregation==="count"?v.n:!v.n?null:metric.aggregation==="sum"?v.sum:metric.aggregation==="avg"?v.sum/v.n:metric.aggregation==="min"?v.min:v.max]})),note:"Prévia parcial de até 500 registros do cache. Nenhuma chamada à API Betha."};
+ }
+ return {source:source.id,mode:"cached-real",partial:true,scanned,pagesRead,
+  rows:[...groups.values()].map(v=>({dimension:v.dimension,values:[metric.aggregation==="count"?v.n:!v.n?null:metric.aggregation==="sum"?v.sum:metric.aggregation==="avg"?v.sum/v.n:metric.aggregation==="min"?v.min:v.max]})),
+  note:"Prévia parcial limitada a 500 registros e 5 páginas R2; sem requisições à API Betha."};
 }
-
 function panelPreviewCatalog(system){
   if(system!=="tributos")return [];
   return Object.entries(PANEL_PREVIEW_FIELDS).map(([id,v])=>({id:"bi:"+id,systemId:v.systemId,fields:v.fields}));
@@ -10249,14 +10274,14 @@ async function handlePanelPreview(request,env,url){
       const sources=panelPreviewCatalog(system).filter(s=>{
         try{requireDataPermission(auth,"bi",s.id.slice(3));return true;}catch{return false;}
       });
-      if(system==="contabil"){const cached=await cachedAccountingSource(env,tenant,auth);if(cached)sources.push(cached);}
+      sources.push(...await cachedPanelSources(env,tenant,auth,system));
       return json(request,env,200,{system,tenantId:tenant.id,sources});
     }
     if(url.pathname!=="/api/panel-builder/preview"||request.method!=="POST")return json(request,env,405,{error:"METHOD_NOT_ALLOWED"});
     const raw=await request.text();
     if(raw.length>18000)return json(request,env,413,{error:"PANEL_DRAFT_TOO_LARGE"});
     let body;try{body=JSON.parse(raw);}catch{return json(request,env,400,{error:"INVALID_JSON"});}
-    if(system==="contabil"&&body?.definition?.sourceId==="cache:contabil:empenhos")return json(request,env,200,await cachedAccountingPreview(env,tenant,auth,body.definition));
+    if(typeof body?.definition?.sourceId==="string"&&body.definition.sourceId.startsWith("cache:"))return json(request,env,200,await previewCachedPanel(env,tenant,auth,system,body.definition));
     const d=validatePanelDraftPayload(body);
     const resource=d.sourceId.slice(3),allowed=PANEL_PREVIEW_FIELDS[resource];
     if(!allowed||system!=="tributos")return json(request,env,403,{error:"PANEL_SOURCE_NOT_ALLOWED"});
