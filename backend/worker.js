@@ -10197,18 +10197,31 @@ const PANEL_CACHED_SOURCES=Object.freeze({
   remuneracoes:{dimensions:["competencia","evento"],measures:["valor","valorBruto","valorLiquido","descontos","encargos"]}
  }
 });
+const PANEL_CACHED_RESOURCE_VIEWS=Object.freeze({
+ contabil:Object.freeze({
+  empenhos:["contabil-empenhos","contabil-despesa","contabil-execucao-orcamentaria"],
+  "movimentacoes-despesas":["contabil-movimentos","contabil-despesa"],
+  "movimentacoes-receitas":["contabil-movimentos","contabil-receita"]
+ }),
+ compras:Object.freeze({
+  "processos-administrativos":["compras-processos","compras-licitacoes"]
+ }),
+ folha:Object.freeze({
+  remuneracoes:["folha-mensal","folha-despesas"]
+ })
+});
 async function cachedPanelSources(env,tenant,auth,system){
  if(!env.AUTH_DB||!env.BI_SYNC_RAW||!PANEL_CACHED_SOURCES[system])return [];
- if(auth.access?.admin!==true&&auth.access?.technical!==true&&!auth.tenantAdmin){
-  const views=permissionViewsForAccess(auth.access);
-  const prefixes={contabil:"contabil-",compras:"compras-",folha:"folha-"};
-  if(!views.some(view=>view.startsWith(prefixes[system]||"__invalid__")))return [];
- }
+ const privileged=auth.access?.admin===true||auth.access?.technical===true||auth.tenantAdmin;
+ const accessible=new Set(permissionViewsForAccess(auth.access));
+
  const allowed=PANEL_CACHED_SOURCES[system];
  const results=await env.AUTH_DB.prepare("SELECT resource,loaded,pages,status,fields_json FROM bi_multisystem_loads WHERE tenant_id=? AND system=? ORDER BY resource LIMIT 30").bind(tenant.id,system).all();
  const sources=[];
  for(const state of results.results||[]){
-  const spec=allowed[state.resource];if(!spec||Number(state.loaded)<=0||Number(state.pages)<=0)continue;
+  const spec=allowed[state.resource];
+  if(!spec||Number(state.loaded)<=0||Number(state.pages)<=0)continue;
+  if(!privileged&&!(PANEL_CACHED_RESOURCE_VIEWS[system]?.[state.resource]||[]).some(view=>accessible.has(view)))continue;
   const selected=new Set(parseMultiSystemFieldProfile(state.fields_json).selected);
   const dimensions=spec.dimensions.filter(id=>selected.has(id)).map(id=>({id,type:"string",dimension:true}));
   const measures=spec.measures.filter(id=>selected.has(id)).map(id=>({id,type:"number",measure:true}));
