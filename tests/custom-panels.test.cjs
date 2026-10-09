@@ -181,14 +181,13 @@ test("integração preserva cargas multissistema e as rotas de painéis", () => 
 });
 
 test("fontes multissistema exigem permissão por painel e não incluem campos pessoais", () => {
-  sandbox.permissionViewsForAccess=access=>access?.views||[];
   const billing={system:"contabil",source:"contabil:empenhos",dimension:"situacao",measure:"count",aggregation:"count"};
   assert.throws(()=>validate(billing),/DATA_RESOURCE_PERMISSION_DENIED/);
-  const checked=validate(billing,{views:["contabil-empenhos"]});
+  const checked=validate(billing,{access:{views:["contabil-empenhos"]}});
   assert.equal(checked.system,"contabil");
   assert.equal(checked.source,"contabil:empenhos");
   const unauthorized={system:"folha",source:"folha:matriculas",dimension:"nome",measure:"count",aggregation:"count"};
-  assert.throws(()=>validate(unauthorized,{views:["folha-servidores"]}),/CUSTOM_PANEL_FIELD_INVALID/);
+  assert.throws(()=>validate(unauthorized,{access:{views:["folha-servidores"]}}),/CUSTOM_PANEL_FIELD_INVALID/);
   const fields=sandbox.CUSTOM_PANEL_MULTISYSTEM||null;
   assert.ok(worker.includes("customPanelMultiFields(meta,row)"));
   assert.ok(!worker.includes('dimensions:["nome","cpf"]'));
