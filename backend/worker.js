@@ -10313,8 +10313,8 @@ async function handlePanelPreview(request,env,url){
     const raw=await request.text();
     if(raw.length>18000)return json(request,env,413,{error:"PANEL_DRAFT_TOO_LARGE"});
     let body;try{body=JSON.parse(raw);}catch{return json(request,env,400,{error:"INVALID_JSON"});}
-    if(typeof body?.definition?.sourceId==="string"&&body.definition.sourceId.startsWith("cache:"))return json(request,env,200,await previewCachedPanel(env,tenant,auth,system,body.definition));
     const d=validatePanelDraftPayload(body);
+    if(d.sourceId.startsWith("cache:"))return json(request,env,200,await previewCachedPanel(env,tenant,auth,system,d));
     const resource=d.sourceId.slice(3),allowed=PANEL_PREVIEW_FIELDS[resource];
     if(!allowed||system!=="tributos")return json(request,env,403,{error:"PANEL_SOURCE_NOT_ALLOWED"});
     requireDataPermission(auth,"bi",resource);
