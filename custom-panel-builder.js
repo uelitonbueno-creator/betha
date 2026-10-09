@@ -183,7 +183,8 @@
     try{
       do{
         const result=await request("/api/custom-panels/query","POST",{...config,cursor});
-        if(seq!==state.previewSeq||scope!==context().tenant+":"+context().system||fingerprint!==JSON.stringify(cfg()))return;
+        if(seq!==state.previewSeq||scope!==context().tenant+":"+context().system)return;
+        if(fingerprint!==JSON.stringify(cfg())){status("Configuração alterada. Reinicie a análise para utilizar os novos campos.");return;}
         for(const group of result.groups||[]){
           let existing=groups.get(group.label);
           if(!existing){
@@ -221,7 +222,7 @@
       const result=await request("/api/custom-panels/preview","POST",config);
       if(scope!==context().tenant+":"+context().system||seq!==state.previewSeq||fingerprint!==JSON.stringify(cfg()))return;
       renderResult(result,"preview");
-      status(result.partial?"Prévia parcial: use 'Analisar todos os dados carregados' para agregar as demais páginas.":"Prévia pronta.");
+      if((result.rows||[]).length)status(result.partial?"Prévia parcial: use 'Analisar todos os dados carregados' para agregar as demais páginas.":"Prévia pronta.");
     }catch(e){if(seq===state.previewSeq)status(e.message,true);}
   }
   function renderResult(result,mode="preview"){
@@ -229,7 +230,7 @@
       const rows=result.rows||[];state.previewRows=rows;state.previewPartial=Boolean(result.partial);state.previewKind=mode;destroyChart();
       byId("biCustomList").hidden=true;byId("biCustomTable").innerHTML="";byId("biCustomDrill").hidden=true;
       const wrap=byId("biCustomChartWrap");wrap.hidden=state.chart==="table";
-      byId("biCustomInfo").textContent=(mode==="full"?"ANÁLISE COMPLETA":"PRÉVIA")+(result.partial?" · DADOS PARCIAIS":"") +" · "+(result.scanned||0)+" registros lidos · "+(result.loaded||0)+" considerados · "+(result.updatedAt||"cache");
+      byId("biCustomInfo").textContent=(mode==="full"?(result.partial?"ANÁLISE DOS DADOS CARREGADOS":"ANÁLISE COMPLETA"):"PRÉVIA")+(result.partial?" · DADOS PARCIAIS":"") +" · "+(result.scanned||0)+" registros lidos · "+(result.loaded||0)+" considerados · "+(result.updatedAt||"cache");
       if(!rows.length){
         wrap.hidden=true;
         byId("biCustomTable").innerHTML='<p class="bi-custom-empty">Nenhum registro encontrado para os filtros selecionados nesta análise'+(result.partial?' parcial':'')+'.</p>';
