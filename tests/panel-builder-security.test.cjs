@@ -17,6 +17,15 @@ const snippet=[
  extract("function validatePanelDraftPayload(","async function authorizePanelDefinition("),
  extract("async function authorizePanelDefinition(","async function handlePanelDrafts(")
 ].join("\n");
+
+// Verificação estrutural: POST e PUT precisam validar a permissão do painel de destino.
+const draftRoute=extract("async function handlePanelDrafts(","export default {");
+const createRoute=draftRoute.slice(draftRoute.indexOf('if(request.method==="POST"&&!itemMatch)'),draftRoute.indexOf('if(itemMatch&&request.method==="DELETE")'));
+const updateRoute=draftRoute.slice(draftRoute.indexOf('if(itemMatch&&request.method==="PUT")'),draftRoute.indexOf('return json(request,env,405'));
+assert.match(createRoute,/requirePlacementPermission\(viewId\)/);
+assert.match(updateRoute,/requirePlacementPermission\(viewId\)/);
+assert.match(draftRoute,/await db\.batch\(queries\)/);
+
 const dbRows=[
  {resource:"empenhos",loaded:250,pages:3,status:"running",fields_json:JSON.stringify({selected:["ano","valor","situacao"]})},
  {resource:"movimentacoes-receitas",loaded:100,pages:1,status:"running",fields_json:JSON.stringify({selected:["ano","valor"]})}
