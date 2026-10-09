@@ -81,6 +81,9 @@ const def={title:"Test chart",sourceId:"cache:contabil:empenhos",type:"bar",dime
  assert.equal(b.status,201);
  const id=a.body.id,second=b.body.id;
  assert.equal((await call("GET","municipio-a","alice",url)).body.items.length,2);
+ assert.equal((await call("GET","municipio-a","alice","/api/panel-drafts?system=contabilidade")).body.items.length,2,
+  "Legacy accounting alias must resolve to the canonical 'contabil' system");
+ assert.equal((await call("GET","municipio-a","alice","/api/panel-drafts?system=unknown")).status,400);
  assert.equal((await call("GET","municipio-b","alice",url)).body.items.length,0);
  assert.equal((await call("GET","municipio-a","bob",url)).body.items.length,0);
  assert.equal((await call("POST","municipio-a","alice","/api/panel-drafts/reorder?system=contabil",{viewId:"contabil-empenhos",ids:[second,id]})).status,200);
