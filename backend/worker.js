@@ -6583,7 +6583,18 @@ async function advanceMultiSystem(env,tenant,system,configUpdatedAt){
     "SELECT resource,status,loaded,pages,http_status,error,object_key,fields_json,updated_at FROM bi_multisystem_loads WHERE tenant_id=?1 AND system=?2"
   ).bind(String(tenant.id),system).all();
   const byResource=new Map((states.results||[]).map(row=>[String(row.resource),row]));
-  const source=sources.find(item=>multiSystemStateNeedsWork(item,byResource.get(item.resource),configUpdatedAt));
+
+  // A credential update must be validated against previously unauthorized
+  // resources before a long-running source monopolizes the system queue.
+  const staleAuthRetry=sources.find(item=>{
+    const state=byResource.get(item.resource);
+    if(!state||state.status!=="error"||![401,403].includes(Number(state.http_status)))return false;
+    const failedAt=Date.parse(String(state.updated_at||""))||0;
+    return configUpdatedAt>failedAt;
+  });
+
+  const source=staleAuthRetry||
+    sources.find(item=>multiSystemStateNeedsWork(item,byResource.get(item.resource),configUpdatedAt));
   if(!source)return;
 
   let previous=byResource.get(source.resource)||null;
