@@ -147,6 +147,18 @@ finally{if(generation===previewRequest)preview.disabled=false;}
 });
 save.addEventListener("click",async()=>{if(!current)return;save.disabled=true;try{const result=await requestDraft(selectedDraftId?"PUT":"POST",selectedDraftId||"",{definition:current,viewId:placement.value});selectedDraftId=result.id||selectedDraftId;status.textContent="Rascunho salvo no D1.";window.dispatchEvent(new Event("bi-panel-drafts-changed"));await refreshDrafts();drafts.value=selectedDraftId;}catch(err){status.textContent="Não foi possível salvar: "+err.message;}finally{save.disabled=false;}});
 load.addEventListener("click",()=>{const item=(drafts._items||[]).find(x=>x.id===drafts.value);if(!item)return;const d=item.definition;if(!catalog.some(x=>x.id===d.sourceId)){status.textContent="Fonte não disponível neste sistema.";return;}title.value=d.title;source.value=d.sourceId;fillFields();type.value=d.type;dimension.value=d.dimension;measure.value=d.measures?.[0]?.field||"*";agg.value=d.measures?.[0]?.aggregation||"count";selectedDraftId=item.id;placement.value=item.viewId||"";current=null;save.disabled=true;output.textContent="";status.textContent="Rascunho carregado. Valide antes de salvar alterações.";});
+window.addEventListener("bi-open-panel-draft",async(event)=>{
+  const id=String(event.detail?.id||"");
+  if(!id)return;
+  await open();
+  try{
+    const result=await requestDraft("GET");
+    const found=(result.items||[]).find(item=>item.id===id);
+    if(!found){status.textContent="Rascunho não encontrado para este usuário.";return;}
+    drafts.value=id;
+    load.click();
+  }catch(err){status.textContent="Erro ao carregar gráfico: "+err.message;}
+});
 remove.addEventListener("click",async()=>{if(!drafts.value||!window.confirm("Excluir o rascunho selecionado?"))return;try{await requestDraft("DELETE",drafts.value);selectedDraftId="";status.textContent="Rascunho excluído.";window.dispatchEvent(new Event("bi-panel-drafts-changed"));await refreshDrafts();}catch(err){status.textContent=err.message;}});
 download.addEventListener("click",()=>{
 if(!current)return;
