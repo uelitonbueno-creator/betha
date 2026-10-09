@@ -49,12 +49,28 @@ const env={
  AUTH_DB:{prepare:()=>({bind:()=>({all:async()=>({results:dbRows})})})},
  BI_SYNC_RAW:{get:async key=>({json:async()=>({tenantId:"entity-a",system:"contabil",resource:"empenhos",rows:[{ano:"2026",valor:100,situacao:"PAGO"},{ano:"2026",valor:50,situacao:"ABERTO"}]})})}
 };
+
+// Smoke test: o frontend utiliza 'contabil' e a API deve aceitar este ID.
+const previewRoute=extract("async function handlePanelPreview(","function validatePanelDraftPayload(");
+vm.runInContext(previewRoute,scope);
+scope.resolveTenant=async (_env,id)=>({id});
+scope.getTenantId=()=>tenant.id;
+scope.authorizeTenant=async()=>auth;
+scope.panelPreviewCatalog=()=>[];
+scope.json=(_request,_env,status,body)=>({status,body});
+scope.errorResponse=(_request,_env,error)=>({status:500,body:{error:error.message}});
+
 const def={title:"Empenhos por ano",sourceId:"cache:contabil:empenhos",type:"bar",dimension:"ano",measures:[{field:"valor",aggregation:"sum"}],filters:[]};
 (async()=>{
  const status=await scope.panelMultiSystemStatus(env,tenant,auth,"contabil");
  assert.deepEqual(Array.from(status.resources,x=>x.resource),["empenhos"]);
  const deniedStatus=await scope.panelMultiSystemStatus(env,tenant,{access:{views:["compras-processos"]}},"contabil");
  assert.equal(deniedStatus.resources.length,0,"Unauthorized load metadata must not be disclosed");
+ const catalogResponse=await scope.handlePanelPreview(
+  {method:"GET"},env,new URL("https://bi.example/api/panel-builder/catalog?system=contabil")
+ );
+ assert.equal(catalogResponse.status,200,"Canonical contabil ID must be accepted");
+ assert.equal(catalogResponse.body.sources[0].id,"cache:contabil:empenhos");
  const sources=await scope.cachedPanelSources(env,tenant,auth,"contabil");
  assert.deepEqual(Array.from(sources,x=>x.id),["cache:contabil:empenhos"],"No access to unrelated accounting resource");
  const result=await scope.previewCachedPanel(env,tenant,auth,"contabil",def);
