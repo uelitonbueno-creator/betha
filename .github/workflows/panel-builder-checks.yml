@@ -7,6 +7,8 @@ on:
       - 'panel-builder*.js'
       - 'panel-placements.js'
       - 'tests/panel-builder-*.test.cjs'
+      - 'tests/panel-builder-migrations.test.py'
+      - 'backend/migrations/20261009_panel_*.sql'
       - '.github/workflows/panel-builder-checks.yml'
   pull_request:
     paths:
@@ -14,6 +16,8 @@ on:
       - 'panel-builder*.js'
       - 'panel-placements.js'
       - 'tests/panel-builder-*.test.cjs'
+      - 'tests/panel-builder-migrations.test.py'
+      - 'backend/migrations/20261009_panel_*.sql'
       - '.github/workflows/panel-builder-checks.yml'
   workflow_dispatch:
 
