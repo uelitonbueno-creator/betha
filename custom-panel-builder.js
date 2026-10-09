@@ -7,7 +7,7 @@
     "bi:imoveis": {label:"Imóveis",system:"tributos",dimensions:{bairro:"Bairro",zona:"Zona",situacao:"Situação"},measures:{count:"Quantidade"}},
     "bi:parcelamentos": {label:"Parcelamentos",system:"tributos",dimensions:{situacao:"Situação",ano:"Exercício"},measures:{count:"Quantidade"}}
   };
-  const state={id:null,source:"bi:debitos",chart:"bar",dimension:"bairro",measure:"valorSaldo",aggregation:"sum",filterField:"",filterValue:"",name:"Débitos por bairro",panels:[],chartInstance:null,loading:false,previewRows:[],previewPartial:false};
+  const state={id:null,source:"bi:debitos",chart:"bar",dimension:"bairro",measure:"valorSaldo",aggregation:"sum",filterField:"",filterValue:"",filters:[],limit:20,name:"Débitos por bairro",panels:[],chartInstance:null,loading:false,previewRows:[],previewPartial:false};
   const byId=id=>document.getElementById(id);
   const safe=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   function context(){const s=window.BIVellaSearchContext?.getState?.()||{};return {tenant:String(s.tenantId||s.tenant?.id||new URLSearchParams(location.search).get("tenant")||""),system:s.currentSystemId||"tributos"};}
@@ -19,7 +19,7 @@
   }
   const option=(value,label,selected)=>'<option value="'+safe(value)+'"'+(String(value)===String(selected)?" selected":"")+">"+safe(label)+"</option>";
   const options=(map,selected)=>Object.entries(map).map(([k,v])=>option(k,v,selected)).join("");
-  const cfg=()=>({name:state.name.trim(),system:context().system,source:state.source,dimension:state.dimension,measure:state.measure,aggregation:state.measure==="count"?"count":state.aggregation,chart:state.chart,filters:state.filterField&&state.filterValue!==""?[{field:state.filterField,operator:"eq",value:state.filterValue}]:[],limit:20,config_version:1});
+  const cfg=()=>({name:state.name.trim(),system:context().system,source:state.source,dimension:state.dimension,measure:state.measure,aggregation:state.measure==="count"?"count":state.aggregation,chart:state.chart,filters:state.filters.filter(f=>f.field&&f.value!==""),limit:state.limit,config_version:1});
   function ensureUi(){
     if(byId("biCustomOpen"))return;
     const style=document.createElement("link");style.rel="stylesheet";style.href="custom-panel-builder.css?v=1";document.head.appendChild(style);
@@ -34,8 +34,8 @@
           <label>Agrupar por<select id="biCustomDimension"></select></label>
           <label>Métrica<select id="biCustomMeasure"></select></label>
           <label>Agregação<select id="biCustomAggregation"><option value="sum">Soma</option><option value="avg">Média</option><option value="min">Mínimo</option><option value="max">Máximo</option><option value="count">Contagem</option></select></label>
-          <label>Filtrar por<select id="biCustomFilterField"></select></label>
-          <label>Valor do filtro<input id="biCustomFilterValue" maxlength="120" placeholder="Opcional"></label>
+          <fieldset class="bi-custom-filter-set"><legend>Filtros (todos devem corresponder)</legend><div id="biCustomFilters"></div><button type="button" id="biCustomAddFilter">+ Adicionar filtro</button></fieldset>
+          <label>Exibir categorias<select id="biCustomLimit"><option value="5">Top 5</option><option value="10">Top 10</option><option value="20">Top 20</option><option value="50">Top 50</option></select></label>
           <label>Visualização<select id="biCustomChart"><option value="bar">Barras</option><option value="horizontalBar">Barras horizontais</option><option value="line">Linhas</option><option value="doughnut">Donut</option><option value="pie">Pizza</option><option value="table">Tabela</option><option value="kpi">Indicador KPI</option></select></label>
           <div class="bi-custom-actions"><button type="button" id="biCustomPreview">Atualizar prévia</button><button type="button" id="biCustomExport">Exportar CSV (prévia)</button><button type="submit" class="bi-custom-primary">Salvar painel</button></div>
           <p id="biCustomStatus" role="status"></p>
@@ -43,15 +43,29 @@
       </div>`;
     document.body.appendChild(root);
     byId("biCustomClose").onclick=()=>{root.hidden=true;destroyChart();};
-    byId("biCustomNew").onclick=()=>{state.id=null;state.name="Novo painel";renderFields();byId("biCustomList").hidden=true;};
+    byId("biCustomNew").onclick=()=>{state.id=null;state.name="Novo painel";state.filters=[];state.limit=20;renderFields();byId("biCustomList").hidden=true;};
     byId("biCustomListButton").onclick=loadList;
-    byId("biCustomSource").onchange=e=>{state.source=e.target.value;const def=SOURCES[state.source];state.dimension=Object.keys(def.dimensions)[0];state.measure=Object.keys(def.measures)[0];state.filterField="";renderFields();};
-    for(const [id,key] of [["biCustomName","name"],["biCustomDimension","dimension"],["biCustomMeasure","measure"],["biCustomAggregation","aggregation"],["biCustomChart","chart"],["biCustomFilterField","filterField"],["biCustomFilterValue","filterValue"]])byId(id).addEventListener("change",e=>{state[key]=e.target.value;});
+    byId("biCustomSource").onchange=e=>{state.source=e.target.value;const def=SOURCES[state.source];state.dimension=Object.keys(def.dimensions)[0];state.measure=Object.keys(def.measures)[0];state.filters=[];renderFields();};
+    for(const [id,key] of [["biCustomName","name"],["biCustomDimension","dimension"],["biCustomMeasure","measure"],["biCustomAggregation","aggregation"],["biCustomChart","chart"]])byId(id).addEventListener("change",e=>{state[key]=e.target.value;});
+    byId("biCustomAddFilter").onclick=()=>{if(state.filters.length>=6)return status("Limite de seis filtros.",true);state.filters.push({field:Object.keys(SOURCES[state.source].dimensions)[0],operator:"eq",value:""});renderFilters();};
+    byId("biCustomLimit").onchange=e=>{state.limit=Number(e.target.value);};
     byId("biCustomPreview").onclick=preview;
     byId("biCustomExport").onclick=exportPreview;
     byId("biCustomForm").onsubmit=async e=>{e.preventDefault();try{state.name=byId("biCustomName").value;const result=await request(state.id?"/api/custom-panels/"+encodeURIComponent(state.id):"/api/custom-panels",state.id?"PUT":"POST",cfg());state.id=result.panel.id;status("Painel salvo. Abra em Meus painéis para editar.");}catch(e){status(e.message,true);}};
   }
   function status(message,error=false){const el=byId("biCustomStatus");el.textContent=message;el.classList.toggle("error",error);}
+  function renderFilters(){
+    const el=byId("biCustomFilters"),src=SOURCES[state.source];if(!el||!src)return;
+    el.replaceChildren();
+    state.filters.forEach((filter,index)=>{
+      const line=document.createElement("div");line.className="bi-custom-filter-row";
+      const field=document.createElement("select");field.innerHTML=options(src.dimensions,filter.field);field.value=filter.field;
+      field.onchange=()=>{filter.field=field.value;};
+      const input=document.createElement("input");input.placeholder="Valor exato";input.maxLength=120;input.value=filter.value||"";input.oninput=()=>{filter.value=input.value;};
+      const remove=document.createElement("button");remove.type="button";remove.textContent="×";remove.title="Remover filtro";remove.onclick=()=>{state.filters.splice(index,1);renderFilters();};
+      line.append(field,input,remove);el.append(line);
+    });
+  }
   function renderFields(){
     const system=context().system;const available=Object.entries(SOURCES).filter(([,v])=>v.system===system);
     byId("biCustomSource").innerHTML=available.map(([k,v])=>option(k,v.label,state.source)).join("");
@@ -62,8 +76,7 @@
     if(!(state.measure in src.measures))state.measure=Object.keys(src.measures)[0];
     byId("biCustomDimension").innerHTML=options(src.dimensions,state.dimension);
     byId("biCustomMeasure").innerHTML=options(src.measures,state.measure);
-    byId("biCustomFilterField").innerHTML=option("","Sem filtro",state.filterField)+options(src.dimensions,state.filterField);
-    byId("biCustomFilterValue").value=state.filterValue;
+    renderFilters();byId("biCustomLimit").value=String(state.limit);
     byId("biCustomName").value=state.name;
     byId("biCustomChart").value=state.chart;
     byId("biCustomAggregation").value=state.measure==="count"?"count":state.aggregation;
@@ -123,7 +136,7 @@
   }
   function openPanel(panel,duplicate=false){
     if(!panel)return;
-    Object.assign(state,{id:duplicate?null:panel.id,name:duplicate?panel.name+" (cópia)":panel.name,source:panel.source,dimension:panel.dimension,measure:panel.measure,aggregation:panel.aggregation,chart:panel.chart,filterField:panel.filters?.[0]?.field||"",filterValue:panel.filters?.[0]?.value||""});
+    Object.assign(state,{id:duplicate?null:panel.id,name:duplicate?panel.name+" (cópia)":panel.name,source:panel.source,dimension:panel.dimension,measure:panel.measure,aggregation:panel.aggregation,chart:panel.chart,filters:Array.isArray(panel.filters)?panel.filters.map(f=>({...f})):[],limit:panel.limit||20});
     renderFields();byId("biCustomList").hidden=true;preview();
   }
   function show(){ensureUi();byId("biCustomRoot").hidden=false;renderFields();}
