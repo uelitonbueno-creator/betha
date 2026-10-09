@@ -23,7 +23,7 @@
   const cfg=()=>({name:state.name.trim(),system:context().system,source:state.source,dimension:state.dimension,measure:state.measure,aggregation:state.measure==="count"?"count":state.aggregation,chart:state.chart,filters:state.filters.filter(f=>f.field&&f.value!==""),limit:state.limit,config_version:1});
   function ensureUi(){
     if(byId("biCustomOpen"))return;
-    const style=document.createElement("link");style.rel="stylesheet";style.href="custom-panel-builder.css?v=1";document.head.appendChild(style);
+    const style=document.createElement("link");style.rel="stylesheet";style.href="custom-panel-builder.css?v=20261009-5";document.head.appendChild(style);
     const open=document.createElement("button");open.id="biCustomOpen";open.className="bi-custom-open";open.type="button";open.textContent="+ Novo painel";open.onclick=()=>show("new");document.body.appendChild(open);
     const root=document.createElement("section");root.id="biCustomRoot";root.className="bi-custom-root";root.hidden=true;root.innerHTML=`
       <div class="bi-custom-dialog" role="dialog" aria-modal="true" aria-labelledby="biCustomTitle">
@@ -167,11 +167,17 @@
       const rows=result.rows||[];state.previewRows=rows;state.previewPartial=Boolean(result.partial);destroyChart();
       byId("biCustomList").hidden=true;byId("biCustomTable").innerHTML="";byId("biCustomDrill").hidden=true;
       const wrap=byId("biCustomChartWrap");wrap.hidden=state.chart==="table";
-      byId("biCustomInfo").textContent=(result.partial?"Prévia parcial · ":"")+(result.loaded||0)+" registros consultados · "+(result.updatedAt||"cache");
+      byId("biCustomInfo").textContent=(result.partial?"PRÉVIA PARCIAL · ":"")+(result.scanned||0)+" registros lidos · "+(result.loaded||0)+" considerados · "+(result.updatedAt||"cache");
+      if(!rows.length){
+        wrap.hidden=true;
+        byId("biCustomTable").innerHTML='<p class="bi-custom-empty">Nenhum registro encontrado para os filtros selecionados nesta prévia'+(result.partial?' parcial':'')+'.</p>';
+        status(result.partial?"Dados ainda em atualização; a prévia pode estar incompleta.":"Não foram encontrados registros para a configuração selecionada.");
+        return;
+      }
       if(state.chart==="table"){
         byId("biCustomTable").innerHTML="<table><thead><tr><th>Categoria</th><th>Valor</th></tr></thead><tbody>"+rows.map(r=>"<tr><td>"+safe(r.label)+"</td><td>"+safe(r.value)+"</td></tr>").join("")+"</tbody></table>";
       }else if(state.chart==="kpi"){
-        wrap.hidden=true;byId("biCustomTable").innerHTML='<div class="bi-custom-kpi">'+safe(rows.reduce((n,r)=>n+Number(r.value||0),0).toLocaleString("pt-BR"))+"</div>";
+        wrap.hidden=true;byId("biCustomTable").innerHTML='<div class="bi-custom-kpi">'+safe(Number(result.totalValue||0).toLocaleString("pt-BR",{maximumFractionDigits:2}))+(result.partial?" <small>parcial</small>":"")+"</div>";
       }else if(window.Chart){
         const type=state.chart==="horizontalBar"?"bar":state.chart;
         state.chartInstance=new Chart(byId("biCustomCanvas"),{type,data:{labels:rows.map(r=>r.label),datasets:[{label:state.name,data:rows.map(r=>r.value),backgroundColor:["#1673b8","#3c92d1","#68a7d6","#9bbdd9","#b1c9de"],borderColor:"#1673b8",borderWidth:1}]},options:{responsive:true,indexAxis:state.chart==="horizontalBar"?"y":"x",maintainAspectRatio:false,onClick:(_event,elements)=>{const item=elements?.[0];if(item)drillInto(rows[item.index]?.label);}}});
