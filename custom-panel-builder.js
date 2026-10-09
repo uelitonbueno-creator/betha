@@ -15,7 +15,7 @@
   async function request(path,method="GET",payload){
     const {tenant}=context();if(!tenant)throw Error("Selecione uma entidade antes de criar o painel.");
     const r=await fetch(apiUrl(path),{method,credentials:"include",headers:{"Content-Type":"application/json","X-Tenant-Id":tenant},body:payload===undefined?undefined:JSON.stringify(payload)});
-    const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.error||"Não foi possível executar a operação.");return data;
+    const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(({INITIAL_LOAD_REQUIRED:"Realize a carga inicial da fonte.",CUSTOM_PANEL_SOURCE_NOT_LOADED:"A fonte ainda não possui dados carregados.",CUSTOM_PANEL_D1_NOT_CONFIGURED:"A persistência D1 ainda não está configurada.",CUSTOM_PANEL_SOURCE_INVALID:"Fonte não autorizada para este sistema.",DATA_RESOURCE_PERMISSION_DENIED:"Você não tem permissão para acessar esta fonte."})[data.error]||data.error||"Não foi possível executar a operação.");return data;
   }
   const option=(value,label,selected)=>'<option value="'+safe(value)+'"'+(String(value)===String(selected)?" selected":"")+">"+safe(label)+"</option>";
   const options=(map,selected)=>Object.entries(map).map(([k,v])=>option(k,v,selected)).join("");
@@ -42,7 +42,7 @@
         </form><div class="bi-custom-preview"><div class="bi-custom-preview-title"><strong>Pré-visualização</strong><small id="biCustomInfo">Dados do cache autorizado</small></div><div id="biCustomChartWrap"><canvas id="biCustomCanvas"></canvas></div><div id="biCustomTable"></div><div id="biCustomDrill" hidden></div><div id="biCustomList" hidden></div></div></div>
       </div>`;
     document.body.appendChild(root);
-    byId("biCustomClose").onclick=()=>{root.hidden=true;destroyChart();};
+    byId("biCustomClose").onclick=()=>{root.hidden=true;destroyChart();if(location.hash.includes("painel="))history.replaceState(null,"",location.pathname+location.search);};
     byId("biCustomNew").onclick=()=>{state.id=null;state.name="Novo painel";state.filters=[];state.limit=20;renderFields();byId("biCustomList").hidden=true;};
     byId("biCustomListButton").onclick=loadList;
     byId("biCustomSource").onchange=e=>{state.source=e.target.value;const def=SOURCES[state.source];state.dimension=Object.keys(def.dimensions)[0];state.measure=Object.keys(def.measures)[0];state.filters=[];renderFields();};
@@ -51,7 +51,7 @@
     byId("biCustomLimit").onchange=e=>{state.limit=Number(e.target.value);};
     byId("biCustomPreview").onclick=preview;
     byId("biCustomExport").onclick=exportPreview;
-    byId("biCustomForm").onsubmit=async e=>{e.preventDefault();try{state.name=byId("biCustomName").value;const result=await request(state.id?"/api/custom-panels/"+encodeURIComponent(state.id):"/api/custom-panels",state.id?"PUT":"POST",cfg());state.id=result.panel.id;status("Painel salvo. Abra em Meus painéis para editar.");}catch(e){status(e.message,true);}};
+    byId("biCustomForm").onsubmit=async e=>{e.preventDefault();try{state.name=byId("biCustomName").value;const result=await request(state.id?"/api/custom-panels/"+encodeURIComponent(state.id):"/api/custom-panels",state.id?"PUT":"POST",cfg());state.id=result.panel.id;history.replaceState(null,"",location.pathname+location.search+"#painel="+encodeURIComponent(state.id));status("Painel salvo. O endereço desta página permite reabrir a análise.");}catch(e){status(e.message,true);}};
   }
   function status(message,error=false){const el=byId("biCustomStatus");el.textContent=message;el.classList.toggle("error",error);}
   function renderFilters(){
@@ -130,8 +130,9 @@
   async function loadList(){
     try{
       const response=await request("/api/custom-panels");
-      const box=byId("biCustomList");box.hidden=false;box.innerHTML="<strong>Meus painéis</strong>"+(response.panels||[]).map(p=>'<article><span>'+safe(p.name)+'</span><button type="button" data-edit="'+safe(p.id)+'">Editar</button><button type="button" data-dup="'+safe(p.id)+'">Duplicar</button><button type="button" data-del="'+safe(p.id)+'">Excluir</button></article>').join("");
+      const box=byId("biCustomList");box.hidden=false;box.innerHTML="<strong>Meus painéis</strong>"+(response.panels||[]).map(p=>'<article><span>'+safe(p.name)+'</span><button type="button" data-edit="'+safe(p.id)+'">Editar</button><button type="button" data-link="'+safe(p.id)+'">Copiar link</button><button type="button" data-dup="'+safe(p.id)+'">Duplicar</button><button type="button" data-del="'+safe(p.id)+'">Excluir</button></article>').join("");
       box.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>openPanel(response.panels.find(p=>p.id===b.dataset.edit)));
+      box.querySelectorAll("[data-link]").forEach(b=>b.onclick=async()=>{const link=new URL(location.href);link.hash="painel="+encodeURIComponent(b.dataset.link);try{await navigator.clipboard.writeText(link.toString());status("Link copiado.");}catch(error){status("Não foi possível copiar. Use o endereço: "+link.toString(),true);}});
       box.querySelectorAll("[data-dup]").forEach(b=>b.onclick=()=>openPanel(response.panels.find(p=>p.id===b.dataset.dup),true));
       box.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{if(!confirm("Excluir este painel?"))return;try{await request("/api/custom-panels/"+encodeURIComponent(b.dataset.del),"DELETE");await loadList();}catch(e){status(e.message,true);}});
       status("");
@@ -140,10 +141,25 @@
   function openPanel(panel,duplicate=false){
     if(!panel)return;
     Object.assign(state,{id:duplicate?null:panel.id,name:duplicate?panel.name+" (cópia)":panel.name,source:panel.source,dimension:panel.dimension,measure:panel.measure,aggregation:panel.aggregation,chart:panel.chart,filters:Array.isArray(panel.filters)?panel.filters.map(f=>({...f})):[],limit:panel.limit||20});
-    renderFields();byId("biCustomList").hidden=true;preview();
+    renderFields();byId("biCustomList").hidden=true;if(!duplicate)history.replaceState(null,"",location.pathname+location.search+"#painel="+encodeURIComponent(panel.id));preview();
+  }
+  async function openSavedFromUrl(){
+    const params=new URLSearchParams(location.hash.slice(1));
+    const id=params.get("painel");
+    if(!id||!/^[a-f0-9-]{36}$/i.test(id))return;
+    ensureUi();
+    if(!context().tenant)return;
+    try {
+      const result=await request("/api/custom-panels/"+encodeURIComponent(id));
+      byId("biCustomRoot").hidden=false;
+      openPanel(result.panel);
+    }catch(error){status(error.message,true);}
   }
   function show(){ensureUi();byId("biCustomRoot").hidden=false;renderFields();}
-  const timer=setInterval(()=>{const gate=byId("authGate");const open=byId("biCustomOpen");if(open)open.hidden=Boolean(gate&&!gate.hidden)||!context().tenant;},1500);
+  window.addEventListener("hashchange",openSavedFromUrl);
+  window.addEventListener("popstate",openSavedFromUrl);
+  let lastContext="";
+  const timer=setInterval(()=>{const gate=byId("authGate");const open=byId("biCustomOpen");if(open)open.hidden=Boolean(gate&&!gate.hidden)||!context().tenant||context().system!=="tributos";const scope=context().tenant+":"+context().system;if(scope!==lastContext){lastContext=scope;if(byId("biCustomRoot"))byId("biCustomRoot").hidden=true;state.id=null;state.previewRows=[];destroyChart();if(scope.split(":")[0])openSavedFromUrl();}},1500);
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",ensureUi);else ensureUi();
   window.BIVellaCustomPanels={open:show};
 })();
