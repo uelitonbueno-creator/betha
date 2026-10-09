@@ -7,7 +7,7 @@
     "bi:imoveis": {label:"Imóveis",system:"tributos",dimensions:{bairro:"Bairro",zona:"Zona",situacao:"Situação"},measures:{count:"Quantidade"}},
     "bi:parcelamentos": {label:"Parcelamentos",system:"tributos",dimensions:{situacao:"Situação",ano:"Exercício"},measures:{count:"Quantidade"}}
   };
-  const state={id:null,source:"bi:debitos",chart:"bar",dimension:"bairro",measure:"valorSaldo",aggregation:"sum",filterField:"",filterValue:"",name:"Débitos por bairro",panels:[],chartInstance:null,loading:false};
+  const state={id:null,source:"bi:debitos",chart:"bar",dimension:"bairro",measure:"valorSaldo",aggregation:"sum",filterField:"",filterValue:"",name:"Débitos por bairro",panels:[],chartInstance:null,loading:false,previewRows:[],previewPartial:false};
   const byId=id=>document.getElementById(id);
   const safe=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   function context(){const s=window.BIVellaSearchContext?.getState?.()||{};return {tenant:String(s.tenantId||s.tenant?.id||new URLSearchParams(location.search).get("tenant")||""),system:s.currentSystemId||"tributos"};}
@@ -37,7 +37,7 @@
           <label>Filtrar por<select id="biCustomFilterField"></select></label>
           <label>Valor do filtro<input id="biCustomFilterValue" maxlength="120" placeholder="Opcional"></label>
           <label>Visualização<select id="biCustomChart"><option value="bar">Barras</option><option value="horizontalBar">Barras horizontais</option><option value="line">Linhas</option><option value="doughnut">Donut</option><option value="pie">Pizza</option><option value="table">Tabela</option><option value="kpi">Indicador KPI</option></select></label>
-          <div class="bi-custom-actions"><button type="button" id="biCustomPreview">Atualizar prévia</button><button type="submit" class="bi-custom-primary">Salvar painel</button></div>
+          <div class="bi-custom-actions"><button type="button" id="biCustomPreview">Atualizar prévia</button><button type="button" id="biCustomExport">Exportar CSV (prévia)</button><button type="submit" class="bi-custom-primary">Salvar painel</button></div>
           <p id="biCustomStatus" role="status"></p>
         </form><div class="bi-custom-preview"><div class="bi-custom-preview-title"><strong>Pré-visualização</strong><small id="biCustomInfo">Dados do cache autorizado</small></div><div id="biCustomChartWrap"><canvas id="biCustomCanvas"></canvas></div><div id="biCustomTable"></div><div id="biCustomDrill" hidden></div><div id="biCustomList" hidden></div></div></div>
       </div>`;
@@ -48,6 +48,7 @@
     byId("biCustomSource").onchange=e=>{state.source=e.target.value;const def=SOURCES[state.source];state.dimension=Object.keys(def.dimensions)[0];state.measure=Object.keys(def.measures)[0];state.filterField="";renderFields();};
     for(const [id,key] of [["biCustomName","name"],["biCustomDimension","dimension"],["biCustomMeasure","measure"],["biCustomAggregation","aggregation"],["biCustomChart","chart"],["biCustomFilterField","filterField"],["biCustomFilterValue","filterValue"]])byId(id).addEventListener("change",e=>{state[key]=e.target.value;});
     byId("biCustomPreview").onclick=preview;
+    byId("biCustomExport").onclick=exportPreview;
     byId("biCustomForm").onsubmit=async e=>{e.preventDefault();try{state.name=byId("biCustomName").value;const result=await request(state.id?"/api/custom-panels/"+encodeURIComponent(state.id):"/api/custom-panels",state.id?"PUT":"POST",cfg());state.id=result.panel.id;status("Painel salvo. Abra em Meus painéis para editar.");}catch(e){status(e.message,true);}};
   }
   function status(message,error=false){const el=byId("biCustomStatus");el.textContent=message;el.classList.toggle("error",error);}
@@ -74,7 +75,7 @@
     try{
       status("Consultando cache...");
       const result=await request("/api/custom-panels/preview","POST",cfg());
-      const rows=result.rows||[];destroyChart();
+      const rows=result.rows||[];state.previewRows=rows;state.previewPartial=Boolean(result.partial);destroyChart();
       byId("biCustomList").hidden=true;byId("biCustomTable").innerHTML="";byId("biCustomDrill").hidden=true;
       const wrap=byId("biCustomChartWrap");wrap.hidden=state.chart==="table";
       byId("biCustomInfo").textContent=(result.partial?"Prévia parcial · ":"")+(result.loaded||0)+" registros consultados · "+(result.updatedAt||"cache");
@@ -90,6 +91,15 @@
     }catch(e){status(e.message,true);}
   }
 
+
+  function exportPreview(){
+    if(!state.previewRows.length){status("Atualize a prévia antes de exportar.",true);return;}
+    const csv=[["Categoria","Valor"],...state.previewRows.map(r=>[r.label,r.value])].map(row=>row.map(value=>'"'+String(value??"").replace(/"/g,'""')+'"').join(";")).join("\r\n");
+    const blob=new Blob(["\\uFEFF".replace("\\\\uFEFF","\\uFEFF")+csv],{type:"text/csv;charset=utf-8"});
+    const url=URL.createObjectURL(blob);const anchor=document.createElement("a");anchor.href=url;
+    anchor.download="bi-vella-previa"+(state.previewPartial?"-parcial":"")+".csv";anchor.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
   async function drillInto(category){
     if(category==null)return;
     const panel=byId("biCustomDrill");panel.hidden=false;panel.textContent="Carregando registros da categoria "+category+"...";
