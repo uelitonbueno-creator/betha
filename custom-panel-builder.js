@@ -39,7 +39,7 @@
           <label>Visualização<select id="biCustomChart"><option value="bar">Barras</option><option value="horizontalBar">Barras horizontais</option><option value="line">Linhas</option><option value="doughnut">Donut</option><option value="pie">Pizza</option><option value="table">Tabela</option><option value="kpi">Indicador KPI</option></select></label>
           <div class="bi-custom-actions"><button type="button" id="biCustomPreview">Atualizar prévia</button><button type="submit" class="bi-custom-primary">Salvar painel</button></div>
           <p id="biCustomStatus" role="status"></p>
-        </form><div class="bi-custom-preview"><div class="bi-custom-preview-title"><strong>Pré-visualização</strong><small id="biCustomInfo">Dados do cache autorizado</small></div><div id="biCustomChartWrap"><canvas id="biCustomCanvas"></canvas></div><div id="biCustomTable"></div><div id="biCustomList" hidden></div></div></div>
+        </form><div class="bi-custom-preview"><div class="bi-custom-preview-title"><strong>Pré-visualização</strong><small id="biCustomInfo">Dados do cache autorizado</small></div><div id="biCustomChartWrap"><canvas id="biCustomCanvas"></canvas></div><div id="biCustomTable"></div><div id="biCustomDrill" hidden></div><div id="biCustomList" hidden></div></div></div>
       </div>`;
     document.body.appendChild(root);
     byId("biCustomClose").onclick=()=>{root.hidden=true;destroyChart();};
@@ -75,7 +75,7 @@
       status("Consultando cache...");
       const result=await request("/api/custom-panels/preview","POST",cfg());
       const rows=result.rows||[];destroyChart();
-      byId("biCustomList").hidden=true;byId("biCustomTable").innerHTML="";
+      byId("biCustomList").hidden=true;byId("biCustomTable").innerHTML="";byId("biCustomDrill").hidden=true;
       const wrap=byId("biCustomChartWrap");wrap.hidden=state.chart==="table";
       byId("biCustomInfo").textContent=(result.partial?"Prévia parcial · ":"")+(result.loaded||0)+" registros consultados · "+(result.updatedAt||"cache");
       if(state.chart==="table"){
@@ -84,10 +84,22 @@
         wrap.hidden=true;byId("biCustomTable").innerHTML='<div class="bi-custom-kpi">'+safe(rows.reduce((n,r)=>n+Number(r.value||0),0).toLocaleString("pt-BR"))+"</div>";
       }else if(window.Chart){
         const type=state.chart==="horizontalBar"?"bar":state.chart;
-        state.chartInstance=new Chart(byId("biCustomCanvas"),{type,data:{labels:rows.map(r=>r.label),datasets:[{label:state.name,data:rows.map(r=>r.value),backgroundColor:["#1673b8","#3c92d1","#68a7d6","#9bbdd9","#b1c9de"],borderColor:"#1673b8",borderWidth:1}]},options:{responsive:true,indexAxis:state.chart==="horizontalBar"?"y":"x",maintainAspectRatio:false}});
+        state.chartInstance=new Chart(byId("biCustomCanvas"),{type,data:{labels:rows.map(r=>r.label),datasets:[{label:state.name,data:rows.map(r=>r.value),backgroundColor:["#1673b8","#3c92d1","#68a7d6","#9bbdd9","#b1c9de"],borderColor:"#1673b8",borderWidth:1}]},options:{responsive:true,indexAxis:state.chart==="horizontalBar"?"y":"x",maintainAspectRatio:false,onClick:(_event,elements)=>{const item=elements?.[0];if(item)drillInto(rows[item.index]?.label);}}});
       }
       status(result.partial?"Prévia baseada em parte dos dados carregados.":"Prévia pronta.");
     }catch(e){status(e.message,true);}
+  }
+
+  async function drillInto(category){
+    if(category==null)return;
+    const panel=byId("biCustomDrill");panel.hidden=false;panel.textContent="Carregando registros da categoria "+category+"...";
+    try{
+      const result=await request("/api/custom-panels/preview","POST",{...cfg(),drillCategory:String(category)});
+      const rows=result.drillRows||[];
+      panel.innerHTML="<h3>Detalhamento: "+safe(category)+"</h3>"+(result.partial?"<p>Dados parciais. A carga completa ainda não foi considerada.</p>":"")+
+        "<p>Mostrando até 50 registros do cache consultado.</p><table><thead><tr><th>Categoria</th><th>Valor</th></tr></thead><tbody>"+
+        rows.map(r=>"<tr><td>"+safe(r.categoria)+"</td><td>"+safe(r.valor)+"</td></tr>").join("")+"</tbody></table>";
+    }catch(error){panel.textContent=error.message;}
   }
   async function loadList(){
     try{
