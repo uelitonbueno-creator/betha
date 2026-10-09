@@ -9435,7 +9435,7 @@ function errorResponse(request,env,error) {
 /* Construtor personalizado: fontes e campos explicitamente autorizados. */
 const CUSTOM_PANEL_SOURCES=Object.freeze({
  "bi:debitos":{label:"Débitos",dimensions:["situacao","ano","bairro","receita"],measures:["lancado","saldo"]},
- "bi:pagamentos":{label:"Pagamentos",dimensions:["ano","receita","pagamento"],measures:["pago"]},
+ "bi:pagamentos":{label:"Pagamentos",dimensions:["ano","receita","pagamento","pagamento:mes","pagamento:dia","pagamento:ano"],measures:["pago"]},
  "bi:imoveis":{label:"Imóveis",dimensions:["bairro","zona","situacao"],measures:["count"]},
  "bi:parcelamentos":{label:"Parcelamentos",dimensions:["situacao","ano"],measures:["count"]}
 });
@@ -9469,13 +9469,32 @@ function validateCustomPanel(data,auth){
 }
 
 /* Engine paginado: processa blocos de registros dentro do Worker e retorna apenas agregados. */
+function customPanelDimensionValue(row,field){
+ if(field==="pagamento:mes"||field==="pagamento:dia"||field==="pagamento:ano"){
+  const date=panelDate(row.pagamento);
+  if(!date)return "Data não informada";
+  const year=String(date.getUTCFullYear());
+  const month=String(date.getUTCMonth()+1).padStart(2,"0");
+  const day=String(date.getUTCDate()).padStart(2,"0");
+  return field==="pagamento:ano"?year:field==="pagamento:mes"?year+"-"+month:year+"-"+month+"-"+day;
+ }
+ return row[field];
+}
+function customPanelSortRows(rows,dimension,limit){
+ const time=/^pagamento:(?:mes|dia|ano)$/.test(dimension);
+ rows.sort((a,b)=>time?String(b.label).localeCompare(String(a.label)):b.value-a.value);
+ const result=rows.slice(0,limit);
+ return time?result.reverse():result;
+}
 function customPanelRowMatches(row,filters){
  return filters.every(f=>{
-  const raw=row[f.field],a=String(raw??""),b=String(f.value);
+  const raw=customPanelDimensionValue(row,f.field),a=String(raw??""),b=String(f.value);
   if(f.operator==="eq")return a===b;
   if(f.operator==="neq")return a!==b;
   if(f.operator==="contains")return a.toLocaleLowerCase("pt-BR").includes(b.toLocaleLowerCase("pt-BR"));
   if(raw==null||a.trim()===""||b.trim()==="")return false;
+  if(/^\\d{4}(?:-\\d{2}){0,2}$/.test(a)&&/^\\d{4}(?:-\\d{2}){0,2}$/.test(b) && f.field.startsWith("pagamento:"))
+   return f.operator==="gt"?a>b:f.operator==="gte"?a>=b:f.operator==="lt"?a<b:a<=b;
   const x=panelNumber(raw),y=panelNumber(f.value);
   if(!Number.isFinite(x)||!Number.isFinite(y))return false;
   return f.operator==="gt"?x>y:f.operator==="gte"?x>=y:f.operator==="lt"?x<y:x<=y;
@@ -9493,7 +9512,7 @@ function customPanelAggregatePage(rawRows,body,groups,total,drillRows=null,drill
   scanned++;
   const row=normalizePanelRow(rawRows[i],body.source,i);
   if(!customPanelRowMatches(row,body.filters))continue;
-  const label=String(row[body.dimension]??"Não informado").slice(0,100);
+  const label=String(customPanelDimensionValue(row,body.dimension)??"Não informado").slice(0,100);
   const numeric=body.measure==="count"?1:panelNumber(row[body.measure]);
   if(numeric===null||!Number.isFinite(numeric))continue;
   if(drill!==null&&drillRows&&label===drill&&drillRows.length<50)
@@ -9619,9 +9638,9 @@ async function handleCustomPanelRequest(request,env,url){
    scanned+=counts.scanned;loaded+=counts.loaded;
   }
   const values=[...groups.values()].map(g=>({label:g.label,value:customPanelAggregatedValue(g,body.aggregation)}));
-  values.sort((a,b)=>b.value-a.value);
+  const ordered=customPanelSortRows(values,body.dimension,body.limit);
   return json(request,env,200,{
-   rows:values.slice(0,body.limit),loaded,scanned,totalValue:customPanelAggregatedValue(total,body.aggregation),
+   rows:ordered,loaded,scanned,totalValue:customPanelAggregatedValue(total,body.aggregation),
    updatedAt:job.finishedAt||job.startedAt,
    partial:missingPage||pageCount<(entry.pages||0)||!entry.complete,
    source:body.source,drillRows:drill===null?undefined:drillRows,drillCategory:drill
