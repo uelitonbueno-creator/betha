@@ -81,7 +81,8 @@ if(!usable)status.textContent="Esta fonte ainda não possui dimensões disponív
 async function open(){
 context=window.BIVellaSearchContext.getState();
 options(placement,[["","Não adicionar ao painel"],...(context.allowedViews||[]).map(v=>[v,v])]);
-catalog=[];try{const response=await requestBuilder("GET","catalog");catalog=(response.sources||[]).filter(s=>s.fields.some(f=>f.dimension)&&s.fields.some(f=>f.measure));}catch(err){status.textContent="Catálogo não disponível: "+err.message;}
+catalog=[];if(window.BIPanelSampleBuilder?.catalog(context.currentSystemId).length){catalog=window.BIPanelSampleBuilder.catalog(context.currentSystemId);status.textContent="AMOSTRA LOCAL — dados demonstrativos, sem consulta à Betha.";}
+else try{const response=await requestBuilder("GET","catalog");catalog=(response.sources||[]).filter(s=>s.fields.some(f=>f.dimension)&&s.fields.some(f=>f.measure));}catch(err){status.textContent="Catálogo não disponível: "+err.message;}
 options(source,catalog.map(s=>[s.id,s.id]));
 title.value="";type.value="bar";agg.value="sum";status.textContent="";output.textContent="";clearPreview();current=null;download.disabled=true;preview.disabled=true;
 fillFields();dialog.hidden=false;dirty=false;selectedDraftId="";selectedSortOrder=0;placement.value="";save.disabled=true;close.focus();refreshDrafts();
@@ -100,15 +101,15 @@ const definition={title:title.value.trim(),sourceId:source.value,type:type.value
 dimension:dimension.value,measures:[metric],filters:[]};
 const result=core.validate(definition,catalog,{tenantId:"editor-local",systemId:context.currentSystemId});
 if(!result.ok){status.textContent=result.errors.join(" ");download.disabled=true;current=null;return;}
-current=definition;output.textContent=JSON.stringify(definition,null,2);save.disabled=false;preview.disabled=false;
-status.textContent="Definição validada localmente. Não publicada.";download.disabled=false;
+current=definition;output.textContent=JSON.stringify(definition,null,2);save.disabled=definition.sourceId.startsWith("sample:");preview.disabled=false;
+status.textContent=definition.sourceId.startsWith("sample:")?"AMOSTRA LOCAL: prévia e exportação JSON disponíveis; salvamento D1 exige fonte real autorizada.":"Definição validada localmente. Não publicada.";download.disabled=false;
 });
 preview.addEventListener("click",async()=>{
 if(!current)return;
 clearPreview();const generation=previewRequest,definition=JSON.parse(JSON.stringify(current));
 preview.disabled=true;
 try{
-const result=await requestBuilder("POST","preview",{definition});
+const result=definition.sourceId.startsWith("sample:")?await window.BIPanelSampleBuilder.preview(definition,context.currentSystemId):await requestBuilder("POST","preview",{definition});
 if(generation!==previewRequest||dialog.hidden)return;
 const rows=Array.isArray(result.rows)?result.rows.slice(0,40):[];
 previewOutput.append(make("strong",{},"Prévia parcial — "+result.scanned+" registros examinados"));
