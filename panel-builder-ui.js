@@ -29,9 +29,12 @@ const type=make("select",{name:"type"});
 const dimension=make("select",{name:"dimension"});
 const measure=make("select",{name:"measure"});
 const agg=make("select",{name:"aggregation"});
+const filterField=make("select",{name:"filterField","aria-label":"Campo do filtro"});
+const filterValue=make("input",{name:"filterValue",maxlength:"120",placeholder:"Valor exato do filtro (opcional)"});
 [["sum","Soma"],["avg","Média"],["min","Mínimo"],["max","Máximo"],["count","Contagem"]].forEach(([v,l])=>agg.append(make("option",{value:v},l)));
 function field(label,element){const wrapper=make("label",{},label);wrapper.append(element);form.append(wrapper);}
 field("Título",title);field("Fonte disponível no catálogo",source);field("Visualização",type);field("Dimensão",dimension);field("Métrica",measure);field("Agregação",agg);
+field("Filtrar por campo (opcional)",filterField);field("Valor do filtro — igualdade",filterValue);
 const status=make("p",{role:"status","aria-live":"polite",className:"bi-builder-status"},"");
 const output=make("pre",{className:"bi-builder-json","aria-label":"Definição JSON"});
 const actions=make("div",{className:"bi-builder-actions"});
@@ -76,6 +79,8 @@ const selected=catalog.find(s=>s.id===source.value);
 const fields=selected?.fields||[];
 options(dimension,fields.filter(f=>f.dimension).map(f=>[f.id,f.id]));
 options(measure,[["*","Total de registros"],...fields.filter(f=>f.measure).map(f=>[f.id,f.id])]);
+options(filterField,[["","Sem filtro"],...fields.filter(f=>f.filterable).map(f=>[f.id,f.id])]);
+filterValue.disabled=!filterField.value;
 const usable=Boolean(selected&&fields.some(f=>f.dimension));build.disabled=!usable;
 if(!usable)status.textContent="Esta fonte ainda não possui dimensões disponíveis para edição.";
 }
@@ -98,7 +103,7 @@ if(window.BIPanelSampleBuilder?.catalog(context.currentSystemId).length){
 else try{const response=await requestBuilder("GET","catalog");catalog=(response.sources||[]).filter(s=>s.fields.some(f=>f.dimension)&&s.fields.some(f=>f.measure));}catch(err){status.textContent="Catálogo não disponível: "+err.message;}
 options(source,catalog.map(s=>[s.id,s.id]));
 title.value="";type.value="bar";agg.value="sum";if(!catalog.some(x=>x.mode==="sample"))status.textContent="";output.textContent="";clearPreview();current=null;download.disabled=true;preview.disabled=true;
-fillFields();dialog.hidden=false;dirty=false;selectedDraftId="";selectedSortOrder=0;placement.value="";save.disabled=true;close.focus();await refreshDrafts();
+fillFields();filterValue.value="";dialog.hidden=false;dirty=false;selectedDraftId="";selectedSortOrder=0;placement.value="";save.disabled=true;close.focus();await refreshDrafts();
 }
 function dismiss(){clearPreview();dialog.hidden=true;trigger.focus();}
 trigger.addEventListener("click",open);
@@ -106,12 +111,13 @@ close.addEventListener("click",dismiss);
 dialog.addEventListener("click",e=>{if(e.target===dialog)dismiss();});
 document.addEventListener("keydown",e=>{if(dialog.hidden)return;if(e.key==="Escape")dismiss();if(e.key==="Tab"){const f=[...dialog.querySelectorAll("button:not(:disabled),input:not(:disabled),select:not(:disabled)")];if(!f.length)return;const first=f[0],last=f[f.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}});
 source.addEventListener("change",()=>{fillFields();current=null;download.disabled=true;save.disabled=true;preview.disabled=true;clearPreview();});
-[title,type,dimension,measure,agg].forEach(el=>el.addEventListener("change",()=>{current=null;save.disabled=true;preview.disabled=true;clearPreview();}));
+filterField.addEventListener("change",()=>{filterValue.disabled=!filterField.value;if(!filterField.value)filterValue.value="";});
+[title,type,dimension,measure,agg,filterField,filterValue].forEach(el=>el.addEventListener("input",()=>{current=null;save.disabled=true;preview.disabled=true;download.disabled=true;clearPreview();}));
 form.addEventListener("submit",e=>{
 e.preventDefault();
 const metric=measure.value==="*"?{field:"*",aggregation:"count"}:{field:measure.value,aggregation:agg.value};
 const definition={title:title.value.trim(),sourceId:source.value,type:type.value,
-dimension:dimension.value,measures:[metric],filters:[]};
+dimension:dimension.value,measures:[metric],filters:filterField.value?[{field:filterField.value,op:"eq",value:filterValue.value.trim()}]:[]};
 const result=core.validate(definition,catalog,{tenantId:"editor-local",systemId:context.currentSystemId});
 if(!result.ok){status.textContent=result.errors.join(" ");download.disabled=true;current=null;return;}
 current=definition;output.textContent=JSON.stringify(definition,null,2);save.disabled=definition.sourceId.startsWith("sample:");preview.disabled=false;
@@ -160,7 +166,7 @@ table.append(tbody);previewOutput.append(table,make("p",{},"Prévia parcial limi
 finally{if(generation===previewRequest)preview.disabled=false;}
 });
 save.addEventListener("click",async()=>{if(!current)return;save.disabled=true;try{const result=await requestDraft(selectedDraftId?"PUT":"POST",selectedDraftId||"",{definition:current,viewId:placement.value,sortOrder:selectedSortOrder});selectedDraftId=result.id||selectedDraftId;status.textContent="Rascunho salvo no D1.";window.dispatchEvent(new Event("bi-panel-drafts-changed"));await refreshDrafts();drafts.value=selectedDraftId;}catch(err){status.textContent="Não foi possível salvar: "+err.message;}finally{save.disabled=false;}});
-load.addEventListener("click",()=>{const item=(drafts._items||[]).find(x=>x.id===drafts.value);if(!item)return;const d=item.definition;if(!catalog.some(x=>x.id===d.sourceId)){status.textContent="Fonte não disponível neste sistema.";return;}title.value=d.title;source.value=d.sourceId;fillFields();type.value=d.type;dimension.value=d.dimension;measure.value=d.measures?.[0]?.field||"*";agg.value=d.measures?.[0]?.aggregation||"count";selectedDraftId=item.id;selectedSortOrder=Number(item.sortOrder)||0;placement.value=item.viewId||"";current=null;save.disabled=true;output.textContent="";status.textContent="Rascunho carregado. Valide antes de salvar alterações.";});
+load.addEventListener("click",()=>{const item=(drafts._items||[]).find(x=>x.id===drafts.value);if(!item)return;const d=item.definition;if(!catalog.some(x=>x.id===d.sourceId)){status.textContent="Fonte não disponível neste sistema.";return;}title.value=d.title;source.value=d.sourceId;fillFields();type.value=d.type;dimension.value=d.dimension;measure.value=d.measures?.[0]?.field||"*";agg.value=d.measures?.[0]?.aggregation||"count";filterField.value=d.filters?.[0]?.field||"";filterValue.value=d.filters?.[0]?.value||"";filterValue.disabled=!filterField.value;selectedDraftId=item.id;selectedSortOrder=Number(item.sortOrder)||0;placement.value=item.viewId||"";current=null;save.disabled=true;output.textContent="";status.textContent="Rascunho carregado. Valide antes de salvar alterações.";});
 window.addEventListener("bi-open-panel-draft",async(event)=>{
   const id=String(event.detail?.id||"");
   if(!id)return;
