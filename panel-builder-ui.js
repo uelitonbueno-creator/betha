@@ -145,6 +145,10 @@ filterField.addEventListener("change",()=>{filterValue.disabled=!filterField.val
 [title,type,dimension,measure,agg,filterField,filterValue].forEach(el=>el.addEventListener("input",()=>{current=null;save.disabled=true;preview.disabled=true;download.disabled=true;clearPreview();}));
 form.addEventListener("submit",e=>{
 e.preventDefault();
+if(filterField.value&&!filterValue.value.trim()){
+  status.textContent="Informe o valor exato do filtro ou escolha uma das sugestões.";
+  current=null;save.disabled=true;preview.disabled=true;download.disabled=true;return;
+}
 const metric=measure.value==="*"?{field:"*",aggregation:"count"}:{field:measure.value,aggregation:agg.value};
 const definition={title:title.value.trim(),sourceId:source.value,type:type.value,
 dimension:dimension.value,measures:[metric],filters:filterField.value?[{field:filterField.value,op:"eq",value:filterValue.value.trim()}]:[]};
