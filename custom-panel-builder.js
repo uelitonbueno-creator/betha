@@ -95,7 +95,7 @@
   function exportPreview(){
     if(!state.previewRows.length){status("Atualize a prévia antes de exportar.",true);return;}
     const csv=[["Categoria","Valor"],...state.previewRows.map(r=>[r.label,r.value])].map(row=>row.map(value=>'"'+String(value??"").replace(/"/g,'""')+'"').join(";")).join("\r\n");
-    const blob=new Blob(["\\uFEFF".replace("\\\\uFEFF","\\uFEFF")+csv],{type:"text/csv;charset=utf-8"});
+    const blob=new Blob([String.fromCharCode(0xFEFF)+csv],{type:"text/csv;charset=utf-8"});
     const url=URL.createObjectURL(blob);const anchor=document.createElement("a");anchor.href=url;
     anchor.download="bi-vella-previa"+(state.previewPartial?"-parcial":"")+".csv";anchor.click();
     setTimeout(()=>URL.revokeObjectURL(url),1000);
