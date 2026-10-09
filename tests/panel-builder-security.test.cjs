@@ -13,6 +13,7 @@ function extract(start,end){
  return worker.slice(a,b);
 }
 const snippet=[
+ extract("async function panelMultiSystemStatus(","const PANEL_CACHED_SOURCES="),
  extract("const PANEL_CACHED_SOURCES=","function panelPreviewCatalog("),
  extract("function validatePanelDraftPayload(","async function authorizePanelDefinition("),
  extract("async function authorizePanelDefinition(","async function handlePanelDrafts(")
@@ -50,6 +51,10 @@ const env={
 };
 const def={title:"Empenhos por ano",sourceId:"cache:contabil:empenhos",type:"bar",dimension:"ano",measures:[{field:"valor",aggregation:"sum"}],filters:[]};
 (async()=>{
+ const status=await scope.panelMultiSystemStatus(env,tenant,auth,"contabil");
+ assert.deepEqual(Array.from(status.resources,x=>x.resource),["empenhos"]);
+ const deniedStatus=await scope.panelMultiSystemStatus(env,tenant,{access:{views:["compras-processos"]}},"contabil");
+ assert.equal(deniedStatus.resources.length,0,"Unauthorized load metadata must not be disclosed");
  const sources=await scope.cachedPanelSources(env,tenant,auth,"contabil");
  assert.deepEqual(Array.from(sources,x=>x.id),["cache:contabil:empenhos"],"No access to unrelated accounting resource");
  const result=await scope.previewCachedPanel(env,tenant,auth,"contabil",def);
