@@ -6167,6 +6167,217 @@ async function buildDetailPage(env,tenant,resource,url,options={}) {
 
 
 
+const MULTISYSTEM_BOOTSTRAP_TENANT="paulafreitas";
+const MULTISYSTEM_PAGE_SIZE=100;
+const MULTISYSTEM_MAX_PAGES_PER_RESOURCE=5000;
+const MULTISYSTEM_BOOTSTRAP_SOURCES=Object.freeze({
+  contabil:[
+    {resource:"empenhos",base:"https://contabil.suite.betha.cloud",path:"/dados/v1/empenhos"},
+    {resource:"movimentacoes-despesas",base:"https://contabil.suite.betha.cloud",path:"/dados/v1/movimentacoes/despesas"},
+    {resource:"movimentacoes-receitas",base:"https://contabil.suite.betha.cloud",path:"/dados/v1/movimentacoes/receitas"},
+    {resource:"credores",base:"https://contabil.suite.betha.cloud",path:"/dados/v1/credores"}
+  ],
+  compras:[
+    {resource:"processos-administrativos",base:"https://compras.suite.betha.cloud",path:"/dados/v1/processos-administrativos"},
+    {resource:"fornecedores",base:"https://compras.suite.betha.cloud",path:"/dados/v1/fornecedores"}
+  ],
+  folha:[
+    {resource:"matriculas",base:"https://folha.suite.betha.cloud",path:"/dados/v1/matriculas"},
+    {resource:"funcionarios-cargos",base:"https://folha.suite.betha.cloud",path:"/dados/v1/funcionarios-cargos"},
+    {resource:"remuneracoes",base:"https://folha.suite.betha.cloud",path:"/dados/v1/remuneracoes"}
+  ]
+});
+
+async function ensureMultiSystemLoadSchema(env){
+  if(!env.AUTH_DB)return;
+  await env.AUTH_DB.prepare(
+    "CREATE TABLE IF NOT EXISTS bi_multisystem_loads (tenant_id TEXT NOT NULL, system TEXT NOT NULL, resource TEXT NOT NULL, status TEXT NOT NULL, loaded INTEGER NOT NULL DEFAULT 0, pages INTEGER NOT NULL DEFAULT 0, http_status INTEGER, error TEXT, object_key TEXT, fields_json TEXT, updated_at TEXT NOT NULL, PRIMARY KEY (tenant_id,system,resource))"
+  ).run();
+  await env.AUTH_DB.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_bi_multisystem_loads_status ON bi_multisystem_loads (tenant_id,system,status)"
+  ).run();
+}
+
+function multiSystemResourcePrefix(tenantId,system,resource){
+  return "multisystem/"+encodeURIComponent(String(tenantId))+"/"+encodeURIComponent(String(system))+"/"+encodeURIComponent(String(resource))+"/";
+}
+
+function multiSystemPageObjectKey(tenantId,system,resource,pageNo){
+  return multiSystemResourcePrefix(tenantId,system,resource)+"page-"+String(Math.max(0,Number(pageNo)||0)).padStart(6,"0")+".json";
+}
+
+function multiSystemFieldNames(rows){
+  const fields=new Set();
+  for(const row of (rows||[]).slice(0,20)){
+    if(!row||typeof row!=="object"||Array.isArray(row))continue;
+    for(const key of Object.keys(row))fields.add(key);
+    if(fields.size>=200)break;
+  }
+  return [...fields].slice(0,200);
+}
+
+function mergeMultiSystemFields(previous,rows){
+  const fields=new Set();
+  try{
+    const parsed=JSON.parse(String(previous||"[]"));
+    if(Array.isArray(parsed))for(const field of parsed)fields.add(String(field));
+  }catch{}
+  for(const field of multiSystemFieldNames(rows))fields.add(field);
+  return [...fields].slice(0,200);
+}
+
+async function multiSystemGetPage(env,tenant,source,offset,limit){
+  const query=new URLSearchParams({limit:String(limit),offset:String(offset)});
+  const target=String(source.base).replace(/\/$/,"")+source.path+"?"+query.toString();
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),30000);
+  try{
+    const response=await fetch(target,{
+      method:"GET",
+      signal:controller.signal,
+      headers:{
+        "Accept":"application/json",
+        "Authorization":"Bearer "+tenant.accessToken,
+        "User-Access":tenant.userAccess
+      }
+    });
+    const parsed=await readJsonResponse(response);
+    if(!response.ok){
+      const error=new Error("BETHA_HTTP_"+response.status);
+      error.status=response.status;
+      throw error;
+    }
+    return {
+      rows:payloadRows(parsed.body),
+      body:parsed.body,
+      status:response.status
+    };
+  }finally{
+    clearTimeout(timer);
+  }
+}
+
+async function loadMultiSystemIncrementalResource(env,tenant,system,source,state){
+  const loaded=Math.max(0,Number(state?.loaded)||0);
+  const pages=Math.max(0,Number(state?.pages)||0);
+  if(pages>=MULTISYSTEM_MAX_PAGES_PER_RESOURCE)throw new Error("MULTISYSTEM_PAGE_LIMIT");
+
+  const result=await multiSystemGetPage(env,tenant,source,loaded,MULTISYSTEM_PAGE_SIZE);
+  const rows=result.rows||[];
+  const meta=payloadPageMeta(result.body,loaded,MULTISYSTEM_PAGE_SIZE,rows.length);
+  const complete=meta.hasNext===false||rows.length===0||rows.length<MULTISYSTEM_PAGE_SIZE;
+
+  let pageObjectKey=null;
+  if(rows.length){
+    pageObjectKey=multiSystemPageObjectKey(tenant.id,system,source.resource,pages);
+    await env.BI_SYNC_RAW.put(pageObjectKey,JSON.stringify({
+      tenantId:tenant.id,
+      system,
+      resource:source.resource,
+      source:"betha-api",
+      offset:loaded,
+      page:pages,
+      loaded:rows.length,
+      loadedAt:new Date().toISOString(),
+      rows
+    }),{httpMetadata:{contentType:"application/json"}});
+  }
+
+  const nextLoaded=loaded+rows.length;
+  const nextPages=pages+(rows.length?1:0);
+  return {
+    loaded:nextLoaded,
+    pages:nextPages,
+    httpStatus:result.status,
+    complete,
+    objectKey:complete
+      ? multiSystemResourcePrefix(tenant.id,system,source.resource)
+      : (pageObjectKey||state?.object_key||multiSystemResourcePrefix(tenant.id,system,source.resource)),
+    fields:mergeMultiSystemFields(state?.fields_json,rows)
+  };
+}
+
+function multiSystemStateNeedsWork(state,configUpdatedAt){
+  if(!state)return true;
+  if(state.status==="complete"){
+    // The first production version marked the initial 100-row bootstrap as
+    // complete. A bootstrap.json object means it still needs true pagination.
+    return String(state.object_key||"").endsWith("/bootstrap.json");
+  }
+  if(state.status==="error"){
+    const httpStatus=Number(state.http_status)||0;
+    const failedAt=Date.parse(String(state.updated_at||""))||0;
+    if([401,403].includes(httpStatus))return configUpdatedAt>failedAt;
+    if(httpStatus===404)return false;
+    return Date.now()-failedAt>=5*60*1000;
+  }
+  return true;
+}
+
+async function advanceMultiSystem(env,tenant,system,configUpdatedAt){
+  const sources=MULTISYSTEM_BOOTSTRAP_SOURCES[system]||[];
+  if(!sources.length)return;
+
+  const states=await env.AUTH_DB.prepare(
+    "SELECT resource,status,loaded,pages,http_status,error,object_key,fields_json,updated_at FROM bi_multisystem_loads WHERE tenant_id=?1 AND system=?2"
+  ).bind(String(tenant.id),system).all();
+  const byResource=new Map((states.results||[]).map(row=>[String(row.resource),row]));
+  const source=sources.find(item=>multiSystemStateNeedsWork(byResource.get(item.resource),configUpdatedAt));
+  if(!source)return;
+
+  const previous=byResource.get(source.resource)||null;
+  const startedAt=new Date().toISOString();
+  await env.AUTH_DB.prepare(
+    "INSERT INTO bi_multisystem_loads (tenant_id,system,resource,status,loaded,pages,updated_at) VALUES (?1,?2,?3,'running',0,0,?4) ON CONFLICT(tenant_id,system,resource) DO UPDATE SET status='running',error=NULL,updated_at=excluded.updated_at"
+  ).bind(String(tenant.id),system,source.resource,startedAt).run();
+
+  try{
+    const result=await loadMultiSystemIncrementalResource(env,tenant,system,source,previous);
+    await env.AUTH_DB.prepare(
+      "UPDATE bi_multisystem_loads SET status=?1,loaded=?2,pages=?3,http_status=?4,error=NULL,object_key=?5,fields_json=?6,updated_at=?7 WHERE tenant_id=?8 AND system=?9 AND resource=?10"
+    ).bind(
+      result.complete?"complete":"running",
+      result.loaded,
+      result.pages,
+      result.httpStatus,
+      result.objectKey,
+      JSON.stringify(result.fields),
+      new Date().toISOString(),
+      String(tenant.id),
+      system,
+      source.resource
+    ).run();
+  }catch(error){
+    const code=String(error?.message||error||"MULTISYSTEM_LOAD_FAILED");
+    const httpStatus=Number(error?.status)||null;
+    await env.AUTH_DB.prepare(
+      "UPDATE bi_multisystem_loads SET status='error',http_status=?1,error=?2,updated_at=?3 WHERE tenant_id=?4 AND system=?5 AND resource=?6"
+    ).bind(httpStatus,code.slice(0,240),new Date().toISOString(),String(tenant.id),system,source.resource).run();
+  }
+}
+
+async function runMultiSystemBootstrap(env){
+  if(!env.AUTH_DB||!env.BI_SYNC_RAW)return;
+  await ensureMultiSystemLoadSchema(env);
+
+  let tenant;
+  try{
+    tenant=await resolveTenant(env,MULTISYSTEM_BOOTSTRAP_TENANT);
+  }catch(error){
+    console.warn("Multi-system bootstrap tenant unavailable",error?.message||error);
+    return;
+  }
+
+  const tenantConfigState=await env.AUTH_DB.prepare(
+    "SELECT updated_at FROM bi_tenant_configs WHERE id=?1 LIMIT 1"
+  ).bind(String(tenant.id)).first();
+  const configUpdatedAt=Date.parse(String(tenantConfigState?.updated_at||""))||0;
+
+  await Promise.allSettled(
+    ["contabil","compras","folha"].map(system=>advanceMultiSystem(env,tenant,system,configUpdatedAt))
+  );
+}
+
 const MULTISYSTEM_SAMPLE_FILES=Object.freeze({
   contabil:"contabil-100.json",
   compras:"compras-100.json",
@@ -9431,8 +9642,6 @@ function errorResponse(request,env,error) {
   return json(request,env,statusByCode[code]||500,{error:code});
 }
 
-
-/* Construtor personalizado: fontes e campos explicitamente autorizados. */
 const CUSTOM_PANEL_SOURCES=Object.freeze({
  "bi:debitos":{label:"Débitos",dimensions:["situacao","ano","bairro","receita"],measures:["lancado","saldo","count"]},
  "bi:pagamentos":{label:"Pagamentos",dimensions:["ano","receita","pagamento","pagamento:mes","pagamento:dia","pagamento:ano"],measures:["pago","count"]},
@@ -9650,7 +9859,7 @@ async function handleCustomPanelRequest(request,env,url){
 }
 
 export default {
-  async scheduled(event,env,ctx){ctx.waitUntil(runBackgroundSync(env));},
+  async scheduled(event,env,ctx){ctx.waitUntil(Promise.allSettled([runBackgroundSync(env),runMultiSystemBootstrap(env)]));},
   async fetch(request,env) {
     const url=new URL(request.url);
     if (request.method==="OPTIONS") return new Response(null,{status:204,headers:corsHeaders(request,env)});
