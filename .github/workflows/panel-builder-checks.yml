@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - 'backend/worker.js'
+      - 'app.js'
       - 'panel-builder*.js'
       - 'panel-placements.js'
       - 'tests/panel-builder-*.test.cjs'
@@ -36,6 +37,7 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           node --check backend/worker.js
+          node --check app.js
           node --check panel-builder-core.js
           node --check panel-builder-ui.js
           node --check panel-builder-samples.js
@@ -45,5 +47,6 @@ jobs:
           node tests/panel-builder-core.test.cjs
           node tests/panel-builder-security.test.cjs
           node tests/panel-builder-d1.test.cjs
+          node tests/panel-builder-schema.test.cjs
       - name: Validate D1 migration chain
         run: python3 tests/panel-builder-migrations.test.py
