@@ -9467,6 +9467,90 @@ function validateCustomPanel(data,auth){
  if(!Array.isArray(filters)||filters.length>6||filters.some(f=>!f||!cat.dimensions.includes(f.field)||!["eq","neq","contains","gt","gte","lt","lte"].includes(f.operator)||typeof f.value!=="string"&&typeof f.value!=="number"||String(f.value).length>120))throw new Error("CUSTOM_PANEL_FILTER_INVALID");
  return {config_version:1,name,system:"tributos",source,dimension,measure,aggregation,chart:data.chart,limit:data.limit,filters};
 }
+
+/* Engine paginado: processa blocos de registros dentro do Worker e retorna apenas agregados. */
+function customPanelRowMatches(row,filters){
+ return filters.every(f=>{
+  const raw=row[f.field],a=String(raw??""),b=String(f.value);
+  if(f.operator==="eq")return a===b;
+  if(f.operator==="neq")return a!==b;
+  if(f.operator==="contains")return a.toLocaleLowerCase("pt-BR").includes(b.toLocaleLowerCase("pt-BR"));
+  if(raw==null||a.trim()===""||b.trim()==="")return false;
+  const x=panelNumber(raw),y=panelNumber(f.value);
+  if(!Number.isFinite(x)||!Number.isFinite(y))return false;
+  return f.operator==="gt"?x>y:f.operator==="gte"?x>=y:f.operator==="lt"?x<y:x<=y;
+ });
+}
+function customPanelNewAggregate(){return {sum:0,count:0,min:null,max:null};}
+function customPanelAccumulate(target,numeric){
+ target.sum+=numeric;target.count++;
+ target.min=target.min===null?numeric:Math.min(target.min,numeric);
+ target.max=target.max===null?numeric:Math.max(target.max,numeric);
+}
+function customPanelAggregatePage(rawRows,body,groups,total,drillRows=null,drill=null){
+ let scanned=0,loaded=0;
+ for(let i=0;i<rawRows.length;i++){
+  scanned++;
+  const row=normalizePanelRow(rawRows[i],body.source,i);
+  if(!customPanelRowMatches(row,body.filters))continue;
+  const label=String(row[body.dimension]??"Não informado").slice(0,100);
+  const numeric=body.measure==="count"?1:panelNumber(row[body.measure]);
+  if(numeric===null||!Number.isFinite(numeric))continue;
+  if(drill!==null&&drillRows&&label===drill&&drillRows.length<50)
+   drillRows.push({categoria:label,valor:body.measure==="count"?1:row[body.measure],...Object.fromEntries(body.filters.map(f=>[f.field,row[f.field]??null]))});
+  let bucket=groups.get(label);
+  if(!bucket){
+   if(groups.size>=5000)throw new Error("CUSTOM_PANEL_CATEGORY_LIMIT");
+   bucket={label,...customPanelNewAggregate()};groups.set(label,bucket);
+  }
+  customPanelAccumulate(bucket,numeric);customPanelAccumulate(total,numeric);loaded++;
+ }
+ return {scanned,loaded};
+}
+function customPanelAggregatedValue(group,aggregation){
+ if(!group||!group.count)return 0;
+ return aggregation==="count"?group.count:aggregation==="avg"?group.sum/group.count:aggregation==="min"?group.min:aggregation==="max"?group.max:group.sum;
+}
+async function customPanelQueryBatch(request,env,tenant,body,input){
+ if(!env.BI_SESSIONS)throw new Error("SESSION_STORE_NOT_CONFIGURED");
+ const config=await syncConfig(env,tenant),activeJob=config.latestJob||config.activeJob;
+ if(!activeJob)return json(request,env,409,{error:"INITIAL_LOAD_REQUIRED"});
+ const cursor=input.cursor;
+ if(cursor!==undefined&&cursor!==null &&
+  (!cursor||typeof cursor!=="object"||Array.isArray(cursor)||
+   typeof cursor.jobId!=="string"||!/^[a-f0-9-]{36}$/i.test(cursor.jobId)||
+   !Number.isInteger(cursor.nextPage)||cursor.nextPage<0||cursor.nextPage>500||
+   !Number.isInteger(cursor.snapshotPages)||cursor.snapshotPages<0||cursor.snapshotPages>500))
+  throw new Error("CUSTOM_PANEL_CURSOR_INVALID");
+ if(cursor&&cursor.jobId!==activeJob)throw new Error("CUSTOM_PANEL_SNAPSHOT_CHANGED");
+ const job=await syncJob(env,tenant,activeJob);
+ if(!job)return json(request,env,409,{error:"INITIAL_LOAD_REQUIRED"});
+ const entry=job.sources?.[body.source];
+ if(!entry)return json(request,env,409,{error:"CUSTOM_PANEL_SOURCE_NOT_LOADED"});
+ const available=Math.min(500,Math.max(0,Number(entry.pages)||0));
+ const snapshotPages=cursor?cursor.snapshotPages:available;
+ const nextPage=cursor?cursor.nextPage:0;
+ if(snapshotPages>available||nextPage>snapshotPages)throw new Error("CUSTOM_PANEL_CURSOR_INVALID");
+ if(snapshotPages===0)return json(request,env,409,{error:"CUSTOM_PANEL_SOURCE_NOT_LOADED"});
+ const finish=Math.min(nextPage+12,snapshotPages);
+ const groups=new Map(),total=customPanelNewAggregate();
+ const scope=await syncScope(tenant);
+ let scanned=0,loaded=0;
+ for(let page=nextPage;page<finish;page++){
+  const rows=await env.BI_SESSIONS.get(scope+":rows:"+activeJob+":"+body.source+":"+page,"json");
+  if(!Array.isArray(rows))throw new Error("CUSTOM_PANEL_CACHE_PAGE_MISSING");
+  const counts=customPanelAggregatePage(rows,body,groups,total);
+  scanned+=counts.scanned;loaded+=counts.loaded;
+ }
+ return json(request,env,200,{
+  groups:[...groups.values()],total,scanned,loaded,
+  cursor:finish<snapshotPages?{jobId:activeJob,nextPage:finish,snapshotPages}:null,
+  pagesProcessed:finish,snapshotPages,
+  sourceComplete:entry.complete===true&&snapshotPages===available,
+  updatedAt:job.finishedAt||job.startedAt
+ });
+}
+
 async function handleCustomPanelRequest(request,env,url){
  const tenant=await resolveTenant(env,getTenantId(request,url));
  const auth=await authorizeTenant(request,env,tenant);
@@ -9475,6 +9559,11 @@ async function handleCustomPanelRequest(request,env,url){
   const sources=Object.entries(CUSTOM_PANEL_SOURCES).filter(([id])=>{try{panelReadAuthorized(auth,id);return true;}catch{return false;}})
    .map(([id,meta])=>({id,system:"tributos",label:meta.label,dimensions:meta.dimensions,measures:meta.measures}));
   return json(request,env,200,{sources,system:"tributos"});
+ }
+ if(url.pathname==="/api/custom-panels/query" && request.method==="POST"){
+  const input=await request.json();
+  const body=validateCustomPanel(input,auth);
+  return customPanelQueryBatch(request,env,tenant,body,input);
  }
  const db=url.pathname==="/api/custom-panels/preview"?null:await customPanelDb(env);
  const match=url.pathname.match(/^\/api\/custom-panels\/([a-f0-9-]{36})$/i);
@@ -9522,37 +9611,21 @@ async function handleCustomPanelRequest(request,env,url){
   if(!entry)return json(request,env,409,{error:"CUSTOM_PANEL_SOURCE_NOT_LOADED"});
   const scope=await syncScope(tenant),groups=new Map(),pageCount=Math.min(entry.pages||0,12);
   let loaded=0,scanned=0,missingPage=false;
-  const total={sum:0,count:0,min:Infinity,max:-Infinity};
+  const total=customPanelNewAggregate();
   for(let pageNo=0;pageNo<pageCount;pageNo++){
    const page=await env.BI_SESSIONS.get(scope+":rows:"+jobId+":"+body.source+":"+pageNo,"json");
    if(!Array.isArray(page)){missingPage=true;break;}
-   for(let index=0;index<page.length;index++){
-    scanned++;
-    const row=normalizePanelRow(page[index],body.source,index);
-    if(!body.filters.every(f=>{
-      const value=row[f.field];
-      const a=String(value??""),b=String(f.value);
-      if(f.operator==="eq")return a===b;
-      if(f.operator==="neq")return a!==b;
-      if(f.operator==="contains")return a.toLocaleLowerCase("pt-BR").includes(b.toLocaleLowerCase("pt-BR"));
-      const x=Number(value),y=Number(f.value);
-      if(value==null||a.trim()===""||b.trim()===""||!Number.isFinite(x)||!Number.isFinite(y))return false;
-      return f.operator==="gt"?x>y:f.operator==="gte"?x>=y:f.operator==="lt"?x<y:x<=y;
-    }))continue;
-    const label=String(row[body.dimension]??"Não informado").slice(0,100);
-    if(drill!==null&&label===drill&&drillRows.length<50)drillRows.push({categoria:label,valor:row[body.measure]??null,...Object.fromEntries(body.filters.map(f=>[f.field,row[f.field]??null]))});
-    const numeric=body.measure==="count"?1:Number(row[body.measure]);
-    if(!Number.isFinite(numeric))continue;
-    total.sum+=numeric;total.count++;total.min=Math.min(total.min,numeric);total.max=Math.max(total.max,numeric);
-    let g=groups.get(label);if(!g){g={label,sum:0,count:0,min:Infinity,max:-Infinity};groups.set(label,g);}
-    g.sum+=numeric;g.count++;g.min=Math.min(g.min,numeric);g.max=Math.max(g.max,numeric);
-    loaded++;
-   }
+   const counts=customPanelAggregatePage(page,body,groups,total,drillRows,drill);
+   scanned+=counts.scanned;loaded+=counts.loaded;
   }
-  const values=[...groups.values()].map(g=>({label:g.label,value:body.aggregation==="count"?g.count:body.aggregation==="avg"?g.sum/g.count:body.aggregation==="min"?g.min:body.aggregation==="max"?g.max:g.sum}));
+  const values=[...groups.values()].map(g=>({label:g.label,value:customPanelAggregatedValue(g,body.aggregation)}));
   values.sort((a,b)=>b.value-a.value);
-  const totalValue=!total.count?0:body.aggregation==="count"?total.count:body.aggregation==="avg"?total.sum/total.count:body.aggregation==="min"?total.min:body.aggregation==="max"?total.max:total.sum;
-  return json(request,env,200,{rows:values.slice(0,body.limit),loaded,scanned,totalValue,updatedAt:job.finishedAt||job.startedAt,partial:missingPage||pageCount<(entry.pages||0)||!entry.complete,source:body.source,drillRows:drill===null?undefined:drillRows,drillCategory:drill});
+  return json(request,env,200,{
+   rows:values.slice(0,body.limit),loaded,scanned,totalValue:customPanelAggregatedValue(total,body.aggregation),
+   updatedAt:job.finishedAt||job.startedAt,
+   partial:missingPage||pageCount<(entry.pages||0)||!entry.complete,
+   source:body.source,drillRows:drill===null?undefined:drillRows,drillCategory:drill
+  });
  }
  return json(request,env,405,{error:"METHOD_NOT_ALLOWED"});
 }
