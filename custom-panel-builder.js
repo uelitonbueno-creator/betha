@@ -61,9 +61,12 @@
       const line=document.createElement("div");line.className="bi-custom-filter-row";
       const field=document.createElement("select");field.innerHTML=options(src.dimensions,filter.field);field.value=filter.field;
       field.onchange=()=>{filter.field=field.value;};
+      const operator=document.createElement("select");
+      operator.innerHTML=[["eq","Igual"],["neq","Diferente"],["contains","Contém"],["gt","Maior que"],["gte","Maior ou igual"],["lt","Menor que"],["lte","Menor ou igual"]].map(([value,label])=>option(value,label,filter.operator)).join("");
+      operator.value=filter.operator||"eq";operator.onchange=()=>{filter.operator=operator.value;};
       const input=document.createElement("input");input.placeholder="Valor exato";input.maxLength=120;input.value=filter.value||"";input.oninput=()=>{filter.value=input.value;};
       const remove=document.createElement("button");remove.type="button";remove.textContent="×";remove.title="Remover filtro";remove.onclick=()=>{state.filters.splice(index,1);renderFilters();};
-      line.append(field,input,remove);el.append(line);
+      line.append(field,operator,input,remove);el.append(line);
     });
   }
   function renderFields(){
