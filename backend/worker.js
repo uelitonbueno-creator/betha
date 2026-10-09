@@ -9720,7 +9720,7 @@ function validateCustomPanel(data,auth){
  const name=String(data.name||"").trim();if(!name||name.length>100)throw new Error("CUSTOM_PANEL_NAME_INVALID");
  const filters=data.filters||[];
  if(!Array.isArray(filters)||filters.length>6||filters.some(f=>!f||!cat.dimensions.includes(f.field)||!["eq","neq","contains","gt","gte","lt","lte"].includes(f.operator)||typeof f.value!=="string"&&typeof f.value!=="number"||String(f.value).length>120))throw new Error("CUSTOM_PANEL_FILTER_INVALID");
- return {config_version:1,name,system:"tributos",source,dimension,measure,aggregation,chart:data.chart,limit:data.limit,filters};
+ return {config_version:1,name,system:data.system,source,dimension,measure,aggregation,chart:data.chart,limit:data.limit,filters};
 }
 
 /* Engine paginado: processa blocos de registros dentro do Worker e retorna apenas agregados. */
