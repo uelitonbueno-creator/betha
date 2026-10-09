@@ -10378,8 +10378,35 @@ async function authorizePanelDefinition(env,tenant,auth,system,d){
  }
 }
 
+// D1 já configurado como AUTH_DB; o construtor usa a mesma base quando não
+// existe uma ligação BI_PANEL_DB dedicada. Inicialização é idempotente por isolate.
+const PANEL_DRAFT_SCHEMA_TASKS=new WeakMap();
+async function ensurePanelDraftSchema(db){
+  let task=PANEL_DRAFT_SCHEMA_TASKS.get(db);
+  if(!task){
+    task=(async()=>{
+      await db.prepare("CREATE TABLE IF NOT EXISTS bi_panel_drafts (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, system_id TEXT NOT NULL, owner_id TEXT NOT NULL, title TEXT NOT NULL, definition_json TEXT NOT NULL, view_id TEXT NOT NULL DEFAULT '', sort_order INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)").run();
+      const columns=await db.prepare("PRAGMA table_info(bi_panel_drafts)").all();
+      const names=new Set((columns.results||[]).map(row=>String(row.name)));
+      if(!names.has("view_id")){
+        try{await db.prepare("ALTER TABLE bi_panel_drafts ADD COLUMN view_id TEXT NOT NULL DEFAULT ''").run();}
+        catch(error){if(!/duplicate column name/i.test(String(error?.message||error)))throw error;}
+      }
+      if(!names.has("sort_order")){
+        try{await db.prepare("ALTER TABLE bi_panel_drafts ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0").run();}
+        catch(error){if(!/duplicate column name/i.test(String(error?.message||error)))throw error;}
+      }
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_bi_panel_drafts_scope ON bi_panel_drafts(tenant_id,system_id,owner_id,updated_at)").run();
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_bi_panel_drafts_view ON bi_panel_drafts(tenant_id,system_id,owner_id,view_id)").run();
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_bi_panel_sort ON bi_panel_drafts(tenant_id,system_id,owner_id,view_id,sort_order)").run();
+    })();
+    PANEL_DRAFT_SCHEMA_TASKS.set(db,task);
+  }
+  try{await task;}catch(error){PANEL_DRAFT_SCHEMA_TASKS.delete(db);throw error;}
+}
 async function handlePanelDrafts(request,env,url){
-  if(!env.BI_PANEL_DB)return json(request,env,503,{error:"PANEL_D1_NOT_CONFIGURED"});
+  const db=env.BI_PANEL_DB||env.AUTH_DB;
+  if(!db)return json(request,env,503,{error:"PANEL_D1_NOT_CONFIGURED"});
   let tenant,auth;
   try{tenant=await resolveTenant(env,getTenantId(request,url));auth=await authorizeTenant(request,env,tenant);}
   catch(err){return errorResponse(request,env,err);}
@@ -10387,7 +10414,7 @@ async function handlePanelDrafts(request,env,url){
   if(!owner)return json(request,env,403,{error:"USER_ID_REQUIRED"});
   const system=String(url.searchParams.get("system")||"");
   if(!/^(tributos|contabilidade|compras|folha)$/.test(system))return json(request,env,400,{error:"INVALID_SYSTEM"});
-  const db=env.BI_PANEL_DB;
+  try{await ensurePanelDraftSchema(db);}catch(error){console.error("Panel drafts D1 schema",error?.message||error);return json(request,env,503,{error:"PANEL_DRAFT_STORAGE_UNAVAILABLE"});}
   const viewOf=input=>{const view=String(input?.viewId||"");if(view&&!/^[a-z0-9][a-z0-9-]{0,79}$/.test(view))throw new Error("INVALID_PANEL_VIEW");return view;};
   const requirePlacementPermission=view=>{
     if(!view)return;
