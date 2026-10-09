@@ -9750,6 +9750,20 @@ async function handlePanelDrafts(request,env,url){
   const orderOf=input=>{const n=Number(input?.sortOrder??0);if(!Number.isSafeInteger(n)||n<0||n>100000)throw new Error("INVALID_PANEL_ORDER");return n;};
   const itemMatch=url.pathname.match(/^\/api\/panel-drafts\/([0-9a-f-]{36})$/);
   try{
+    if(url.pathname==="/api/panel-drafts/reorder"&&request.method==="POST"){
+      const raw=await request.text();
+      if(raw.length>5000)return json(request,env,413,{error:"ORDER_REQUEST_TOO_LARGE"});
+      let data;try{data=JSON.parse(raw);}catch{return json(request,env,400,{error:"INVALID_JSON"});}
+      const viewId=viewOf(data);
+      const ids=data?.ids;
+      if(!viewId||!Array.isArray(ids)||ids.length>100||ids.length<1||new Set(ids).size!==ids.length||ids.some(id=>typeof id!=="string"||!/^[0-9a-f-]{36}$/.test(id)))return json(request,env,400,{error:"INVALID_PANEL_ORDER"});
+      const existing=await db.prepare("SELECT id FROM bi_panel_drafts WHERE tenant_id=? AND system_id=? AND owner_id=? AND view_id=?").bind(tenant.id,system,owner,viewId).all();
+      const all=(existing.results||[]).map(r=>r.id);
+      if(all.length!==ids.length||all.some(id=>!ids.includes(id)))return json(request,env,409,{error:"PANEL_ORDER_CONFLICT"});
+      const queries=ids.map((id,index)=>db.prepare("UPDATE bi_panel_drafts SET sort_order=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND tenant_id=? AND system_id=? AND owner_id=? AND view_id=?").bind(index+1,id,tenant.id,system,owner,viewId));
+      await db.batch(queries);
+      return json(request,env,200,{ok:true,viewId,ordered:ids.length});
+    }
     if(request.method==="GET"&&!itemMatch){
       const data=await db.prepare("SELECT id, title, definition_json, view_id, sort_order, created_at, updated_at FROM bi_panel_drafts WHERE tenant_id=? AND system_id=? AND owner_id=? ORDER BY updated_at DESC LIMIT 100").bind(tenant.id,system,owner).all();
       return json(request,env,200,{items:(data.results||[]).map(r=>({id:r.id,title:r.title,definition:JSON.parse(r.definition_json),viewId:r.view_id||"",sortOrder:Number(r.sort_order)||0,createdAt:r.created_at,updatedAt:r.updated_at}))});
@@ -9787,7 +9801,7 @@ export default {
     const url=new URL(request.url);
     if (request.method==="OPTIONS") return new Response(null,{status:204,headers:corsHeaders(request,env)});
     if (url.pathname==="/api/panel-builder/catalog" || url.pathname==="/api/panel-builder/preview") return handlePanelPreview(request,env,url);
-    if (url.pathname==="/api/panel-drafts" || /^\/api\/panel-drafts\/[0-9a-f-]{36}$/.test(url.pathname)) return handlePanelDrafts(request,env,url);
+    if (url.pathname==="/api/panel-drafts" || url.pathname==="/api/panel-drafts/reorder" || /^\/api\/panel-drafts\/[0-9a-f-]{36}$/.test(url.pathname)) return handlePanelDrafts(request,env,url);
 
     if (url.pathname==="/.well-known/oauth-authorization-server" && request.method==="GET") {
       return json(request,env,200,mcpOAuthMetadata(request,env));
