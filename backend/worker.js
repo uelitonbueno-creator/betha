@@ -9431,6 +9431,103 @@ function errorResponse(request,env,error) {
   return json(request,env,statusByCode[code]||500,{error:code});
 }
 
+
+/* Construtor personalizado: fontes e campos explicitamente autorizados. */
+const CUSTOM_PANEL_SOURCES=Object.freeze({
+ "bi:debitos":{dimensions:["situacao","ano","bairro","receita"],measures:["vlLancado","valorSaldo"]},
+ "bi:pagamentos":{dimensions:["ano","receita","dataPagamento"],measures:["valorPago"]},
+ "bi:imoveis":{dimensions:["bairro","zona","situacao"],measures:["count"]},
+ "bi:parcelamentos":{dimensions:["situacao","ano"],measures:["count"]}
+});
+async function customPanelDb(env){
+ if(!env.AUTH_DB)throw new Error("CUSTOM_PANEL_D1_NOT_CONFIGURED");
+ await env.AUTH_DB.prepare("CREATE TABLE IF NOT EXISTS bi_custom_panels (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, system TEXT NOT NULL, name TEXT NOT NULL, config_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)").run();
+ await env.AUTH_DB.prepare("CREATE INDEX IF NOT EXISTS idx_bi_custom_panels_scope ON bi_custom_panels(tenant_id,user_id,system)").run();
+ return env.AUTH_DB;
+}
+function validateCustomPanel(data,auth){
+ if(!data||Array.isArray(data)||typeof data!=="object")throw new Error("CUSTOM_PANEL_INVALID");
+ const source=String(data.source||""),cat=CUSTOM_PANEL_SOURCES[source];
+ if(!cat||data.system!=="tributos")throw new Error("CUSTOM_PANEL_SOURCE_INVALID");
+ panelReadAuthorized(auth,source);
+ const dimension=String(data.dimension||""),measure=String(data.measure||""),aggregation=String(data.aggregation||"");
+ if(!cat.dimensions.includes(dimension)||!cat.measures.includes(measure))throw new Error("CUSTOM_PANEL_FIELD_INVALID");
+ if(!["sum","avg","min","max","count"].includes(aggregation)||(measure==="count"&&aggregation!=="count"))throw new Error("CUSTOM_PANEL_AGGREGATION_INVALID");
+ if(!["bar","horizontalBar","line","doughnut","pie","table","kpi"].includes(data.chart))throw new Error("CUSTOM_PANEL_CHART_INVALID");
+ if(!Number.isInteger(data.limit)||data.limit<1||data.limit>50)throw new Error("CUSTOM_PANEL_LIMIT_INVALID");
+ const name=String(data.name||"").trim();if(!name||name.length>100)throw new Error("CUSTOM_PANEL_NAME_INVALID");
+ const filters=data.filters||[];
+ if(!Array.isArray(filters)||filters.length>6||filters.some(f=>!f||!cat.dimensions.includes(f.field)||f.operator!=="eq"||typeof f.value!=="string"&&typeof f.value!=="number"||String(f.value).length>120))throw new Error("CUSTOM_PANEL_FILTER_INVALID");
+ return {config_version:1,name,system:"tributos",source,dimension,measure,aggregation,chart:data.chart,limit:data.limit,filters};
+}
+async function handleCustomPanelRequest(request,env,url){
+ const tenant=await resolveTenant(env,getTenantId(request,url));
+ const auth=await authorizeTenant(request,env,tenant);
+ const user=String(auth.userId||"");if(!user)throw new Error("USER_TOKEN_REQUIRED");
+ const db=await customPanelDb(env);
+ const match=url.pathname.match(/^\/api\/custom-panels\/([a-zA-Z0-9-]+)$/);
+ const id=match?.[1];
+ const method=request.method;
+ const readConfig=row=>{const c=JSON.parse(row.config_json);return {...c,id:row.id,created_at:row.created_at,updated_at:row.updated_at};};
+ if(url.pathname==="/api/custom-panels"&&method==="GET"){
+  const rows=await db.prepare("SELECT * FROM bi_custom_panels WHERE tenant_id=?1 AND user_id=?2 AND system=?3 ORDER BY updated_at DESC LIMIT 100").bind(tenant.id,user,"tributos").all();
+  return json(request,env,200,{panels:(rows.results||[]).map(readConfig).filter(p=>{try{panelReadAuthorized(auth,p.source);return true;}catch{return false;}})});
+ }
+ if(id&&method==="GET"){
+  const row=await db.prepare("SELECT * FROM bi_custom_panels WHERE id=?1 AND tenant_id=?2 AND user_id=?3 LIMIT 1").bind(id,tenant.id,user).first();
+  if(!row)return json(request,env,404,{error:"CUSTOM_PANEL_NOT_FOUND"});
+  const panel=readConfig(row);panelReadAuthorized(auth,panel.source);return json(request,env,200,{panel});
+ }
+ if(id&&method==="DELETE"){
+  const result=await db.prepare("DELETE FROM bi_custom_panels WHERE id=?1 AND tenant_id=?2 AND user_id=?3").bind(id,tenant.id,user).run();
+  return json(request,env,result.meta?.changes?200:404,{ok:!!result.meta?.changes});
+ }
+ if((url.pathname==="/api/custom-panels"&&method==="POST")||(id&&method==="PUT")){
+  const body=await request.json();const panel=validateCustomPanel(body,auth);
+  const timestamp=new Date().toISOString();
+  if(id){
+   const result=await db.prepare("UPDATE bi_custom_panels SET name=?1,config_json=?2,updated_at=?3 WHERE id=?4 AND tenant_id=?5 AND user_id=?6").bind(panel.name,JSON.stringify(panel),timestamp,id,tenant.id,user).run();
+   if(!result.meta?.changes)return json(request,env,404,{error:"CUSTOM_PANEL_NOT_FOUND"});
+   return json(request,env,200,{panel:{...panel,id}});
+  }
+  const newId=crypto.randomUUID();
+  await db.prepare("INSERT INTO bi_custom_panels(id,tenant_id,user_id,system,name,config_json,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)").bind(newId,tenant.id,user,"tributos",panel.name,JSON.stringify(panel),timestamp,timestamp).run();
+  return json(request,env,201,{panel:{...panel,id:newId}});
+ }
+ if(url.pathname==="/api/custom-panels/preview"&&method==="POST"){
+  const body=validateCustomPanel(await request.json(),auth);
+  if(!env.BI_SESSIONS)throw new Error("SESSION_STORE_NOT_CONFIGURED");
+  // Limite de páginas protege a memória do Worker; o resultado informa quando é parcial.
+  const config=await syncConfig(env,tenant);
+  const jobId=config.latestJob||config.activeJob;
+  if(!jobId)return json(request,env,409,{error:"INITIAL_LOAD_REQUIRED"});
+  const job=await syncJob(env,tenant,jobId);
+  if(!job)return json(request,env,409,{error:"INITIAL_LOAD_REQUIRED"});
+  const entry=job.sources?.[body.source];
+  if(!entry)return json(request,env,409,{error:"CUSTOM_PANEL_SOURCE_NOT_LOADED"});
+  const scope=await syncScope(tenant),groups=new Map(),pageCount=Math.min(entry.pages||0,12);
+  let loaded=0;
+  for(let pageNo=0;pageNo<pageCount;pageNo++){
+   const page=await env.BI_SESSIONS.get(scope+":rows:"+jobId+":"+body.source+":"+pageNo,"json");
+   if(!Array.isArray(page))break;
+   for(let index=0;index<page.length;index++){
+    const row=normalizePanelRow(page[index],body.source,index);
+    if(!body.filters.every(f=>String(row[f.field]??"")===String(f.value)))continue;
+    const label=String(row[body.dimension]??"Não informado").slice(0,100);
+    const numeric=body.measure==="count"?1:Number(row[body.measure]);
+    if(!Number.isFinite(numeric))continue;
+    let g=groups.get(label);if(!g){g={label,sum:0,count:0,min:Infinity,max:-Infinity};groups.set(label,g);}
+    g.sum+=numeric;g.count++;g.min=Math.min(g.min,numeric);g.max=Math.max(g.max,numeric);
+    loaded++;
+   }
+  }
+  const values=[...groups.values()].map(g=>({label:g.label,value:body.aggregation==="count"?g.count:body.aggregation==="avg"?g.sum/g.count:body.aggregation==="min"?g.min:body.aggregation==="max"?g.max:g.sum}));
+  values.sort((a,b)=>b.value-a.value);
+  return json(request,env,200,{rows:values.slice(0,body.limit),loaded,updatedAt:job.finishedAt||job.startedAt,partial:pageCount<(entry.pages||0)||!entry.complete,source:body.source});
+ }
+ return json(request,env,405,{error:"METHOD_NOT_ALLOWED"});
+}
+
 export default {
   async scheduled(event,env,ctx){ctx.waitUntil(runBackgroundSync(env));},
   async fetch(request,env) {
@@ -10049,6 +10146,11 @@ export default {
         }
         return errorResponse(request,env,error);
       }
+    }
+
+    if (url.pathname==="/api/custom-panels" || url.pathname.startsWith("/api/custom-panels/")) {
+      try { return await handleCustomPanelRequest(request,env,url); }
+      catch(error) { return errorResponse(request,env,error); }
     }
 
     if (url.pathname==="/api/search" && request.method==="GET") {
