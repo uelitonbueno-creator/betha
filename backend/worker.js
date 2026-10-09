@@ -9838,6 +9838,21 @@ const PANEL_PREVIEW_FIELDS=Object.freeze({
     {id:"id",type:"string",dimension:true,measure:true}
   ]}
 });
+async function panelMultiSystemStatus(env,tenant,system){
+  if(!env.AUTH_DB)return {available:false,reason:"LOAD_DB_NOT_CONFIGURED",resources:[]};
+  if(!env.BI_SYNC_RAW)return {available:false,reason:"RAW_STORAGE_NOT_CONFIGURED",resources:[]};
+  const rows=await env.AUTH_DB.prepare(
+    "SELECT resource,status,loaded,pages,fields_json,updated_at FROM bi_multisystem_loads WHERE tenant_id=? AND system=? ORDER BY resource LIMIT 50"
+  ).bind(tenant.id,system).all();
+  const resources=(rows.results||[]).map(row=>{
+    const profile=parseMultiSystemFieldProfile(row.fields_json);
+    // Não expor nomes de campos pessoais ou quaisquer dados das páginas.
+    return {resource:row.resource,status:row.status,records:Number(row.loaded)||0,
+      pages:Number(row.pages)||0,fieldCount:profile.selected.length,updatedAt:row.updated_at};
+  });
+  return {available:resources.some(item=>item.records>0),resources};
+}
+
 function panelPreviewCatalog(system){
   if(system!=="tributos")return [];
   return Object.entries(PANEL_PREVIEW_FIELDS).map(([id,v])=>({id:"bi:"+id,systemId:v.systemId,fields:v.fields}));
@@ -9849,6 +9864,12 @@ async function handlePanelPreview(request,env,url){
     auth=await authorizeTenant(request,env,tenant);
     const system=String(url.searchParams.get("system")||"");
     if(!["tributos","contabilidade","compras","folha"].includes(system))return json(request,env,400,{error:"INVALID_SYSTEM"});
+    if(url.pathname==="/api/panel-builder/source-status"&&request.method==="GET"){
+      if(system==="tributos")return json(request,env,200,{system,mode:"authorized-api",available:true,resources:[]});
+      const result=await panelMultiSystemStatus(env,tenant,system);
+      return json(request,env,200,{system,tenantId:tenant.id,mode:"cached-load",...result,
+        executionEnabled:false,note:"Fontes carregadas identificadas. Prévia real não habilitada até validação do esquema e das permissões."});
+    }
     if(url.pathname==="/api/panel-builder/catalog"&&request.method==="GET"){
       const sources=panelPreviewCatalog(system).filter(s=>{
         try{requireDataPermission(auth,"bi",s.id.slice(3));return true;}catch{return false;}
@@ -9967,7 +9988,7 @@ export default {
   async fetch(request,env) {
     const url=new URL(request.url);
     if (request.method==="OPTIONS") return new Response(null,{status:204,headers:corsHeaders(request,env)});
-    if (url.pathname==="/api/panel-builder/catalog" || url.pathname==="/api/panel-builder/preview") return handlePanelPreview(request,env,url);
+    if (url.pathname==="/api/panel-builder/catalog" || url.pathname==="/api/panel-builder/preview" || url.pathname==="/api/panel-builder/source-status") return handlePanelPreview(request,env,url);
     if (url.pathname==="/api/panel-drafts" || url.pathname==="/api/panel-drafts/reorder" || /^\/api\/panel-drafts\/[0-9a-f-]{36}$/.test(url.pathname)) return handlePanelDrafts(request,env,url);
 
     if (url.pathname==="/.well-known/oauth-authorization-server" && request.method==="GET") {
