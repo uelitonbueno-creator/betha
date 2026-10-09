@@ -29,7 +29,8 @@ async function reload(c){
  try{
   const data=await getJson(endpoint("/api/panel-drafts",c),{headers:{"X-Tenant-Id":c.tenant}});
   if(gen!==generation)return;
-  const attached=(data.items||[]).filter(x=>x.viewId===c.view).sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0)).slice(0,12);
+  const allAttached=(data.items||[]).filter(x=>x.viewId===c.view).sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0));
+  const attached=allAttached.slice(0,12);
   if(!attached.length)return;
   area.hidden=false;message.textContent="Gráficos personalizados · prévias parciais (até 500 registros por fonte)";
   for(const [position,item] of attached.entries()){
@@ -40,7 +41,7 @@ async function reload(c){
    const edit=node("button","Editar");edit.type="button";edit.onclick=()=>window.dispatchEvent(new CustomEvent("bi-open-panel-draft",{detail:{id:item.id}}));controls.append(edit);
    async function move(offset){
      if(position+offset<0||position+offset>=attached.length)return;
-     const ordered=attached.slice();
+     const ordered=allAttached.slice();
      [ordered[position],ordered[position+offset]]=[ordered[position+offset],ordered[position]];
      try{
        await getJson(endpoint("/api/panel-drafts/reorder",c),{
