@@ -4,8 +4,8 @@
 "use strict";
 const definitions={
  contabil:{file:"contabil-100.json",dimensions:["mes","unidade","funcao","credor","natureza","fonteRecurso","status"],numbers:["valorEmpenhado","valorLiquidado","valorPago","receitaPrevista","receitaArrecadada"]},
- compras:{file:"compras-100.json",dimensions:["mes","modalidade","secretaria","fornecedor","status","objeto"],numbers:["valorEstimado","valorHomologado","diasTramitacao"]},
- folha:{file:"folha-100.json",dimensions:["mes","secretaria","vinculo","status","cargo","evento"],numbers:["bruto","liquido","encargos","descontos","beneficios"]}
+ compras:{file:"compras-100.json",dimensions:["mes","modalidade","secretaria","fornecedor","status","objeto"],numbers:["valorEstimado","valorHomologado","diasTramitacao","economia"]},
+ folha:{file:"folha-100.json",dimensions:["mes","secretaria","vinculo","status","cargo","evento"],numbers:["bruto","liquido","encargos","descontos","beneficioValor"]}
 };
 function catalog(system){
  const d=definitions[system];if(!d)return[];
