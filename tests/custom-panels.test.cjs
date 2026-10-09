@@ -168,3 +168,11 @@ test("débitos e pagamentos aceitam contagem real de registros", () => {
   assert.equal(validate({measure:"count",aggregation:"count"}).aggregation,"count");
   assert.throws(()=>validate({measure:"count",aggregation:"sum"}),/CUSTOM_PANEL_AGGREGATION_INVALID/);
 });
+
+test("integração preserva cargas multissistema e as rotas de painéis", () => {
+  assert.ok(worker.includes("MULTISYSTEM_BOOTSTRAP_SOURCES"),"Carga real de sistemas deve ser preservada");
+  assert.ok(worker.includes("async function ensureMultiSystemLoadSchema"),"D1 de cargas multissistema ausente");
+  assert.ok(worker.includes("async function customPanelQueryBatch"),"Motor paginado ausente");
+  assert.ok(worker.includes('url.pathname.startsWith("/api/custom-panels/")'),"Rota de painéis ausente");
+  assert.ok(worker.includes('url.pathname==="/api/custom-panels/query"'),"Consulta agregada ausente");
+});
