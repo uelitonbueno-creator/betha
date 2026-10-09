@@ -10290,6 +10290,37 @@ async function previewCachedPanel(env,tenant,auth,system,definition){
   rows:[...groups.values()].map(v=>({dimension:v.dimension,values:[metric.aggregation==="count"?v.n:!v.n?null:metric.aggregation==="sum"?v.sum:metric.aggregation==="avg"?v.sum/v.n:metric.aggregation==="min"?v.min:v.max]})),
   note:"Prévia parcial limitada a 500 registros e 5 páginas R2; sem requisições à API Betha."};
 }
+
+async function cachedPanelFilterValues(env,tenant,auth,system,input){
+  if(!input||typeof input!=="object"||Array.isArray(input))throw new Error("INVALID_PANEL_FILTER");
+  const sourceId=String(input.sourceId||""),field=String(input.field||"");
+  const source=(await cachedPanelSources(env,tenant,auth,system)).find(item=>item.id===sourceId);
+  if(!source)throw new Error("PANEL_SOURCE_NOT_ALLOWED");
+  if(!source.fields.some(item=>item.id===field&&item.filterable===true))throw new Error("PANEL_FILTER_NOT_ALLOWED");
+  const resource=source.id.split(":")[2],values=new Set();
+  let scanned=0,pagesRead=0;
+  for(let page=0;page<Math.min(2,source.availablePages)&&scanned<200;page++){
+    const object=await env.BI_SYNC_RAW.get(multiSystemPageObjectKey(tenant.id,system,resource,page));
+    if(!object)break;
+    const saved=await object.json();
+    if(saved.tenantId!==tenant.id||saved.system!==system||saved.resource!==resource||!Array.isArray(saved.rows))throw new Error("PANEL_CACHE_INVALID");
+    pagesRead++;
+    for(const row of saved.rows){
+      if(scanned>=200)break;
+      scanned++;
+      const raw=multiSystemSimpleValue(row?.[field]);
+      if(raw==null)continue;
+      const value=String(raw).trim();
+      if(value&&value.length<=120)values.add(value);
+      if(values.size>=40)break;
+    }
+    if(values.size>=40)break;
+  }
+  return {sourceId,field,mode:"cached-real",partial:true,pagesRead,scanned,
+    values:[...values].sort((a,b)=>a.localeCompare(b,"pt-BR")),
+    note:"Sugestões de até 40 valores com leitura de até 200 registros do cache R2; lista não exaustiva."};
+}
+
 function panelPreviewCatalog(system){
   if(system!=="tributos")return [];
   return Object.entries(PANEL_PREVIEW_FIELDS).map(([id,v])=>({id:"bi:"+id,systemId:v.systemId,fields:v.fields}));
@@ -10309,6 +10340,17 @@ async function handlePanelPreview(request,env,url){
       return json(request,env,200,{system,tenantId:tenant.id,mode:"cached-load",...result,
         previewEnabled:sources.length>0,executionEnabled:false,
         note:"Prévia parcial do cache disponível somente nas fontes e campos autorizados. Consolidação completa ainda não habilitada."});
+    }
+    if(url.pathname==="/api/panel-builder/filter-values"&&request.method==="POST"){
+      const raw=await request.text();
+      if(raw.length>1500)return json(request,env,413,{error:"PANEL_FILTER_TOO_LARGE"});
+      let data;try{data=JSON.parse(raw);}catch{return json(request,env,400,{error:"INVALID_JSON"});}
+      try{return json(request,env,200,await cachedPanelFilterValues(env,tenant,auth,system,data));}
+      catch(error){
+        if(["PANEL_SOURCE_NOT_ALLOWED","PANEL_FILTER_NOT_ALLOWED"].includes(error.message))return json(request,env,403,{error:error.message});
+        if(error.message==="INVALID_PANEL_FILTER")return json(request,env,400,{error:error.message});
+        throw error;
+      }
     }
     if(url.pathname==="/api/panel-builder/catalog"&&request.method==="GET"){
       const sources=panelPreviewCatalog(system).filter(s=>{
@@ -10501,7 +10543,7 @@ export default {
   async fetch(request,env) {
     const url=new URL(request.url);
     if (request.method==="OPTIONS") return new Response(null,{status:204,headers:corsHeaders(request,env)});
-    if (url.pathname==="/api/panel-builder/catalog" || url.pathname==="/api/panel-builder/preview" || url.pathname==="/api/panel-builder/source-status") return handlePanelPreview(request,env,url);
+    if (url.pathname==="/api/panel-builder/catalog" || url.pathname==="/api/panel-builder/preview" || url.pathname==="/api/panel-builder/source-status" || url.pathname==="/api/panel-builder/filter-values") return handlePanelPreview(request,env,url);
     if (url.pathname==="/api/panel-drafts" || url.pathname==="/api/panel-drafts/reorder" || /^\/api\/panel-drafts\/[0-9a-f-]{36}$/.test(url.pathname)) return handlePanelDrafts(request,env,url);
 
     if (url.pathname==="/.well-known/oauth-authorization-server" && request.method==="GET") {
