@@ -232,3 +232,28 @@ test("análise R2 respeita o tenant, agrega páginas e reconhece fonte incomplet
   tenantOfObject="municipio-b";
   await assert.rejects(runtime.multiQuery({},env,{id:"municipio-a"},cfg,{},false),/CUSTOM_PANEL_CACHE_SCOPE_INVALID/);
 });
+
+test("cursor R2 é vinculado à fonte e à versão da carga", async () => {
+ const engineCode=sliceBetween(worker,"function customPanelDimensionValue(","async function handleCustomPanelRequest(");
+ let version="2026-10-09T16:00:00Z";
+ const runtime={
+   CUSTOM_PANEL_MULTISYSTEM:{"contabil:empenhos":{system:"contabil",resource:"empenhos"}},
+   customPanelMultiSourceRows:async()=>[{resource:"empenhos",status:"complete",pages:9,loaded:9,updated_at:version}],
+   customPanelMultiFields:()=>({dimensions:["situacao"],measures:["count"]}),
+   multiSystemPageObjectKey:(tenant,system,resource,page)=>tenant+"/"+system+"/"+resource+"/"+page,
+   customPanelNormalizeRow:row=>row,
+   panelNumber:Number,panelDate:value=>new Date(value),
+   json:(_request,_env,httpStatus,body)=>({httpStatus,body}),Error,Number,Map,Object,Math,Date,String,Array
+ };
+ const env={AUTH_DB:{},BI_SYNC_RAW:{get:async()=>({json:async()=>({tenantId:"municipio-a",system:"contabil",resource:"empenhos",rows:[{situacao:"Aberto"}]})})}};
+ vm.createContext(runtime);
+ vm.runInContext(engineCode+"\nthis.multiQuery=customPanelMultiQueryBatch;",runtime);
+ const cfg={...defaults,system:"contabil",source:"contabil:empenhos",dimension:"situacao",measure:"count",aggregation:"count"};
+ const first=await runtime.multiQuery({},env,{id:"municipio-a"},cfg,{},false);
+ assert.equal(first.body.cursor.nextPage,8);
+ assert.equal(first.body.cursor.source,"contabil:empenhos");
+ const second=await runtime.multiQuery({},env,{id:"municipio-a"},cfg,{cursor:first.body.cursor},false);
+ assert.equal(second.body.total.count,1);
+ version="2026-10-09T17:00:00Z";
+ await assert.rejects(runtime.multiQuery({},env,{id:"municipio-a"},cfg,{cursor:first.body.cursor},false),/CUSTOM_PANEL_SNAPSHOT_CHANGED/);
+});
