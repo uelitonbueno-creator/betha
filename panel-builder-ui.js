@@ -36,8 +36,25 @@ const output=make("pre",{className:"bi-builder-json","aria-label":"Definição J
 const actions=make("div",{className:"bi-builder-actions"});
 const build=make("button",{type:"submit"},"Validar definição");
 const download=make("button",{type:"button"},"Exportar JSON");download.disabled=true;
-actions.append(build,download);form.append(actions,status,output);panel.append(form);dialog.append(panel);document.body.append(trigger,dialog);
-let catalog=[],context=null,current=null;
+const save=make("button",{type:"button"},"Salvar rascunho");save.disabled=true;
+const drafts=make("select",{"aria-label":"Rascunhos salvos"});drafts.append(make("option",{value:""},"Rascunhos salvos"));
+const load=make("button",{type:"button"},"Abrir rascunho");
+const remove=make("button",{type:"button"},"Excluir rascunho");
+actions.append(build,download,save,drafts,load,remove);form.append(actions,status,output);panel.append(form);dialog.append(panel);document.body.append(trigger,dialog);
+let catalog=[],context=null,current=null,selectedDraftId="";
+function remote(){
+  const tenant=new URLSearchParams(location.search).get("tenant")||new URLSearchParams(location.search).get("entidadeId")||"";
+  const base=String(window.BI_CONFIG?.BACKEND_URL||"").replace(/\\/$/,"");
+  if(!tenant||!base)throw new Error("Contexto de entidade ou backend indisponível.");
+  return {endpoint:base+"/api/panel-drafts?system="+encodeURIComponent(context.currentSystemId),tenant};
+}
+async function requestDraft(method,id,payload){
+  const {endpoint,tenant}=remote();const address=id?endpoint.replace("/api/panel-drafts?","/api/panel-drafts/"+encodeURIComponent(id)+"?"):endpoint;
+  const response=await fetch(address,{method,credentials:"include",headers:{"X-Tenant-Id":tenant,...(payload?{"Content-Type":"application/json"}:{})},...(payload?{body:JSON.stringify(payload)}:{})});
+  const result=await response.json().catch(()=>({}));if(!response.ok)throw new Error(result.error||"Falha ao acessar rascunhos.");return result;
+}
+async function refreshDrafts(){try{const result=await requestDraft("GET");options(drafts,[["","Rascunhos salvos"],...(result.items||[]).map(x=>[x.id,x.title])]);drafts._items=result.items||[];}catch(err){status.textContent="Rascunhos remotos: "+err.message;}}
+
 function options(element,values){element.replaceChildren(...values.map(([v,l])=>make("option",{value:v},l)));}
 function fillFields(){
 const selected=catalog.find(s=>s.id===source.value);
@@ -53,7 +70,7 @@ catalog=core.sourcesFromDashboards(window.BI_DASHBOARDS,context.currentSystemId)
 .filter(s=>s.fields.some(f=>f.dimension)&&s.fields.some(f=>f.measure));
 options(source,catalog.map(s=>[s.id,s.id]));
 title.value="";type.value="bar";agg.value="sum";status.textContent="";output.textContent="";current=null;download.disabled=true;
-fillFields();dialog.hidden=false;dirty=false;close.focus();
+fillFields();dialog.hidden=false;dirty=false;selectedDraftId="";save.disabled=true;close.focus();refreshDrafts();
 }
 function dismiss(){dialog.hidden=true;trigger.focus();}
 trigger.addEventListener("click",open);
@@ -68,9 +85,12 @@ const definition={title:title.value.trim(),sourceId:source.value,type:type.value
 dimension:dimension.value,measures:[metric],filters:[]};
 const result=core.validate(definition,catalog,{tenantId:"editor-local",systemId:context.currentSystemId});
 if(!result.ok){status.textContent=result.errors.join(" ");download.disabled=true;current=null;return;}
-current=definition;output.textContent=JSON.stringify(definition,null,2);
+current=definition;output.textContent=JSON.stringify(definition,null,2);save.disabled=false;
 status.textContent="Definição validada localmente. Não publicada.";download.disabled=false;
 });
+save.addEventListener("click",async()=>{if(!current)return;save.disabled=true;try{const result=await requestDraft(selectedDraftId?"PUT":"POST",selectedDraftId||"",{definition:current});selectedDraftId=result.id||selectedDraftId;status.textContent="Rascunho salvo no D1.";await refreshDrafts();drafts.value=selectedDraftId;}catch(err){status.textContent="Não foi possível salvar: "+err.message;}finally{save.disabled=false;}});
+load.addEventListener("click",()=>{const item=(drafts._items||[]).find(x=>x.id===drafts.value);if(!item)return;const d=item.definition;if(!catalog.some(x=>x.id===d.sourceId)){status.textContent="Fonte não disponível neste sistema.";return;}title.value=d.title;source.value=d.sourceId;fillFields();type.value=d.type;dimension.value=d.dimension;measure.value=d.measures?.[0]?.field||"*";agg.value=d.measures?.[0]?.aggregation||"count";selectedDraftId=item.id;current=null;save.disabled=true;output.textContent="";status.textContent="Rascunho carregado. Valide antes de salvar alterações.";});
+remove.addEventListener("click",async()=>{if(!drafts.value||!window.confirm("Excluir o rascunho selecionado?"))return;try{await requestDraft("DELETE",drafts.value);selectedDraftId="";status.textContent="Rascunho excluído.";await refreshDrafts();}catch(err){status.textContent=err.message;}});
 download.addEventListener("click",()=>{
 if(!current)return;
 const blob=new Blob([JSON.stringify({version:1,systemId:context.currentSystemId,definition:current},null,2)],{type:"application/json"});
