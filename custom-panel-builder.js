@@ -56,7 +56,7 @@
     if(navNew)navNew.onclick=()=>show("new");
     if(navList)navList.onclick=()=>show("list");
     if(mobile)mobile.onclick=()=>show("list");
-    byId("biCustomForm").onsubmit=async e=>{e.preventDefault();try{state.name=byId("biCustomName").value;const result=await request(state.id?"/api/custom-panels/"+encodeURIComponent(state.id):"/api/custom-panels",state.id?"PUT":"POST",cfg());state.id=result.panel.id;history.replaceState(null,"",location.pathname+location.search+"#painel="+encodeURIComponent(state.id));status("Painel salvo. O endereço desta página permite reabrir a análise.");await loadSidebar(true);}catch(e){status(e.message,true);}};
+    byId("biCustomForm").onsubmit=async e=>{e.preventDefault();const scope=context().tenant+":"+context().system;try{state.name=byId("biCustomName").value;const result=await request(state.id?"/api/custom-panels/"+encodeURIComponent(state.id):"/api/custom-panels",state.id?"PUT":"POST",cfg());if(scope!==context().tenant+":"+context().system)return;state.id=result.panel.id;history.replaceState(null,"",location.pathname+location.search+"#painel="+encodeURIComponent(state.id));status("Painel salvo. O endereço desta página permite reabrir a análise.");await loadSidebar(true);}catch(e){status(e.message,true);}};
   }
   function status(message,error=false){const el=byId("biCustomStatus");el.textContent=message;el.classList.toggle("error",error);}
 
@@ -193,7 +193,9 @@
     if(category==null)return;
     const panel=byId("biCustomDrill");panel.hidden=false;panel.textContent="Carregando registros da categoria "+category+"...";
     try{
+      const scope=context().tenant+":"+context().system;
       const result=await request("/api/custom-panels/preview","POST",{...cfg(),drillCategory:String(category)});
+      if(scope!==context().tenant+":"+context().system||byId("biCustomRoot").hidden)return;
       const rows=result.drillRows||[];
       panel.innerHTML="<h3>Detalhamento: "+safe(category)+"</h3>"+(result.partial?"<p>Dados parciais. A carga completa ainda não foi considerada.</p>":"")+
         "<p>Mostrando até 50 registros do cache consultado.</p><table><thead><tr><th>Categoria</th><th>Valor</th></tr></thead><tbody>"+
@@ -201,8 +203,10 @@
     }catch(error){panel.textContent=error.message;}
   }
   async function loadList(){
+    const scope=context().tenant+":"+context().system;
     try{
       const response=await request("/api/custom-panels");
+      if(scope!==context().tenant+":"+context().system)return;
       const box=byId("biCustomList");box.hidden=false;box.innerHTML="<strong>Meus painéis</strong>"+(response.panels||[]).map(p=>'<article><span>'+safe(p.name)+'</span><button type="button" data-edit="'+safe(p.id)+'">Editar</button><button type="button" data-link="'+safe(p.id)+'">Copiar link</button><button type="button" data-dup="'+safe(p.id)+'">Duplicar</button><button type="button" data-del="'+safe(p.id)+'">Excluir</button></article>').join("");
       box.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>openPanel(response.panels.find(p=>p.id===b.dataset.edit)));
       box.querySelectorAll("[data-link]").forEach(b=>b.onclick=async()=>{const link=new URL(location.href);link.hash="painel="+encodeURIComponent(b.dataset.link);try{await navigator.clipboard.writeText(link.toString());status("Link copiado.");}catch(error){status("Não foi possível copiar. Use o endereço: "+link.toString(),true);}});
@@ -235,7 +239,32 @@
   window.addEventListener("hashchange",openSavedFromUrl);
   window.addEventListener("popstate",openSavedFromUrl);
   let lastContext="";
-  const timer=setInterval(()=>{const gate=byId("authGate");const open=byId("biCustomOpen");if(open)open.hidden=Boolean(gate&&!gate.hidden)||!context().tenant||context().system!=="tributos";const scope=context().tenant+":"+context().system;if(scope!==lastContext){lastContext=scope;if(byId("biCustomRoot"))byId("biCustomRoot").hidden=true;state.id=null;state.previewRows=[];state.previewSeq++;destroyChart();if(scope.split(":")[0]){loadSidebar(true);openSavedFromUrl();}}},1500);
+  const timer=setInterval(()=>{
+    const gate=byId("authGate"),unauthenticated=Boolean(gate&&!gate.hidden);
+    const {tenant,system}=context(),scope=tenant+":"+system;
+    const open=byId("biCustomOpen");
+    if(open)open.hidden=unauthenticated||!tenant||system!=="tributos";
+    if(unauthenticated){
+      if(lastContext){
+        lastContext="";sidebarScope="";catalogScope="";authorizedSources.clear();
+        byId("customPanelSidebarItems")?.replaceChildren();
+        byId("biCustomList")?.replaceChildren();
+        if(byId("biCustomRoot"))byId("biCustomRoot").hidden=true;
+        state.id=null;state.previewRows=[];state.previewSeq++;destroyChart();
+      }
+      if(byId("customPanelSidebar"))byId("customPanelSidebar").hidden=true;
+      if(byId("mobileCustomPanelButton"))byId("mobileCustomPanelButton").hidden=true;
+      return;
+    }
+    if(scope!==lastContext){
+      lastContext=scope;sidebarScope="";catalogScope="";authorizedSources.clear();
+      byId("customPanelSidebarItems")?.replaceChildren();
+      if(byId("biCustomRoot"))byId("biCustomRoot").hidden=true;
+      state.id=null;state.previewRows=[];state.previewSeq++;destroyChart();
+      if(tenant&&system==="tributos"){loadSidebar(true);openSavedFromUrl();}
+      else{if(byId("customPanelSidebar"))byId("customPanelSidebar").hidden=true;if(byId("mobileCustomPanelButton"))byId("mobileCustomPanelButton").hidden=true;}
+    }
+  },1500);
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",ensureUi);else ensureUi();
   window.BIVellaCustomPanels={open:show};
 })();
