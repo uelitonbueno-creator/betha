@@ -9841,6 +9841,8 @@ async function customPanelMultiQueryBatch(request,env,tenant,body,input,preview=
  if(cursor&&(!Number.isInteger(cursor.nextPage)||cursor.nextPage<0||cursor.nextPage>scanCap||
     !Number.isInteger(cursor.snapshotPages)||cursor.snapshotPages<0||cursor.snapshotPages>scanCap))
   throw new Error("CUSTOM_PANEL_CURSOR_INVALID");
+ const version=String(state.updated_at||"")+"|"+String(state.pages||0)+"|"+String(state.loaded||0);
+ if(cursor&&(cursor.source!==body.source||cursor.version!==version))throw new Error("CUSTOM_PANEL_SNAPSHOT_CHANGED");
  const snapshotPages=cursor?cursor.snapshotPages:Math.min(available,scanCap);
  const nextPage=cursor?cursor.nextPage:0;
  if(snapshotPages>available||nextPage>snapshotPages)throw new Error("CUSTOM_PANEL_CURSOR_INVALID");
@@ -9870,7 +9872,7 @@ async function customPanelMultiQueryBatch(request,env,tenant,body,input,preview=
  }
  return json(request,env,200,{
   groups:[...groups.values()],total,scanned,loaded,
-  cursor:pagesToRead<snapshotPages?{nextPage:pagesToRead,snapshotPages}:null,
+  cursor:pagesToRead<snapshotPages?{nextPage:pagesToRead,snapshotPages,source:body.source,version}:null,
   pagesProcessed:pagesToRead,snapshotPages,
   sourceComplete,updatedAt:state.updated_at||null
  });
