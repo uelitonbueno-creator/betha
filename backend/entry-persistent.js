@@ -2,6 +2,8 @@ import worker from "./worker.js";
 
 const SYNC_PREFIX = "bi-sync:v1:";
 const RAW_BUCKET_PREFIX = "bi-sync/";
+const CRON_LOCK_MS = 90 * 1000;
+const CRON_MIGRATION_BATCH = 2;
 let schemaReady = false;
 
 async function ensureDurableSchema(env) {
@@ -12,6 +14,12 @@ async function ensureDurableSchema(env) {
   await env.AUTH_DB.prepare(
     "CREATE INDEX IF NOT EXISTS idx_bi_durable_kv_updated ON bi_durable_kv (updated_at)"
   ).run();
+  await env.AUTH_DB.prepare(
+    "CREATE TABLE IF NOT EXISTS bi_cron_heartbeat (id INTEGER PRIMARY KEY CHECK(id=1), run_id TEXT, cron TEXT, status TEXT NOT NULL, started_at TEXT, finished_at TEXT, lock_until TEXT, task_count INTEGER NOT NULL DEFAULT 0, error_json TEXT, updated_at TEXT NOT NULL)"
+  ).run();
+  await env.AUTH_DB.prepare(
+    "INSERT OR IGNORE INTO bi_cron_heartbeat (id,status,updated_at) VALUES (1,'idle',?1)"
+  ).bind(new Date().toISOString()).run();
   schemaReady = true;
 }
 
@@ -306,12 +314,88 @@ function persistentEnv(env) {
   return sessions === env.BI_SESSIONS ? env : { ...env, BI_SESSIONS: sessions };
 }
 
+async function acquireCronLease(env, event) {
+  if (!env.AUTH_DB) return { acquired: true, runId: crypto.randomUUID(), startedAt: new Date().toISOString() };
+  await ensureDurableSchema(env);
+  const startedAt = new Date().toISOString();
+  const runId = crypto.randomUUID();
+  const lockUntil = new Date(Date.now() + CRON_LOCK_MS).toISOString();
+  const result = await env.AUTH_DB.prepare(
+    "UPDATE bi_cron_heartbeat SET run_id=?1,cron=?2,status='running',started_at=?3,finished_at=NULL,lock_until=?4,task_count=0,error_json=NULL,updated_at=?3 WHERE id=1 AND (status!='running' OR lock_until IS NULL OR lock_until<?3)"
+  ).bind(runId, String(event?.cron || ""), startedAt, lockUntil).run();
+  const changes = Number(result?.meta?.changes ?? result?.changes ?? 0);
+  return { acquired: changes > 0, runId, startedAt, lockUntil };
+}
+
+async function finishCronHeartbeat(env, lease, status, taskCount, errors) {
+  if (!env.AUTH_DB || !lease?.runId) return;
+  const finishedAt = new Date().toISOString();
+  await env.AUTH_DB.prepare(
+    "UPDATE bi_cron_heartbeat SET status=?1,finished_at=?2,lock_until=?2,task_count=?3,error_json=?4,updated_at=?2 WHERE id=1 AND run_id=?5"
+  ).bind(
+    status,
+    finishedAt,
+    Math.max(0, Number(taskCount) || 0),
+    errors?.length ? JSON.stringify(errors).slice(0, 4000) : null,
+    lease.runId
+  ).run();
+}
+
+async function runScheduledWithHeartbeat(event, env, ctx) {
+  const lease = await acquireCronLease(env, event);
+  if (!lease.acquired) return;
+
+  const tasks = [];
+  const wrappedCtx = {
+    waitUntil(promise) {
+      tasks.push(Promise.resolve(promise));
+    },
+    passThroughOnException() {
+      if (typeof ctx?.passThroughOnException === "function") ctx.passThroughOnException();
+    }
+  };
+
+  const pEnv = persistentEnv(env);
+  let immediateError = null;
+
+  try {
+    const returned = worker.scheduled(event, pEnv, wrappedCtx);
+    if (returned && typeof returned.then === "function") tasks.push(Promise.resolve(returned));
+  } catch (error) {
+    immediateError = error;
+  }
+
+  const settled = immediateError
+    ? []
+    : await Promise.allSettled(tasks);
+
+  const errors = [];
+  if (immediateError) errors.push(String(immediateError?.message || immediateError));
+  for (const item of settled) {
+    if (item.status === "rejected") errors.push(String(item.reason?.message || item.reason || "scheduled task failed"));
+  }
+
+  if (!errors.length) {
+    try {
+      await migrateLegacyRows(env, CRON_MIGRATION_BATCH);
+    } catch (error) {
+      errors.push("migration: " + String(error?.message || error));
+    }
+  }
+
+  await finishCronHeartbeat(env, lease, errors.length ? "error" : "ok", tasks.length, errors);
+}
+
 export default {
   fetch(request, env, ctx) {
     return worker.fetch(request, persistentEnv(env), ctx);
   },
   scheduled(event, env, ctx) {
-    if (ctx?.waitUntil) ctx.waitUntil(migrateLegacyRows(env, 12));
-    return worker.scheduled(event, persistentEnv(env), ctx);
+    const run = runScheduledWithHeartbeat(event, env, ctx);
+    if (ctx?.waitUntil) {
+      ctx.waitUntil(run);
+      return;
+    }
+    return run;
   }
 };
