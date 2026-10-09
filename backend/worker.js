@@ -6185,21 +6185,76 @@ async function buildDetailPage(env,tenant,resource,url,options={}) {
 const MULTISYSTEM_BOOTSTRAP_TENANT="paulafreitas";
 const MULTISYSTEM_PAGE_SIZE=100;
 const MULTISYSTEM_MAX_PAGES_PER_RESOURCE=5000;
+const MULTISYSTEM_FIELD_DISCOVERY_VERSION=1;
+const MULTISYSTEM_FIELD_PROBES_PER_TICK=4;
+
 const MULTISYSTEM_BOOTSTRAP_SOURCES=Object.freeze({
   contabil:[
-    {resource:"empenhos",base:"https://contabil.suite.betha.cloud",path:"/dados/v1/empenhos"},
-    {resource:"movimentacoes-despesas",base:"https://contabil.suite.betha.cloud",path:"/dados/v1/movimentacoes/despesas"},
-    {resource:"movimentacoes-receitas",base:"https://contabil.suite.betha.cloud",path:"/dados/v1/movimentacoes/receitas"},
-    {resource:"credores",base:"https://contabil.suite.betha.cloud",path:"/dados/v1/credores"}
+    {
+      resource:"empenhos",
+      base:"https://contabil.suite.betha.cloud",
+      path:"/dados/v1/empenhos",
+      fieldCandidates:[
+        "numero","ano","data","dataEmpenho","dataEmissao","valor","valorEmpenhado",
+        "situacao","credor","unidadeOrcamentaria","naturezaDespesa","recurso",
+        "funcao","subfuncao","programa","acao"
+      ]
+    },
+    {
+      resource:"movimentacoes-despesas",
+      base:"https://contabil.suite.betha.cloud",
+      path:"/dados/v1/movimentacoes/despesas",
+      fieldCandidates:["data","ano","valor","tipo","situacao","empenho","credor","unidadeOrcamentaria","naturezaDespesa"]
+    },
+    {
+      resource:"movimentacoes-receitas",
+      base:"https://contabil.suite.betha.cloud",
+      path:"/dados/v1/movimentacoes/receitas",
+      fieldCandidates:["data","ano","valor","tipo","situacao","receita","recurso","unidadeOrcamentaria"]
+    },
+    {
+      resource:"credores",
+      base:"https://contabil.suite.betha.cloud",
+      path:"/dados/v1/credores",
+      fieldCandidates:["nome","razaoSocial","nomeFantasia","cpfCnpj","documento","tipoPessoa","situacao"]
+    }
   ],
   compras:[
-    {resource:"processos-administrativos",base:"https://compras.suite.betha.cloud",path:"/dados/v1/processos-administrativos"},
-    {resource:"fornecedores",base:"https://compras.suite.betha.cloud",path:"/dados/v1/fornecedores"}
+    {
+      resource:"processos-administrativos",
+      base:"https://compras.suite.betha.cloud",
+      path:"/dados/v1/processos-administrativos",
+      fieldCandidates:[
+        "numero","ano","data","objeto","descricao","situacao","modalidade",
+        "valorEstimado","valorHomologado","secretaria","unidade","formaContratacao"
+      ]
+    },
+    {
+      resource:"fornecedores",
+      base:"https://compras.suite.betha.cloud",
+      path:"/dados/v1/fornecedores",
+      fieldCandidates:["nome","razaoSocial","nomeFantasia","cpfCnpj","documento","tipoPessoa","situacao"]
+    }
   ],
   folha:[
-    {resource:"matriculas",base:"https://folha.suite.betha.cloud",path:"/dados/v1/matriculas"},
-    {resource:"funcionarios-cargos",base:"https://folha.suite.betha.cloud",path:"/dados/v1/funcionarios-cargos"},
-    {resource:"remuneracoes",base:"https://folha.suite.betha.cloud",path:"/dados/v1/remuneracoes"}
+    {
+      resource:"matriculas",
+      base:"https://folha.suite.betha.cloud",
+      path:"/dados/v1/matriculas",
+      fieldCandidates:["numero","matricula","pessoa","nome","cargo","vinculo","lotacao","situacao","dataAdmissao"]
+    },
+    {
+      resource:"funcionarios-cargos",
+      base:"https://folha.suite.betha.cloud",
+      path:"/dados/v1/funcionarios-cargos",
+      fieldCandidates:["funcionario","pessoa","cargo","lotacao","dataInicio","dataFim","situacao"]
+    },
+    {
+      resource:"remuneracoes",
+      base:"https://folha.suite.betha.cloud",
+      path:"/dados/v1/remuneracoes",
+      fieldCandidates:["competencia","matricula","valor","valorBruto","valorLiquido","descontos","encargos","evento"]
+    }
   ]
 });
 
@@ -6231,18 +6286,47 @@ function multiSystemFieldNames(rows){
   return [...fields].slice(0,200);
 }
 
-function mergeMultiSystemFields(previous,rows){
-  const fields=new Set();
-  try{
-    const parsed=JSON.parse(String(previous||"[]"));
-    if(Array.isArray(parsed))for(const field of parsed)fields.add(String(field));
-  }catch{}
-  for(const field of multiSystemFieldNames(rows))fields.add(field);
-  return [...fields].slice(0,200);
+function parseMultiSystemFieldProfile(raw){
+  let parsed=null;
+  try{parsed=JSON.parse(String(raw||"null"));}catch{}
+  if(Array.isArray(parsed)){
+    return {
+      selected:[...new Set(parsed.map(String).filter(Boolean))],
+      probeIndex:0,
+      discoveryDone:false,
+      version:0
+    };
+  }
+  if(parsed&&typeof parsed==="object"&&!Array.isArray(parsed)){
+    return {
+      selected:Array.isArray(parsed.selected)?[...new Set(parsed.selected.map(String).filter(Boolean))]:["id"],
+      probeIndex:Math.max(0,Number(parsed.probeIndex)||0),
+      discoveryDone:parsed.discoveryDone===true,
+      version:Math.max(0,Number(parsed.version)||0)
+    };
+  }
+  return {selected:["id"],probeIndex:0,discoveryDone:false,version:0};
 }
 
-async function multiSystemGetPage(env,tenant,source,offset,limit){
+function serializeMultiSystemFieldProfile(profile){
+  return JSON.stringify({
+    selected:[...new Set((profile?.selected||["id"]).map(String).filter(Boolean))].slice(0,200),
+    probeIndex:Math.max(0,Number(profile?.probeIndex)||0),
+    discoveryDone:profile?.discoveryDone===true,
+    version:MULTISYSTEM_FIELD_DISCOVERY_VERSION
+  });
+}
+
+function mergeMultiSystemFields(profile,rows){
+  const selected=new Set((profile?.selected||["id"]).map(String).filter(Boolean));
+  for(const field of multiSystemFieldNames(rows))selected.add(field);
+  return {...profile,selected:[...selected].slice(0,200)};
+}
+
+async function multiSystemGetPage(env,tenant,source,offset,limit,fields=[]){
   const query=new URLSearchParams({limit:String(limit),offset:String(offset)});
+  const requested=[...new Set((fields||[]).map(String).filter(Boolean))];
+  if(requested.length)query.set("fields",requested.join(","));
   const target=String(source.base).replace(/\/$/,"")+source.path+"?"+query.toString();
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),30000);
@@ -6272,12 +6356,46 @@ async function multiSystemGetPage(env,tenant,source,offset,limit){
   }
 }
 
-async function loadMultiSystemIncrementalResource(env,tenant,system,source,state){
+async function discoverMultiSystemFields(env,tenant,source,state){
+  const candidates=Array.isArray(source.fieldCandidates)?source.fieldCandidates:[];
+  let profile=parseMultiSystemFieldProfile(state?.fields_json);
+  if(profile.version!==MULTISYSTEM_FIELD_DISCOVERY_VERSION){
+    profile={selected:["id"],probeIndex:0,discoveryDone:false,version:MULTISYSTEM_FIELD_DISCOVERY_VERSION};
+  }
+  if(profile.discoveryDone||!candidates.length)return profile;
+
+  const end=Math.min(candidates.length,profile.probeIndex+MULTISYSTEM_FIELD_PROBES_PER_TICK);
+  for(let index=profile.probeIndex;index<end;index++){
+    const candidate=String(candidates[index]||"").trim();
+    if(!candidate)continue;
+    try{
+      const probe=await multiSystemGetPage(env,tenant,source,0,1,["id",candidate]);
+      const keys=multiSystemFieldNames(probe.rows||[]);
+      if(keys.includes(candidate))profile.selected.push(candidate);
+      else{
+        for(const key of keys)if(key!=="id")profile.selected.push(key);
+      }
+    }catch(error){
+      const status=Number(error?.status)||0;
+      if([401,403].includes(status))throw error;
+      // Campo não suportado (normalmente 400/422) é simplesmente descartado.
+      if(![400,404,422].includes(status))console.warn("multi-system field probe",source.resource,candidate,error?.message||error);
+    }
+  }
+
+  profile.selected=[...new Set(profile.selected)].slice(0,200);
+  profile.probeIndex=end;
+  profile.discoveryDone=end>=candidates.length;
+  return profile;
+}
+
+async function loadMultiSystemIncrementalResource(env,tenant,system,source,state,profile){
   const loaded=Math.max(0,Number(state?.loaded)||0);
   const pages=Math.max(0,Number(state?.pages)||0);
   if(pages>=MULTISYSTEM_MAX_PAGES_PER_RESOURCE)throw new Error("MULTISYSTEM_PAGE_LIMIT");
 
-  const result=await multiSystemGetPage(env,tenant,source,loaded,MULTISYSTEM_PAGE_SIZE);
+  const fields=(profile?.selected||["id"]).filter(Boolean);
+  const result=await multiSystemGetPage(env,tenant,source,loaded,MULTISYSTEM_PAGE_SIZE,fields);
   const rows=result.rows||[];
   const meta=payloadPageMeta(result.body,loaded,MULTISYSTEM_PAGE_SIZE,rows.length);
   const complete=meta.hasNext===false||rows.length===0||rows.length<MULTISYSTEM_PAGE_SIZE;
@@ -6290,6 +6408,7 @@ async function loadMultiSystemIncrementalResource(env,tenant,system,source,state
       system,
       resource:source.resource,
       source:"betha-api",
+      fields,
       offset:loaded,
       page:pages,
       loaded:rows.length,
@@ -6300,6 +6419,7 @@ async function loadMultiSystemIncrementalResource(env,tenant,system,source,state
 
   const nextLoaded=loaded+rows.length;
   const nextPages=pages+(rows.length?1:0);
+  const merged=mergeMultiSystemFields(profile,rows);
   return {
     loaded:nextLoaded,
     pages:nextPages,
@@ -6308,15 +6428,17 @@ async function loadMultiSystemIncrementalResource(env,tenant,system,source,state
     objectKey:complete
       ? multiSystemResourcePrefix(tenant.id,system,source.resource)
       : (pageObjectKey||state?.object_key||multiSystemResourcePrefix(tenant.id,system,source.resource)),
-    fields:mergeMultiSystemFields(state?.fields_json,rows)
+    profile:merged
   };
 }
 
-function multiSystemStateNeedsWork(state,configUpdatedAt){
+function multiSystemStateNeedsWork(source,state,configUpdatedAt){
   if(!state)return true;
+  const profile=parseMultiSystemFieldProfile(state.fields_json);
+  const hasCandidates=Array.isArray(source?.fieldCandidates)&&source.fieldCandidates.length>0;
+  if(hasCandidates&&(!profile.discoveryDone||profile.version!==MULTISYSTEM_FIELD_DISCOVERY_VERSION))return true;
+
   if(state.status==="complete"){
-    // The first production version marked the initial 100-row bootstrap as
-    // complete. A bootstrap.json object means it still needs true pagination.
     return String(state.object_key||"").endsWith("/bootstrap.json");
   }
   if(state.status==="error"){
@@ -6337,17 +6459,62 @@ async function advanceMultiSystem(env,tenant,system,configUpdatedAt){
     "SELECT resource,status,loaded,pages,http_status,error,object_key,fields_json,updated_at FROM bi_multisystem_loads WHERE tenant_id=?1 AND system=?2"
   ).bind(String(tenant.id),system).all();
   const byResource=new Map((states.results||[]).map(row=>[String(row.resource),row]));
-  const source=sources.find(item=>multiSystemStateNeedsWork(byResource.get(item.resource),configUpdatedAt));
+  const source=sources.find(item=>multiSystemStateNeedsWork(item,byResource.get(item.resource),configUpdatedAt));
   if(!source)return;
 
-  const previous=byResource.get(source.resource)||null;
+  let previous=byResource.get(source.resource)||null;
+  const existingProfile=parseMultiSystemFieldProfile(previous?.fields_json);
+  const needsDiscovery=Array.isArray(source.fieldCandidates)&&source.fieldCandidates.length>0&&
+    (!existingProfile.discoveryDone||existingProfile.version!==MULTISYSTEM_FIELD_DISCOVERY_VERSION);
+
+  if(needsDiscovery){
+    try{
+      const profile=await discoverMultiSystemFields(env,tenant,source,previous);
+      const discoveryFinished=profile.discoveryDone===true;
+      const hasUsefulFields=profile.selected.some(field=>field!=="id");
+      const shouldRestart=discoveryFinished&&hasUsefulFields&&Math.max(0,Number(previous?.loaded)||0)>0;
+
+      await env.AUTH_DB.prepare(
+        "INSERT INTO bi_multisystem_loads (tenant_id,system,resource,status,loaded,pages,http_status,error,object_key,fields_json,updated_at) VALUES (?1,?2,?3,?4,?5,?6,200,NULL,?7,?8,?9) ON CONFLICT(tenant_id,system,resource) DO UPDATE SET status=excluded.status,loaded=excluded.loaded,pages=excluded.pages,http_status=excluded.http_status,error=NULL,object_key=excluded.object_key,fields_json=excluded.fields_json,updated_at=excluded.updated_at"
+      ).bind(
+        String(tenant.id),
+        system,
+        source.resource,
+        discoveryFinished?(hasUsefulFields?"running":"schema-limited"):"discovering-fields",
+        shouldRestart?0:Math.max(0,Number(previous?.loaded)||0),
+        shouldRestart?0:Math.max(0,Number(previous?.pages)||0),
+        shouldRestart?multiSystemResourcePrefix(tenant.id,system,source.resource):(previous?.object_key||multiSystemResourcePrefix(tenant.id,system,source.resource)),
+        serializeMultiSystemFieldProfile(profile),
+        new Date().toISOString()
+      ).run();
+    }catch(error){
+      const code=String(error?.message||error||"MULTISYSTEM_FIELD_DISCOVERY_FAILED");
+      const httpStatus=Number(error?.status)||null;
+      await env.AUTH_DB.prepare(
+        "INSERT INTO bi_multisystem_loads (tenant_id,system,resource,status,loaded,pages,http_status,error,fields_json,updated_at) VALUES (?1,?2,?3,'error',?4,?5,?6,?7,?8,?9) ON CONFLICT(tenant_id,system,resource) DO UPDATE SET status='error',http_status=excluded.http_status,error=excluded.error,fields_json=excluded.fields_json,updated_at=excluded.updated_at"
+      ).bind(
+        String(tenant.id),system,source.resource,
+        Math.max(0,Number(previous?.loaded)||0),
+        Math.max(0,Number(previous?.pages)||0),
+        httpStatus,
+        code.slice(0,240),
+        serializeMultiSystemFieldProfile(existingProfile),
+        new Date().toISOString()
+      ).run();
+    }
+    return;
+  }
+
+  if(previous?.status==="schema-limited")return;
+
   const startedAt=new Date().toISOString();
   await env.AUTH_DB.prepare(
     "INSERT INTO bi_multisystem_loads (tenant_id,system,resource,status,loaded,pages,updated_at) VALUES (?1,?2,?3,'running',0,0,?4) ON CONFLICT(tenant_id,system,resource) DO UPDATE SET status='running',error=NULL,updated_at=excluded.updated_at"
   ).bind(String(tenant.id),system,source.resource,startedAt).run();
 
   try{
-    const result=await loadMultiSystemIncrementalResource(env,tenant,system,source,previous);
+    const profile=parseMultiSystemFieldProfile(previous?.fields_json);
+    const result=await loadMultiSystemIncrementalResource(env,tenant,system,source,previous,profile);
     await env.AUTH_DB.prepare(
       "UPDATE bi_multisystem_loads SET status=?1,loaded=?2,pages=?3,http_status=?4,error=NULL,object_key=?5,fields_json=?6,updated_at=?7 WHERE tenant_id=?8 AND system=?9 AND resource=?10"
     ).bind(
@@ -6356,7 +6523,7 @@ async function advanceMultiSystem(env,tenant,system,configUpdatedAt){
       result.pages,
       result.httpStatus,
       result.objectKey,
-      JSON.stringify(result.fields),
+      serializeMultiSystemFieldProfile(result.profile),
       new Date().toISOString(),
       String(tenant.id),
       system,
