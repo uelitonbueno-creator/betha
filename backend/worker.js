@@ -6632,6 +6632,28 @@ async function advanceMultiSystem(env,tenant,system,configUpdatedAt){
 
   if(previous?.status==="schema-limited")return;
 
+  // If aggregation was introduced after a source had already advanced, its
+  // summary can start in the middle of the dataset. Rewind that source once so
+  // count/value/group totals cover every page from offset zero.
+  if(Math.max(0,Number(previous?.loaded)||0)>0){
+    const summaryState=await getMultiSystemSummary(env,tenant.id,system,source.resource);
+    const summarized=Number(summaryState?.count)||0;
+    const loadedState=Math.max(0,Number(previous.loaded)||0);
+    if(!summaryState || summarized!==loadedState){
+      await resetMultiSystemSummary(env,tenant.id,system,source.resource);
+      await env.AUTH_DB.prepare(
+        "UPDATE bi_multisystem_loads SET status='running',loaded=0,pages=0,http_status=200,error=NULL,object_key=?1,updated_at=?2 WHERE tenant_id=?3 AND system=?4 AND resource=?5"
+      ).bind(
+        multiSystemResourcePrefix(tenant.id,system,source.resource),
+        new Date().toISOString(),
+        String(tenant.id),
+        system,
+        source.resource
+      ).run();
+      return;
+    }
+  }
+
   const startedAt=new Date().toISOString();
   await env.AUTH_DB.prepare(
     "INSERT INTO bi_multisystem_loads (tenant_id,system,resource,status,loaded,pages,updated_at) VALUES (?1,?2,?3,'running',0,0,?4) ON CONFLICT(tenant_id,system,resource) DO UPDATE SET status='running',error=NULL,updated_at=excluded.updated_at"
