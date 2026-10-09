@@ -40,3 +40,4 @@ jobs:
         run: |
           node tests/panel-builder-core.test.cjs
           node tests/panel-builder-security.test.cjs
+          node tests/panel-builder-d1.test.cjs
