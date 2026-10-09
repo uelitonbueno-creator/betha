@@ -1,6 +1,6 @@
-/* Editor de definições de painéis BI Vella.
- * Apenas rascunhos locais: não consulta nem persiste dados municipais.
- * A publicação exige backend autorizado, implementado separadamente.
+/* Editor de painéis personalizados BI Vella.
+ * Fontes locais de amostra e prévias reais limitadas passam pelo catálogo apropriado.
+ * Somente definições autorizadas são persistidas no D1; os dados ficam no backend.
  */
 (function(){
 "use strict";
