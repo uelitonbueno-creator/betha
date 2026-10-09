@@ -3,11 +3,11 @@
   "use strict";
   const SOURCES = {
     "bi:debitos": {label:"Débitos",system:"tributos",dimensions:{situacao:"Situação",ano:"Exercício",bairro:"Bairro",receita:"Receita"},measures:{lancado:"Valor lançado",saldo:"Saldo"}},
-    "bi:pagamentos": {label:"Pagamentos",system:"tributos",dimensions:{ano:"Exercício",receita:"Receita",pagamento:"Data do pagamento"},measures:{pago:"Valor pago"}},
+    "bi:pagamentos": {label:"Pagamentos",system:"tributos",dimensions:{ano:"Exercício",receita:"Receita",pagamento:"Data exata do pagamento","pagamento:mes":"Mês do pagamento","pagamento:dia":"Dia do pagamento","pagamento:ano":"Ano do pagamento"},measures:{pago:"Valor pago"}},
     "bi:imoveis": {label:"Imóveis",system:"tributos",dimensions:{bairro:"Bairro",zona:"Zona",situacao:"Situação"},measures:{count:"Quantidade"}},
     "bi:parcelamentos": {label:"Parcelamentos",system:"tributos",dimensions:{situacao:"Situação",ano:"Exercício"},measures:{count:"Quantidade"}}
   };
-  const state={id:null,source:"bi:debitos",chart:"bar",dimension:"bairro",measure:"saldo",aggregation:"sum",filterField:"",filterValue:"",filters:[],limit:20,name:"Débitos por bairro",panels:[],chartInstance:null,loading:false,previewRows:[],previewPartial:false,previewSeq:0,previewKind:"preview",fullQueryRunning:false};
+  const state={id:null,source:"bi:debitos",chart:"bar",dimension:"bairro",measure:"saldo",aggregation:"sum",filterField:"",filterValue:"",filters:[],limit:20,name:"Débitos por bairro",panels:[],chartInstance:null,loading:false,previewRows:[],previewPartial:false,previewSeq:0,previewKind:"preview",fullQueryRunning:false,previewSignature:""};
   const byId=id=>document.getElementById(id);
   let authorizedSources=new Set(), catalogScope="",sidebarScope="";
   const safe=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -198,8 +198,11 @@
         status("Analisadas "+(result.pagesProcessed||0)+" de "+(result.snapshotPages||0)+" páginas · "+scanned.toLocaleString("pt-BR")+" registros lidos.");
       }while(cursor);
       if(!last)return;
+      const chronological=/^pagamento:(?:mes|dia|ano)$/.test(config.dimension);
       const rows=[...groups.values()].map(g=>({label:g.label,value:aggregateValue(g,config.aggregation)}))
-        .sort((a,b)=>b.value-a.value).slice(0,config.limit);
+        .sort((a,b)=>chronological?String(b.label).localeCompare(String(a.label)):b.value-a.value)
+        .slice(0,config.limit);
+      if(chronological)rows.reverse();
       renderResult({rows,scanned,loaded,totalValue:aggregateValue(total,config.aggregation),
         updatedAt:last.updatedAt,partial:!last.sourceComplete},"full");
     }catch(error){
@@ -222,6 +225,7 @@
     }catch(e){if(seq===state.previewSeq)status(e.message,true);}
   }
   function renderResult(result,mode="preview"){
+    state.previewSignature=JSON.stringify(cfg());
       const rows=result.rows||[];state.previewRows=rows;state.previewPartial=Boolean(result.partial);state.previewKind=mode;destroyChart();
       byId("biCustomList").hidden=true;byId("biCustomTable").innerHTML="";byId("biCustomDrill").hidden=true;
       const wrap=byId("biCustomChartWrap");wrap.hidden=state.chart==="table";
@@ -244,6 +248,7 @@
 
   function exportPreview(){
     if(!state.previewRows.length){status("Atualize a prévia antes de exportar.",true);return;}
+    if(state.previewSignature!==JSON.stringify(cfg())){status("A configuração mudou. Atualize a análise antes de exportar.",true);return;}
     const csv=[["Categoria","Valor"],...state.previewRows.map(r=>[r.label,r.value])].map(row=>row.map(value=>'"'+String(value??"").replace(/"/g,'""')+'"').join(";")).join("\r\n");
     const blob=new Blob([String.fromCharCode(0xFEFF)+csv],{type:"text/csv;charset=utf-8"});
     const url=URL.createObjectURL(blob);const anchor=document.createElement("a");anchor.href=url;
