@@ -43,7 +43,8 @@ const drafts=make("select",{"aria-label":"Rascunhos salvos"});drafts.append(make
 const load=make("button",{type:"button"},"Abrir rascunho");
 const remove=make("button",{type:"button"},"Excluir rascunho");
 actions.append(build,preview,download,save,drafts,load,remove);form.append(actions,status,output,previewOutput);panel.append(form);dialog.append(panel);document.body.append(trigger,dialog);
-let catalog=[],context=null,current=null,selectedDraftId="";
+let catalog=[],context=null,current=null,selectedDraftId="",previewChart=null,previewRequest=0;
+function clearPreview(){previewRequest++;if(previewChart){previewChart.destroy();previewChart=null;}previewOutput.replaceChildren();}
 function remote(){
   const tenant=new URLSearchParams(location.search).get("tenant")||new URLSearchParams(location.search).get("entidadeId")||"";
   const base=String(window.BI_CONFIG?.BACKEND_URL||"").replace(/\/$/,"");
@@ -80,15 +81,16 @@ async function open(){
 context=window.BIVellaSearchContext.getState();
 catalog=[];try{const response=await requestBuilder("GET","catalog");catalog=(response.sources||[]).filter(s=>s.fields.some(f=>f.dimension)&&s.fields.some(f=>f.measure));}catch(err){status.textContent="Catálogo não disponível: "+err.message;}
 options(source,catalog.map(s=>[s.id,s.id]));
-title.value="";type.value="bar";agg.value="sum";status.textContent="";output.textContent="";previewOutput.replaceChildren();current=null;download.disabled=true;preview.disabled=true;
+title.value="";type.value="bar";agg.value="sum";status.textContent="";output.textContent="";clearPreview();current=null;download.disabled=true;preview.disabled=true;
 fillFields();dialog.hidden=false;dirty=false;selectedDraftId="";save.disabled=true;close.focus();refreshDrafts();
 }
-function dismiss(){dialog.hidden=true;trigger.focus();}
+function dismiss(){clearPreview();dialog.hidden=true;trigger.focus();}
 trigger.addEventListener("click",open);
 close.addEventListener("click",dismiss);
 dialog.addEventListener("click",e=>{if(e.target===dialog)dismiss();});
 document.addEventListener("keydown",e=>{if(dialog.hidden)return;if(e.key==="Escape")dismiss();if(e.key==="Tab"){const f=[...dialog.querySelectorAll("button:not(:disabled),input:not(:disabled),select:not(:disabled)")];if(!f.length)return;const first=f[0],last=f[f.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}});
-source.addEventListener("change",()=>{fillFields();current=null;download.disabled=true;});
+source.addEventListener("change",()=>{fillFields();current=null;download.disabled=true;save.disabled=true;preview.disabled=true;clearPreview();});
+[title,type,dimension,measure,agg].forEach(el=>el.addEventListener("change",()=>{current=null;save.disabled=true;preview.disabled=true;clearPreview();}));
 form.addEventListener("submit",e=>{
 e.preventDefault();
 const metric=measure.value==="*"?{field:"*",aggregation:"count"}:{field:measure.value,aggregation:agg.value};
@@ -100,17 +102,46 @@ current=definition;output.textContent=JSON.stringify(definition,null,2);save.dis
 status.textContent="Definição validada localmente. Não publicada.";download.disabled=false;
 });
 preview.addEventListener("click",async()=>{
-if(!current)return;preview.disabled=true;previewOutput.replaceChildren();
+if(!current)return;
+clearPreview();const generation=previewRequest,definition=JSON.parse(JSON.stringify(current));
+preview.disabled=true;
 try{
-const result=await requestBuilder("POST","preview",{definition:current});
-const h=make("strong",{},"Prévia parcial — "+result.scanned+" registros examinados");previewOutput.append(h);
+const result=await requestBuilder("POST","preview",{definition});
+if(generation!==previewRequest||dialog.hidden)return;
+const rows=Array.isArray(result.rows)?result.rows.slice(0,40):[];
+previewOutput.append(make("strong",{},"Prévia parcial — "+result.scanned+" registros examinados"));
+if(!rows.length){previewOutput.append(make("p",{},"Nenhum registro disponível para esta seleção."));return;}
+if(definition.type!=="table"){
+ if(typeof window.Chart!=="function")previewOutput.append(make("p",{},"Chart.js indisponível; exibindo tabela."));
+ else{
+  const wrapper=make("div",{className:"bi-builder-chart-container"});
+  const canvas=make("canvas",{"aria-label":"Gráfico preliminar: "+definition.title,role:"img"});
+  wrapper.append(canvas);previewOutput.append(wrapper);
+  const labels=rows.map(r=>String(r.dimension));
+  const datasets=definition.measures.map((m,i)=>({
+    label:m.aggregation+"("+m.field+")",
+    data:rows.map(r=>typeof r.values?.[i]==="number"?r.values[i]:null)
+  }));
+  const typeMap={bar:"bar",line:"line",doughnut:"doughnut",kpi:"bar"};
+  const chartType=typeMap[definition.type]||"bar";
+  // Para gráficos de rosca, cada métrica usa um anel independente.
+  previewChart=new window.Chart(canvas,{
+    type:chartType,data:{labels,datasets},
+    options:{responsive:true,maintainAspectRatio:false,animation:false,
+      plugins:{legend:{display:datasets.length>1||chartType==="doughnut"}},
+      ...(chartType==="doughnut"?{}:{scales:{y:{beginAtZero:true}}})}
+  });
+ }
+}
 const table=make("table",{"aria-label":"Resultado preliminar do painel"});
 const head=make("tr");head.append(make("th",{},"Dimensão"));
-current.measures.forEach(m=>head.append(make("th",{},m.aggregation+"("+m.field+")")));
+definition.measures.forEach(m=>head.append(make("th",{},m.aggregation+"("+m.field+")")));
 const thead=make("thead");thead.append(head);table.append(thead);
-const tbody=make("tbody");for(const row of (result.rows||[]).slice(0,40)){const tr=make("tr");tr.append(make("td",{},row.dimension));for(const v of row.values)tr.append(make("td",{},v==null?"—":String(v)));tbody.append(tr);}
-table.append(tbody);previewOutput.append(table,make("p",{},"Resultados ilustrativos e parciais; não representam totais consolidados."));
-}catch(err){previewOutput.textContent="Prévia indisponível: "+err.message;}finally{preview.disabled=false;}
+const tbody=make("tbody");
+for(const row of rows){const tr=make("tr");tr.append(make("td",{},row.dimension));for(const v of row.values||[])tr.append(make("td",{},v==null?"—":Number(v).toLocaleString("pt-BR",{maximumFractionDigits:2})));tbody.append(tr);}
+table.append(tbody);previewOutput.append(table,make("p",{},"Prévia parcial limitada; não corresponde necessariamente aos totais consolidados."));
+}catch(err){if(generation===previewRequest)previewOutput.textContent="Prévia indisponível: "+err.message;}
+finally{if(generation===previewRequest)preview.disabled=false;}
 });
 save.addEventListener("click",async()=>{if(!current)return;save.disabled=true;try{const result=await requestDraft(selectedDraftId?"PUT":"POST",selectedDraftId||"",{definition:current});selectedDraftId=result.id||selectedDraftId;status.textContent="Rascunho salvo no D1.";await refreshDrafts();drafts.value=selectedDraftId;}catch(err){status.textContent="Não foi possível salvar: "+err.message;}finally{save.disabled=false;}});
 load.addEventListener("click",()=>{const item=(drafts._items||[]).find(x=>x.id===drafts.value);if(!item)return;const d=item.definition;if(!catalog.some(x=>x.id===d.sourceId)){status.textContent="Fonte não disponível neste sistema.";return;}title.value=d.title;source.value=d.sourceId;fillFields();type.value=d.type;dimension.value=d.dimension;measure.value=d.measures?.[0]?.field||"*";agg.value=d.measures?.[0]?.aggregation||"count";selectedDraftId=item.id;current=null;save.disabled=true;output.textContent="";status.textContent="Rascunho carregado. Valide antes de salvar alterações.";});
