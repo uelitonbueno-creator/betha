@@ -21,6 +21,12 @@
       "database_id": "c9408389-9ef7-4759-af6b-d066298cebbd"
     }
   ],
+  "r2_buckets": [
+    {
+      "binding": "BI_SYNC_RAW",
+      "bucket_name": "bi-vella-sync-raw"
+    }
+  ],
   "previews": {
     "kv_namespaces": [
       {
