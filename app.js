@@ -194,8 +194,21 @@
     if(!style){
       style=document.createElement("style");
       style.id="bi-vella-hide-native-horizontal-items";
-      style.textContent="@media(min-width:1101px){.menu-horizontal{height:12px!important;min-height:12px!important;max-height:12px!important;padding:0!important;overflow:hidden!important}.menu-horizontal__body,.menu-horizontal__list{height:12px!important;min-height:12px!important;max-height:12px!important;overflow:hidden!important}bth-menu-horizontal-item{display:none!important;width:0!important;min-width:0!important;overflow:hidden!important}}";
+      style.textContent="@media(min-width:1101px){.bi-vella-legacy-header{display:none!important;height:0!important;min-height:0!important}.menu-horizontal,.menu-horizontal__body,.menu-horizontal__list{display:none!important;height:0!important;min-height:0!important;max-height:0!important;padding:0!important;overflow:hidden!important}bth-menu-horizontal-item{display:none!important;width:0!important;min-width:0!important;overflow:hidden!important}}";
       root.appendChild(style);
+    }
+    // Oculta a antiga faixa superior do web component no desktop.
+    // O menu lateral passa a ser o único cabeçalho visível.
+    const legacyBrandSlot=root.querySelector('slot[name="menu_marca_produto"]');
+    if(legacyBrandSlot){
+      let legacyHeader=legacyBrandSlot.parentElement;
+      const applicationSlot=root.querySelector('slot[name="container_aplicacao"]');
+      // Nunca ocultar o nó que contém a aplicação ou a raiz inteira.
+      if(legacyHeader&&legacyHeader!==root&&
+         !legacyHeader.contains(applicationSlot)&&
+         legacyHeader.getBoundingClientRect().height<=120){
+        legacyHeader.classList.add("bi-vella-legacy-header");
+      }
     }
     const tools=document.querySelector(".menu-tools");
     const brand=document.querySelector(".sidebar-brand-panel");
