@@ -43,15 +43,18 @@ async function reload(c){
      const ordered=attached.slice();
      [ordered[position],ordered[position+offset]]=[ordered[position+offset],ordered[position]];
      try{
-       for(let n=0;n<ordered.length;n++){
-         const target=ordered[n];
-         await getJson(endpoint("/api/panel-drafts/"+target.id,c),{
-           method:"PUT",headers:{"X-Tenant-Id":c.tenant,"Content-Type":"application/json"},
-           body:JSON.stringify({definition:target.definition,viewId:c.view,sortOrder:n+1})
-         });
-       }
+       await getJson(endpoint("/api/panel-drafts/reorder",c),{
+         method:"POST",headers:{"X-Tenant-Id":c.tenant,"Content-Type":"application/json"},
+         body:JSON.stringify({viewId:c.view,ids:ordered.map(x=>x.id)})
+       });
        window.dispatchEvent(new Event("bi-panel-drafts-changed"));
-     }catch(err){status.textContent="Erro ao alterar ordem: "+err.message;window.dispatchEvent(new Event("bi-panel-drafts-changed"));}
+     }catch(err){
+       const msg=card.querySelector(".bi-personal-chart-error")||node("p");
+       msg.className="bi-personal-chart-error";
+       msg.textContent="Não foi possível alterar a ordem: "+err.message;
+       card.append(msg);
+       window.dispatchEvent(new Event("bi-panel-drafts-changed"));
+     }
    }
    for(const [label,delta] of [["↑",-1],["↓",1]]){
      const button=node("button",label);button.type="button";button.disabled=position+delta<0||position+delta>=attached.length;button.onclick=()=>move(delta);controls.append(button);
