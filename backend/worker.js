@@ -10169,14 +10169,14 @@ function errorResponse(request,env,error) {
 
 const PANEL_PREVIEW_FIELDS=Object.freeze({
   pagamentos:{systemId:"tributos",fields:[
-    {id:"dataPagamento",type:"string",dimension:true},
+    {id:"dataPagamento",type:"string",dimension:true,filterable:true},
     {id:"valorPago",type:"number",measure:true},
-    {id:"id",type:"string",dimension:true,measure:true}
+    {id:"id",type:"string",dimension:true,measure:true,filterable:true}
   ]},
   debitos:{systemId:"tributos",fields:[
-    {id:"situacao",type:"string",dimension:true},
+    {id:"situacao",type:"string",dimension:true,filterable:true},
     {id:"vlLancado",type:"number",measure:true},
-    {id:"id",type:"string",dimension:true,measure:true}
+    {id:"id",type:"string",dimension:true,measure:true,filterable:true}
   ]}
 });
 async function panelMultiSystemStatus(env,tenant,system){
@@ -10235,7 +10235,7 @@ async function cachedPanelSources(env,tenant,auth,system){
   if(!spec||Number(state.loaded)<=0||Number(state.pages)<=0)continue;
   if(!privileged&&!(PANEL_CACHED_RESOURCE_VIEWS[system]?.[state.resource]||[]).some(view=>accessible.has(view)))continue;
   const selected=new Set(parseMultiSystemFieldProfile(state.fields_json).selected);
-  const dimensions=spec.dimensions.filter(id=>selected.has(id)).map(id=>({id,type:"string",dimension:true}));
+  const dimensions=spec.dimensions.filter(id=>selected.has(id)).map(id=>({id,type:"string",dimension:true,filterable:true}));
   const measures=spec.measures.filter(id=>selected.has(id)).map(id=>({id,type:"number",measure:true}));
   if(!dimensions.length||!measures.length)continue;
   sources.push({id:"cache:"+system+":"+state.resource,systemId:system,mode:"cached-real",
@@ -10253,7 +10253,8 @@ async function previewCachedPanel(env,tenant,auth,system,definition){
  !["bar","line","doughnut","table","kpi"].includes(definition.type)||
  !fields.get(definition.dimension)?.dimension||
  !Array.isArray(definition.measures)||definition.measures.length!==1||
- !Array.isArray(definition.filters)||definition.filters.length!==0)throw new Error("INVALID_PANEL_DRAFT");
+ !Array.isArray(definition.filters)||definition.filters.length>1)throw new Error("INVALID_PANEL_DRAFT");
+ for(const filter of definition.filters)if(filter.op!=="eq"||typeof filter.value!=="string"||filter.value.length>120||!fields.get(filter.field)?.filterable)throw new Error("PANEL_FIELD_NOT_ALLOWED");
  const metric=definition.measures[0];
  if(!metric||!["count","sum","avg","min","max"].includes(metric.aggregation)||
  !(metric.field==="*"&&metric.aggregation==="count")&&!fields.get(metric.field)?.measure||
@@ -10268,6 +10269,7 @@ async function previewCachedPanel(env,tenant,auth,system,definition){
   for(const row of saved.rows){
    if(scanned>=500)break;
    scanned++;
+   if(definition.filters.some(filter=>String(multiSystemSimpleValue(row?.[filter.field])??"")!==filter.value))continue;
    const raw=multiSystemSimpleValue(row?.[definition.dimension]);
    const label=String(raw??"Não informado").slice(0,100);
    if(!groups.has(label)){if(groups.size>=100)continue;groups.set(label,{dimension:label,n:0,sum:0,min:Infinity,max:-Infinity});}
@@ -10319,10 +10321,12 @@ async function handlePanelPreview(request,env,url){
     const fields=new Map(allowed.fields.map(f=>[f.id,f]));
     if(!fields.get(d.dimension)?.dimension)return json(request,env,400,{error:"PANEL_DIMENSION_NOT_ALLOWED"});
     for(const m of d.measures)if(!(m.field==="*"&&m.aggregation==="count")&&(!fields.get(m.field)?.measure||!["sum","avg","min","max","count"].includes(m.aggregation)))return json(request,env,400,{error:"PANEL_MEASURE_NOT_ALLOWED"});
+    for(const filter of d.filters)if(!fields.get(filter.field)?.filterable||filter.op!=="eq")return json(request,env,400,{error:"PANEL_FILTER_NOT_ALLOWED"});
     const payload=await bethaGet(env,tenant,"bi",resource,"limit=500");
     const rows=payloadRows(payload).slice(0,500),buckets=new Map();
     for(const row of rows){
       if(!row||typeof row!=="object")continue;
+      if(d.filters.some(filter=>String(row[filter.field]??"")!==filter.value))continue;
       const dim=row[d.dimension],label=dim==null?"Não informado":String(dim).slice(0,160);
       if(!buckets.has(label)){if(buckets.size>=200)break;buckets.set(label,{dimension:label,values:d.measures.map(()=>({n:0,total:0,min:Infinity,max:-Infinity}))});}
       const entry=buckets.get(label);
@@ -10350,11 +10354,16 @@ function validatePanelDraftPayload(input){
   for(const m of d.measures){
     if(!m||typeof m!=="object"||!["sum","avg","min","max","count"].includes(m.aggregation)||!(m.field==="*"&&m.aggregation==="count")&&!/^[a-zA-Z_][a-zA-Z0-9_.]{0,119}$/.test(m.field||""))throw new Error("INVALID_PANEL_DRAFT");
   }
-  if(!Array.isArray(d.filters)||d.filters.length>12)throw new Error("INVALID_PANEL_DRAFT");
-  if(d.filters.length)throw new Error("FILTER_DRAFTS_NOT_ENABLED");
+  if(!Array.isArray(d.filters)||d.filters.length>1)throw new Error("INVALID_PANEL_DRAFT");
+  for(const filter of d.filters){
+    if(!filter||typeof filter!=="object"||Array.isArray(filter)||typeof filter.field!=="string"||
+      !/^[a-zA-Z_][a-zA-Z0-9_.]{0,119}$/.test(filter.field)||filter.op!=="eq"||
+      typeof filter.value!=="string"||!filter.value.trim()||filter.value.length>120)
+      throw new Error("INVALID_PANEL_DRAFT");
+  }
   if(JSON.stringify(d).length>16000)throw new Error("PANEL_DRAFT_TOO_LARGE");
   // Persistência de rascunho não implica autorização para consultar a fonte.
-  return {title:d.title.trim(),sourceId:d.sourceId,type:d.type,dimension:d.dimension,measures:d.measures.map(m=>({field:m.field,aggregation:m.aggregation})),filters:[]};
+  return {title:d.title.trim(),sourceId:d.sourceId,type:d.type,dimension:d.dimension,measures:d.measures.map(m=>({field:m.field,aggregation:m.aggregation})),filters:d.filters.map(f=>({field:f.field,op:"eq",value:f.value.trim()}))};
 }
 async function authorizePanelDefinition(env,tenant,auth,system,d){
  if(d.sourceId.startsWith("cache:")){
@@ -10363,6 +10372,7 @@ async function authorizePanelDefinition(env,tenant,auth,system,d){
   if(!source)throw new Error("PANEL_SOURCE_NOT_ALLOWED");
   const fields=new Map(source.fields.map(x=>[x.id,x]));
   if(!fields.get(d.dimension)?.dimension||d.measures.length!==1)throw new Error("PANEL_FIELD_NOT_ALLOWED");
+  for(const filter of d.filters)if(!fields.get(filter.field)?.filterable||filter.op!=="eq")throw new Error("PANEL_FIELD_NOT_ALLOWED");
   for(const metric of d.measures){
    if(!(metric.field==="*"&&metric.aggregation==="count")&&!fields.get(metric.field)?.measure)throw new Error("PANEL_FIELD_NOT_ALLOWED");
   }
@@ -10375,6 +10385,7 @@ async function authorizePanelDefinition(env,tenant,auth,system,d){
   for(const metric of d.measures){
    if(!(metric.field==="*"&&metric.aggregation==="count")&&!allowed.fields.some(x=>x.id===metric.field&&x.measure))throw new Error("PANEL_FIELD_NOT_ALLOWED");
   }
+  for(const filter of d.filters)if(filter.op!=="eq"||!allowed.fields.some(x=>x.id===filter.field&&x.filterable))throw new Error("PANEL_FIELD_NOT_ALLOWED");
  }
 }
 
