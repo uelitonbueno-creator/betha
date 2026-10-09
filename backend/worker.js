@@ -9747,19 +9747,20 @@ async function handlePanelDrafts(request,env,url){
   if(!/^(tributos|contabilidade|compras|folha)$/.test(system))return json(request,env,400,{error:"INVALID_SYSTEM"});
   const db=env.BI_PANEL_DB;
   const viewOf=input=>{const view=String(input?.viewId||"");if(view&&!/^[a-z0-9][a-z0-9-]{0,79}$/.test(view))throw new Error("INVALID_PANEL_VIEW");return view;};
+  const orderOf=input=>{const n=Number(input?.sortOrder??0);if(!Number.isSafeInteger(n)||n<0||n>100000)throw new Error("INVALID_PANEL_ORDER");return n;};
   const itemMatch=url.pathname.match(/^\/api\/panel-drafts\/([0-9a-f-]{36})$/);
   try{
     if(request.method==="GET"&&!itemMatch){
-      const data=await db.prepare("SELECT id, title, definition_json, view_id, created_at, updated_at FROM bi_panel_drafts WHERE tenant_id=? AND system_id=? AND owner_id=? ORDER BY updated_at DESC LIMIT 100").bind(tenant.id,system,owner).all();
-      return json(request,env,200,{items:(data.results||[]).map(r=>({id:r.id,title:r.title,definition:JSON.parse(r.definition_json),viewId:r.view_id||"",createdAt:r.created_at,updatedAt:r.updated_at}))});
+      const data=await db.prepare("SELECT id, title, definition_json, view_id, sort_order, created_at, updated_at FROM bi_panel_drafts WHERE tenant_id=? AND system_id=? AND owner_id=? ORDER BY updated_at DESC LIMIT 100").bind(tenant.id,system,owner).all();
+      return json(request,env,200,{items:(data.results||[]).map(r=>({id:r.id,title:r.title,definition:JSON.parse(r.definition_json),viewId:r.view_id||"",sortOrder:Number(r.sort_order)||0,createdAt:r.created_at,updatedAt:r.updated_at}))});
     }
     if(request.method==="POST"&&!itemMatch){
       const raw=await request.text();
       if(raw.length>18000)return json(request,env,413,{error:"PANEL_DRAFT_TOO_LARGE"});
       let data;try{data=JSON.parse(raw);}catch{return json(request,env,400,{error:"INVALID_JSON"});}
-      const d=validatePanelDraftPayload(data),id=crypto.randomUUID(),viewId=viewOf(data);
-      await db.prepare("INSERT INTO bi_panel_drafts(id,tenant_id,system_id,owner_id,title,definition_json,view_id) VALUES(?,?,?,?,?,?,?)").bind(id,tenant.id,system,owner,d.title,JSON.stringify(d),viewId).run();
-      return json(request,env,201,{id,title:d.title,definition:d,viewId});
+      const d=validatePanelDraftPayload(data),id=crypto.randomUUID(),viewId=viewOf(data),sortOrder=orderOf(data);
+      await db.prepare("INSERT INTO bi_panel_drafts(id,tenant_id,system_id,owner_id,title,definition_json,view_id,sort_order) VALUES(?,?,?,?,?,?,?,?)").bind(id,tenant.id,system,owner,d.title,JSON.stringify(d),viewId,sortOrder).run();
+      return json(request,env,201,{id,title:d.title,definition:d,viewId,sortOrder});
     }
     if(itemMatch&&request.method==="DELETE"){
       const result=await db.prepare("DELETE FROM bi_panel_drafts WHERE id=? AND tenant_id=? AND system_id=? AND owner_id=?").bind(itemMatch[1],tenant.id,system,owner).run();
@@ -9769,13 +9770,13 @@ async function handlePanelDrafts(request,env,url){
       const raw=await request.text();
       if(raw.length>18000)return json(request,env,413,{error:"PANEL_DRAFT_TOO_LARGE"});
       let data;try{data=JSON.parse(raw);}catch{return json(request,env,400,{error:"INVALID_JSON"});}
-      const d=validatePanelDraftPayload(data),viewId=viewOf(data);
-      const result=await db.prepare("UPDATE bi_panel_drafts SET title=?,definition_json=?,view_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND tenant_id=? AND system_id=? AND owner_id=?").bind(d.title,JSON.stringify(d),viewId,itemMatch[1],tenant.id,system,owner).run();
-      return json(request,env,result.meta?.changes?200:404,result.meta?.changes?{id:itemMatch[1],definition:d,viewId}:{error:"NOT_FOUND"});
+      const d=validatePanelDraftPayload(data),viewId=viewOf(data),sortOrder=orderOf(data);
+      const result=await db.prepare("UPDATE bi_panel_drafts SET title=?,definition_json=?,view_id=?,sort_order=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND tenant_id=? AND system_id=? AND owner_id=?").bind(d.title,JSON.stringify(d),viewId,sortOrder,itemMatch[1],tenant.id,system,owner).run();
+      return json(request,env,result.meta?.changes?200:404,result.meta?.changes?{id:itemMatch[1],definition:d,viewId,sortOrder}:{error:"NOT_FOUND"});
     }
     return json(request,env,405,{error:"METHOD_NOT_ALLOWED"});
   }catch(err){
-    if(["INVALID_PANEL_DRAFT","FILTER_DRAFTS_NOT_ENABLED","PANEL_DRAFT_TOO_LARGE","INVALID_PANEL_VIEW"].includes(err.message))return json(request,env,400,{error:err.message});
+    if(["INVALID_PANEL_DRAFT","FILTER_DRAFTS_NOT_ENABLED","PANEL_DRAFT_TOO_LARGE","INVALID_PANEL_VIEW","INVALID_PANEL_ORDER"].includes(err.message))return json(request,env,400,{error:err.message});
     return json(request,env,503,{error:"PANEL_DRAFT_STORAGE_UNAVAILABLE"});
   }
 }
