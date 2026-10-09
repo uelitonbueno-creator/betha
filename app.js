@@ -99,6 +99,8 @@
       const homeView=String(system?.homeView||DEFAULT_VIEW);
       const home=dashboards[homeView]||{};
       return {
+        tenantId:String(tenantId||""),
+        currentView:String(currentView||""),
         currentSystemId:String(currentSystemId),
         systemName:String(system?.name||system?.label||currentSystemId||"Tributos"),
         homeView,
