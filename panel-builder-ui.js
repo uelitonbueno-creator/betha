@@ -44,7 +44,7 @@ const drafts=make("select",{"aria-label":"Rascunhos salvos"});drafts.append(make
 const load=make("button",{type:"button"},"Abrir rascunho");
 const remove=make("button",{type:"button"},"Excluir rascunho");
 actions.append(build,preview,download,placement,save,drafts,load,remove);form.append(actions,status,output,previewOutput);panel.append(form);dialog.append(panel);document.body.append(trigger,dialog);
-let catalog=[],context=null,current=null,selectedDraftId="",previewChart=null,previewRequest=0;
+let catalog=[],context=null,current=null,selectedDraftId="",selectedSortOrder=0,previewChart=null,previewRequest=0;
 function clearPreview(){previewRequest++;if(previewChart){previewChart.destroy();previewChart=null;}previewOutput.replaceChildren();}
 function remote(){
   const tenant=new URLSearchParams(location.search).get("tenant")||new URLSearchParams(location.search).get("entidadeId")||"";
@@ -84,7 +84,7 @@ options(placement,[["","Não adicionar ao painel"],...(context.allowedViews||[])
 catalog=[];try{const response=await requestBuilder("GET","catalog");catalog=(response.sources||[]).filter(s=>s.fields.some(f=>f.dimension)&&s.fields.some(f=>f.measure));}catch(err){status.textContent="Catálogo não disponível: "+err.message;}
 options(source,catalog.map(s=>[s.id,s.id]));
 title.value="";type.value="bar";agg.value="sum";status.textContent="";output.textContent="";clearPreview();current=null;download.disabled=true;preview.disabled=true;
-fillFields();dialog.hidden=false;dirty=false;selectedDraftId="";placement.value="";save.disabled=true;close.focus();refreshDrafts();
+fillFields();dialog.hidden=false;dirty=false;selectedDraftId="";selectedSortOrder=0;placement.value="";save.disabled=true;close.focus();refreshDrafts();
 }
 function dismiss(){clearPreview();dialog.hidden=true;trigger.focus();}
 trigger.addEventListener("click",open);
@@ -145,8 +145,8 @@ table.append(tbody);previewOutput.append(table,make("p",{},"Prévia parcial limi
 }catch(err){if(generation===previewRequest)previewOutput.textContent="Prévia indisponível: "+err.message;}
 finally{if(generation===previewRequest)preview.disabled=false;}
 });
-save.addEventListener("click",async()=>{if(!current)return;save.disabled=true;try{const result=await requestDraft(selectedDraftId?"PUT":"POST",selectedDraftId||"",{definition:current,viewId:placement.value});selectedDraftId=result.id||selectedDraftId;status.textContent="Rascunho salvo no D1.";window.dispatchEvent(new Event("bi-panel-drafts-changed"));await refreshDrafts();drafts.value=selectedDraftId;}catch(err){status.textContent="Não foi possível salvar: "+err.message;}finally{save.disabled=false;}});
-load.addEventListener("click",()=>{const item=(drafts._items||[]).find(x=>x.id===drafts.value);if(!item)return;const d=item.definition;if(!catalog.some(x=>x.id===d.sourceId)){status.textContent="Fonte não disponível neste sistema.";return;}title.value=d.title;source.value=d.sourceId;fillFields();type.value=d.type;dimension.value=d.dimension;measure.value=d.measures?.[0]?.field||"*";agg.value=d.measures?.[0]?.aggregation||"count";selectedDraftId=item.id;placement.value=item.viewId||"";current=null;save.disabled=true;output.textContent="";status.textContent="Rascunho carregado. Valide antes de salvar alterações.";});
+save.addEventListener("click",async()=>{if(!current)return;save.disabled=true;try{const result=await requestDraft(selectedDraftId?"PUT":"POST",selectedDraftId||"",{definition:current,viewId:placement.value,sortOrder:selectedSortOrder});selectedDraftId=result.id||selectedDraftId;status.textContent="Rascunho salvo no D1.";window.dispatchEvent(new Event("bi-panel-drafts-changed"));await refreshDrafts();drafts.value=selectedDraftId;}catch(err){status.textContent="Não foi possível salvar: "+err.message;}finally{save.disabled=false;}});
+load.addEventListener("click",()=>{const item=(drafts._items||[]).find(x=>x.id===drafts.value);if(!item)return;const d=item.definition;if(!catalog.some(x=>x.id===d.sourceId)){status.textContent="Fonte não disponível neste sistema.";return;}title.value=d.title;source.value=d.sourceId;fillFields();type.value=d.type;dimension.value=d.dimension;measure.value=d.measures?.[0]?.field||"*";agg.value=d.measures?.[0]?.aggregation||"count";selectedDraftId=item.id;selectedSortOrder=Number(item.sortOrder)||0;placement.value=item.viewId||"";current=null;save.disabled=true;output.textContent="";status.textContent="Rascunho carregado. Valide antes de salvar alterações.";});
 window.addEventListener("bi-open-panel-draft",async(event)=>{
   const id=String(event.detail?.id||"");
   if(!id)return;
