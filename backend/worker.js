@@ -10299,8 +10299,9 @@ async function handlePanelPreview(request,env,url){
   try{
     tenant=await resolveTenant(env,getTenantId(request,url));
     auth=await authorizeTenant(request,env,tenant);
-    const system=String(url.searchParams.get("system")||"");
-    if(!["tributos","contabilidade","compras","folha"].includes(system))return json(request,env,400,{error:"INVALID_SYSTEM"});
+    const requestedSystem=String(url.searchParams.get("system")||"");
+    const system=requestedSystem==="contabilidade"?"contabil":requestedSystem;
+    if(!["tributos","contabil","compras","folha"].includes(system))return json(request,env,400,{error:"INVALID_SYSTEM"});
     if(url.pathname==="/api/panel-builder/source-status"&&request.method==="GET"){
       if(system==="tributos")return json(request,env,200,{system,mode:"authorized-api",available:true,resources:[]});
       const result=await panelMultiSystemStatus(env,tenant,auth,system);
@@ -10430,8 +10431,9 @@ async function handlePanelDrafts(request,env,url){
   catch(err){return errorResponse(request,env,err);}
   const owner=String(auth.userId||"").trim();
   if(!owner)return json(request,env,403,{error:"USER_ID_REQUIRED"});
-  const system=String(url.searchParams.get("system")||"");
-  if(!/^(tributos|contabilidade|compras|folha)$/.test(system))return json(request,env,400,{error:"INVALID_SYSTEM"});
+  const requestedSystem=String(url.searchParams.get("system")||"");
+  const system=requestedSystem==="contabilidade"?"contabil":requestedSystem;
+  if(!/^(tributos|contabil|compras|folha)$/.test(system))return json(request,env,400,{error:"INVALID_SYSTEM"});
   try{await ensurePanelDraftSchema(db);}catch(error){console.error("Panel drafts D1 schema",error?.message||error);return json(request,env,503,{error:"PANEL_DRAFT_STORAGE_UNAVAILABLE"});}
   const viewOf=input=>{const view=String(input?.viewId||"");if(view&&!/^[a-z0-9][a-z0-9-]{0,79}$/.test(view))throw new Error("INVALID_PANEL_VIEW");return view;};
   const requirePlacementPermission=view=>{
