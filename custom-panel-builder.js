@@ -55,6 +55,8 @@
     byId("biCustomCancelQuery").onclick=()=>{state.previewSeq++;setQueryRunning(false);status("Consulta interrompida.");};
     byId("biCustomExport").onclick=exportPreview;
     const navNew=byId("customPanelSidebarNew"),navList=byId("customPanelSidebarList"),mobile=byId("mobileCustomPanelButton");
+    const refresh=byId("customPanelSidebarRefresh");
+    if(refresh)refresh.onclick=async()=>{refresh.disabled=true;try{await loadSidebar(true);if(!byId("biCustomRoot").hidden)renderFields();}finally{refresh.disabled=false;}};
     if(navNew)navNew.onclick=()=>show("new");
     if(navList)navList.onclick=()=>show("list");
     if(mobile)mobile.onclick=()=>show("list");
@@ -83,7 +85,7 @@
       const existing=SOURCES[item.id];
       const mapField=(keys,prior)=>Object.fromEntries(keys.map(key=>[key,prior?.[key]||FIELD_LABELS[key]||key]));
       SOURCES[item.id]={
-        label:item.label||existing?.label||item.id,system,
+        label:(item.label||existing?.label||item.id)+(system!=="tributos"?" · "+Number(item.loaded||0).toLocaleString("pt-BR")+" registros"+(item.complete?"":" (parcial)"):""),system,
         dimensions:mapField(item.dimensions,existing?.dimensions),
         measures:mapField(item.measures,existing?.measures)
       };
@@ -114,7 +116,7 @@
     }
     if(!force&&sidebarScope===scope)return;
     try{
-      await refreshCatalog();
+      await refreshCatalog(force);
       if(scope!==context().tenant+":"+context().system)return;
       const result=await request("/api/custom-panels?system="+encodeURIComponent(context().system));
       if(scope!==context().tenant+":"+context().system)return;
@@ -305,6 +307,7 @@
   }
   function openPanel(panel,duplicate=false){
     if(!panel)return;
+    if(!authorizedSources.has(panel.source)){status("A fonte deste painel não está carregada ou não está autorizada para a entidade atual.",true);return;}
     Object.assign(state,{id:duplicate?null:panel.id,name:duplicate?panel.name+" (cópia)":panel.name,source:panel.source,dimension:panel.dimension,measure:panel.measure,aggregation:panel.aggregation,chart:panel.chart,filters:Array.isArray(panel.filters)?panel.filters.map(f=>({...f})):[],limit:panel.limit||20});
     renderFields();byId("biCustomList").hidden=true;if(!duplicate)history.replaceState(null,"",location.pathname+location.search+"#painel="+encodeURIComponent(panel.id));preview();
   }
