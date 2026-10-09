@@ -9657,11 +9657,74 @@ function errorResponse(request,env,error) {
   return json(request,env,statusByCode[code]||500,{error:code});
 }
 
+
+function validatePanelDraftPayload(input){
+  if(!input||typeof input!=="object"||Array.isArray(input))throw new Error("INVALID_PANEL_DRAFT");
+  const d=input.definition;
+  if(!d||typeof d!=="object"||Array.isArray(d))throw new Error("INVALID_PANEL_DRAFT");
+  if(typeof d.title!=="string"||!d.title.trim()||d.title.length>120)throw new Error("INVALID_PANEL_DRAFT");
+  if(typeof d.sourceId!=="string"||!/^bi:[a-z0-9-]{1,100}$/.test(d.sourceId))throw new Error("INVALID_PANEL_DRAFT");
+  if(!["bar","line","doughnut","table","kpi"].includes(d.type))throw new Error("INVALID_PANEL_DRAFT");
+  if(typeof d.dimension!=="string"||!/^[a-zA-Z_][a-zA-Z0-9_.]{0,119}$/.test(d.dimension))throw new Error("INVALID_PANEL_DRAFT");
+  if(!Array.isArray(d.measures)||d.measures.length<1||d.measures.length>5)throw new Error("INVALID_PANEL_DRAFT");
+  for(const m of d.measures){
+    if(!m||typeof m!=="object"||!["sum","avg","min","max","count"].includes(m.aggregation)||!(m.field==="*"&&m.aggregation==="count")&&!/^[a-zA-Z_][a-zA-Z0-9_.]{0,119}$/.test(m.field||""))throw new Error("INVALID_PANEL_DRAFT");
+  }
+  if(!Array.isArray(d.filters)||d.filters.length>12)throw new Error("INVALID_PANEL_DRAFT");
+  if(d.filters.length)throw new Error("FILTER_DRAFTS_NOT_ENABLED");
+  if(JSON.stringify(d).length>16000)throw new Error("PANEL_DRAFT_TOO_LARGE");
+  // Persistência de rascunho não implica autorização para consultar a fonte.
+  return {title:d.title.trim(),sourceId:d.sourceId,type:d.type,dimension:d.dimension,measures:d.measures.map(m=>({field:m.field,aggregation:m.aggregation})),filters:[]};
+}
+async function handlePanelDrafts(request,env,url){
+  if(!env.BI_PANEL_DB)return json(request,env,503,{error:"PANEL_D1_NOT_CONFIGURED"});
+  let tenant,auth;
+  try{tenant=await resolveTenant(env,getTenantId(request,url));auth=await authorizeTenant(request,env,tenant);}
+  catch(err){return respondApiError(request,env,err);}
+  const owner=String(auth.userId||"").trim();
+  if(!owner)return json(request,env,403,{error:"USER_ID_REQUIRED"});
+  const system=String(url.searchParams.get("system")||"");
+  if(!/^(tributos|contabilidade|compras|folha)$/.test(system))return json(request,env,400,{error:"INVALID_SYSTEM"});
+  const db=env.BI_PANEL_DB;
+  const itemMatch=url.pathname.match(/^\/api\/panel-drafts\/([0-9a-f-]{36})$/);
+  try{
+    if(request.method==="GET"&&!itemMatch){
+      const data=await db.prepare("SELECT id, title, definition_json, created_at, updated_at FROM bi_panel_drafts WHERE tenant_id=? AND system_id=? AND owner_id=? ORDER BY updated_at DESC LIMIT 100").bind(tenant.id,system,owner).all();
+      return json(request,env,200,{items:(data.results||[]).map(r=>({id:r.id,title:r.title,definition:JSON.parse(r.definition_json),createdAt:r.created_at,updatedAt:r.updated_at}))});
+    }
+    if(request.method==="POST"&&!itemMatch){
+      const raw=await request.text();
+      if(raw.length>18000)return json(request,env,413,{error:"PANEL_DRAFT_TOO_LARGE"});
+      let data;try{data=JSON.parse(raw);}catch{return json(request,env,400,{error:"INVALID_JSON"});}
+      const d=validatePanelDraftPayload(data),id=crypto.randomUUID();
+      await db.prepare("INSERT INTO bi_panel_drafts(id,tenant_id,system_id,owner_id,title,definition_json) VALUES(?,?,?,?,?,?)").bind(id,tenant.id,system,owner,d.title,JSON.stringify(d)).run();
+      return json(request,env,201,{id,title:d.title,definition:d});
+    }
+    if(itemMatch&&request.method==="DELETE"){
+      const result=await db.prepare("DELETE FROM bi_panel_drafts WHERE id=? AND tenant_id=? AND system_id=? AND owner_id=?").bind(itemMatch[1],tenant.id,system,owner).run();
+      return json(request,env,result.meta?.changes?200:404,result.meta?.changes?{deleted:true}:{error:"NOT_FOUND"});
+    }
+    if(itemMatch&&request.method==="PUT"){
+      const raw=await request.text();
+      if(raw.length>18000)return json(request,env,413,{error:"PANEL_DRAFT_TOO_LARGE"});
+      let data;try{data=JSON.parse(raw);}catch{return json(request,env,400,{error:"INVALID_JSON"});}
+      const d=validatePanelDraftPayload(data);
+      const result=await db.prepare("UPDATE bi_panel_drafts SET title=?,definition_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND tenant_id=? AND system_id=? AND owner_id=?").bind(d.title,JSON.stringify(d),itemMatch[1],tenant.id,system,owner).run();
+      return json(request,env,result.meta?.changes?200:404,result.meta?.changes?{id:itemMatch[1],definition:d}:{error:"NOT_FOUND"});
+    }
+    return json(request,env,405,{error:"METHOD_NOT_ALLOWED"});
+  }catch(err){
+    if(["INVALID_PANEL_DRAFT","FILTER_DRAFTS_NOT_ENABLED","PANEL_DRAFT_TOO_LARGE"].includes(err.message))return json(request,env,400,{error:err.message});
+    return json(request,env,503,{error:"PANEL_DRAFT_STORAGE_UNAVAILABLE"});
+  }
+}
+
 export default {
   async scheduled(event,env,ctx){ctx.waitUntil(Promise.allSettled([runBackgroundSync(env),runMultiSystemBootstrap(env)]));},
   async fetch(request,env) {
     const url=new URL(request.url);
     if (request.method==="OPTIONS") return new Response(null,{status:204,headers:corsHeaders(request,env)});
+    if (url.pathname==="/api/panel-drafts" || /^\/api\/panel-drafts\/[0-9a-f-]{36}$/.test(url.pathname)) return handlePanelDrafts(request,env,url);
 
     if (url.pathname==="/.well-known/oauth-authorization-server" && request.method==="GET") {
       return json(request,env,200,mcpOAuthMetadata(request,env));
