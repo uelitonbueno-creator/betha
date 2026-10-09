@@ -9648,6 +9648,52 @@ const CUSTOM_PANEL_SOURCES=Object.freeze({
  "bi:imoveis":{label:"Imóveis",dimensions:["bairro","zona","situacao"],measures:["count"]},
  "bi:parcelamentos":{label:"Parcelamentos",dimensions:["situacao","ano"],measures:["count"]}
 });
+const CUSTOM_PANEL_MULTISYSTEM=Object.freeze({
+ "contabil:empenhos":{system:"contabil",resource:"empenhos",label:"Empenhos",permissionViews:["contabil-empenhos","contabil-visao-geral"],dimensions:["exercicio","ano","situacao","status","tipo","unidade","orgao","secretaria","natureza"],measures:["count","valor","valorEmpenhado","valorLiquidado","valorPago"]},
+ "contabil:movimentacoes-despesas":{system:"contabil",resource:"movimentacoes-despesas",label:"Movimentações de despesas",permissionViews:["contabil-despesa","contabil-movimentos"],dimensions:["exercicio","ano","situacao","status","tipo","unidade","orgao","natureza"],measures:["count","valor","valorEmpenhado","valorLiquidado","valorPago"]},
+ "contabil:movimentacoes-receitas":{system:"contabil",resource:"movimentacoes-receitas",label:"Movimentações de receitas",permissionViews:["contabil-receita","contabil-movimentos"],dimensions:["exercicio","ano","situacao","status","tipo","unidade","orgao","natureza"],measures:["count","valor","valorArrecadado","valorPrevisto"]},
+ "compras:processos-administrativos":{system:"compras",resource:"processos-administrativos",label:"Processos administrativos",permissionViews:["compras-processos","compras-visao-geral"],dimensions:["exercicio","ano","situacao","status","modalidade","tipo","unidade","secretaria"],measures:["count","valor","valorEstimado","valorHomologado"]},
+ "compras:fornecedores":{system:"compras",resource:"fornecedores",label:"Fornecedores (quantitativos)",permissionViews:["compras-fornecedores"],dimensions:["situacao","status","tipo","categoria","municipio","cidade"],measures:["count"]},
+ "folha:matriculas":{system:"folha",resource:"matriculas",label:"Matrículas (quantitativos)",permissionViews:["folha-servidores","folha-visao-geral"],dimensions:["situacao","status","vinculo","tipoVinculo","cargo","lotacao","secretaria","unidade"],measures:["count"]},
+ "folha:funcionarios-cargos":{system:"folha",resource:"funcionarios-cargos",label:"Cargos (quantitativos)",permissionViews:["folha-cargos","folha-visao-geral"],dimensions:["situacao","status","cargo","lotacao","secretaria","unidade"],measures:["count"]}
+});
+function customPanelSystemOf(source){return CUSTOM_PANEL_MULTISYSTEM[source]?.system||((CUSTOM_PANEL_SOURCES[source])?"tributos":null);}
+function customPanelAuthorize(auth,source){
+ const cfg=CUSTOM_PANEL_MULTISYSTEM[source];
+ if(!cfg)return panelReadAuthorized(auth,source);
+ const views=permissionViewsForAccess(auth.access);
+ if(!cfg.permissionViews.some(view=>views.includes(view)))throw new Error("DATA_RESOURCE_PERMISSION_DENIED");
+}
+function customPanelNumericField(field){return field==="count"||/^(?:valor|valorEmpenhado|valorLiquidado|valorPago|valorArrecadado|valorPrevisto|valorEstimado|valorHomologado)$/.test(field);}
+function customPanelMultiFields(cfg,row){
+ let fields=[];
+ try{const value=JSON.parse(row.fields_json||"[]");if(Array.isArray(value))fields=value.filter(f=>typeof f==="string");}catch{}
+ const set=new Set(fields);
+ return {
+  dimensions:cfg.dimensions.filter(f=>set.has(f)),
+  measures:cfg.measures.filter(f=>f==="count"||set.has(f)&&customPanelNumericField(f))
+ };
+}
+async function customPanelMultiSourceRows(env,tenant,system){
+ if(!env.AUTH_DB||!env.BI_SYNC_RAW)return [];
+ try{
+  const result=await env.AUTH_DB.prepare("SELECT resource,status,loaded,pages,fields_json,object_key,updated_at FROM bi_multisystem_loads WHERE tenant_id=?1 AND system=?2 AND pages>0").bind(String(tenant.id),system).all();
+  return (result.results||[]).filter(r=>Number(r.pages)>0&&String(r.object_key||"").indexOf("/bootstrap.json")<0);
+ }catch(error){
+  if(/no such table/i.test(String(error?.message||"")))return [];
+  throw error;
+ }
+}
+function customPanelNormalizeRow(raw,source){
+ if(CUSTOM_PANEL_SOURCES[source])return normalizePanelRow(raw,source);
+ const cfg=CUSTOM_PANEL_MULTISYSTEM[source],row={};
+ if(!cfg||!raw||typeof raw!=="object")return row;
+ for(const f of [...cfg.dimensions,...cfg.measures]){
+  const value=raw[f];
+  row[f]=f==="count"?1:cfg.measures.includes(f)?panelNumber(value):panelScalar(value);
+ }
+ return row;
+}
 let customPanelD1SchemaReady=null;
 async function customPanelDb(env){
  if(!env.AUTH_DB)throw new Error("CUSTOM_PANEL_D1_NOT_CONFIGURED");
@@ -9663,9 +9709,9 @@ async function customPanelDb(env){
 }
 function validateCustomPanel(data,auth){
  if(!data||Array.isArray(data)||typeof data!=="object")throw new Error("CUSTOM_PANEL_INVALID");
- const source=String(data.source||""),cat=CUSTOM_PANEL_SOURCES[source];
- if(!cat||data.system!=="tributos")throw new Error("CUSTOM_PANEL_SOURCE_INVALID");
- panelReadAuthorized(auth,source);
+ const source=String(data.source||""),cat=CUSTOM_PANEL_SOURCES[source]||CUSTOM_PANEL_MULTISYSTEM[source];
+ if(!cat||data.system!==customPanelSystemOf(source))throw new Error("CUSTOM_PANEL_SOURCE_INVALID");
+ customPanelAuthorize(auth,source);
  const dimension=String(data.dimension||""),measure=String(data.measure||""),aggregation=String(data.aggregation||"");
  if(!cat.dimensions.includes(dimension)||!cat.measures.includes(measure))throw new Error("CUSTOM_PANEL_FIELD_INVALID");
  if(!["sum","avg","min","max","count"].includes(aggregation)||(measure==="count"&&aggregation!=="count"))throw new Error("CUSTOM_PANEL_AGGREGATION_INVALID");
@@ -9719,7 +9765,7 @@ function customPanelAggregatePage(rawRows,body,groups,total,drillRows=null,drill
  let scanned=0,loaded=0;
  for(let i=0;i<rawRows.length;i++){
   scanned++;
-  const row=normalizePanelRow(rawRows[i],body.source,i);
+  const row=customPanelNormalizeRow(rawRows[i],body.source);
   if(!customPanelRowMatches(row,body.filters))continue;
   const label=String(customPanelDimensionValue(row,body.dimension)??"Não informado").slice(0,100);
   const numeric=body.measure==="count"?1:panelNumber(row[body.measure]);
@@ -9784,9 +9830,24 @@ async function handleCustomPanelRequest(request,env,url){
  const auth=await authorizeTenant(request,env,tenant);
  const user=String(auth.userId||"");if(!user)throw new Error("USER_TOKEN_REQUIRED");
  if(url.pathname==="/api/custom-panels/catalog" && request.method==="GET"){
-  const sources=Object.entries(CUSTOM_PANEL_SOURCES).filter(([id])=>{try{panelReadAuthorized(auth,id);return true;}catch{return false;}})
-   .map(([id,meta])=>({id,system:"tributos",label:meta.label,dimensions:meta.dimensions,measures:meta.measures}));
-  return json(request,env,200,{sources,system:"tributos"});
+  const system=String(url.searchParams.get("system")||"tributos");
+  if(!["tributos","contabil","compras","folha"].includes(system))return json(request,env,400,{error:"CUSTOM_PANEL_SYSTEM_INVALID"});
+  let sources=[];
+  if(system==="tributos")sources=Object.entries(CUSTOM_PANEL_SOURCES).filter(([id])=>{try{customPanelAuthorize(auth,id);return true;}catch{return false;}})
+   .map(([id,meta])=>({id,system,label:meta.label,dimensions:meta.dimensions,measures:meta.measures,ready:true}));
+  else{
+   const rows=await customPanelMultiSourceRows(env,tenant,system);
+   for(const [id,meta]of Object.entries(CUSTOM_PANEL_MULTISYSTEM)){
+    if(meta.system!==system)continue;
+    try{customPanelAuthorize(auth,id);}catch{continue;}
+    const row=rows.find(r=>r.resource===meta.resource);
+    if(!row)continue;
+    const fields=customPanelMultiFields(meta,row);
+    if(!fields.dimensions.length||!fields.measures.length)continue;
+    sources.push({id,system,label:meta.label,dimensions:fields.dimensions,measures:fields.measures,loaded:row.loaded,pages:row.pages,complete:row.status==="complete",ready:true});
+   }
+  }
+  return json(request,env,200,{sources,system});
  }
  if(url.pathname==="/api/custom-panels/query" && request.method==="POST"){
   const input=await request.json();
@@ -9799,13 +9860,13 @@ async function handleCustomPanelRequest(request,env,url){
  const method=request.method;
  const readConfig=row=>{const c=JSON.parse(row.config_json);return {...c,id:row.id,created_at:row.created_at,updated_at:row.updated_at};};
  if(url.pathname==="/api/custom-panels"&&method==="GET"){
-  const rows=await db.prepare("SELECT * FROM bi_custom_panels WHERE tenant_id=?1 AND user_id=?2 AND system=?3 ORDER BY updated_at DESC LIMIT 100").bind(tenant.id,user,"tributos").all();
-  return json(request,env,200,{panels:(rows.results||[]).map(readConfig).filter(p=>{try{panelReadAuthorized(auth,p.source);return true;}catch{return false;}})});
+  const rows=await db.prepare("SELECT * FROM bi_custom_panels WHERE tenant_id=?1 AND user_id=?2 AND system=?3 ORDER BY updated_at DESC LIMIT 100").bind(tenant.id,user,String(url.searchParams.get("system")||"tributos")).all();
+  return json(request,env,200,{panels:(rows.results||[]).map(readConfig).filter(p=>{try{customPanelAuthorize(auth,p.source);return true;}catch{return false;}})});
  }
  if(id&&method==="GET"){
   const row=await db.prepare("SELECT * FROM bi_custom_panels WHERE id=?1 AND tenant_id=?2 AND user_id=?3 LIMIT 1").bind(id,tenant.id,user).first();
   if(!row)return json(request,env,404,{error:"CUSTOM_PANEL_NOT_FOUND"});
-  const panel=readConfig(row);panelReadAuthorized(auth,panel.source);return json(request,env,200,{panel});
+  const panel=readConfig(row);customPanelAuthorize(auth,panel.source);return json(request,env,200,{panel});
  }
  if(id&&method==="DELETE"){
   const result=await db.prepare("DELETE FROM bi_custom_panels WHERE id=?1 AND tenant_id=?2 AND user_id=?3").bind(id,tenant.id,user).run();
@@ -9820,7 +9881,7 @@ async function handleCustomPanelRequest(request,env,url){
    return json(request,env,200,{panel:{...panel,id}});
   }
   const newId=crypto.randomUUID();
-  await db.prepare("INSERT INTO bi_custom_panels(id,tenant_id,user_id,system,name,config_json,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)").bind(newId,tenant.id,user,"tributos",panel.name,JSON.stringify(panel),timestamp,timestamp).run();
+  await db.prepare("INSERT INTO bi_custom_panels(id,tenant_id,user_id,system,name,config_json,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)").bind(newId,tenant.id,user,panel.system,panel.name,JSON.stringify(panel),timestamp,timestamp).run();
   return json(request,env,201,{panel:{...panel,id:newId}});
  }
  if(url.pathname==="/api/custom-panels/preview"&&method==="POST"){
