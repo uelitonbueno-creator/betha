@@ -203,6 +203,7 @@ test("análise R2 respeita o tenant, agrega páginas e reconhece fonte incomplet
     customPanelMultiFields:()=>({dimensions:["situacao"],measures:["count","valorEmpenhado"]}),
     multiSystemPageObjectKey:(tenant,system,resource,page)=>tenant+"/"+system+"/"+resource+"/"+page,
     customPanelNormalizeRow:row=>row,
+    sha256Hex:async value=>String(value),
     panelNumber:value=>value===null||value===undefined?null:Number(value),
     panelDate:value=>new Date(value),
     json:(_request,_env,httpStatus,body)=>({httpStatus,body}),
@@ -242,6 +243,7 @@ test("cursor R2 é vinculado à fonte e à versão da carga", async () => {
    customPanelMultiFields:()=>({dimensions:["situacao"],measures:["count"]}),
    multiSystemPageObjectKey:(tenant,system,resource,page)=>tenant+"/"+system+"/"+resource+"/"+page,
    customPanelNormalizeRow:row=>row,
+   sha256Hex:async value=>String(value),
    panelNumber:Number,panelDate:value=>new Date(value),
    json:(_request,_env,httpStatus,body)=>({httpStatus,body}),Error,Number,Map,Object,Math,Date,String,Array
  };
@@ -252,8 +254,10 @@ test("cursor R2 é vinculado à fonte e à versão da carga", async () => {
  const first=await runtime.multiQuery({},env,{id:"municipio-a"},cfg,{},false);
  assert.equal(first.body.cursor.nextPage,8);
  assert.equal(first.body.cursor.source,"contabil:empenhos");
+ assert.ok(first.body.cursor.fingerprint);
  const second=await runtime.multiQuery({},env,{id:"municipio-a"},cfg,{cursor:first.body.cursor},false);
  assert.equal(second.body.total.count,1);
+ await assert.rejects(runtime.multiQuery({},env,{id:"municipio-a"},{...cfg,filters:[{field:"situacao",operator:"eq",value:"Aberto"}]},{cursor:first.body.cursor},false),/CUSTOM_PANEL_SNAPSHOT_CHANGED/);
  version="2026-10-09T17:00:00Z";
  await assert.rejects(runtime.multiQuery({},env,{id:"municipio-a"},cfg,{cursor:first.body.cursor},false),/CUSTOM_PANEL_SNAPSHOT_CHANGED/);
 });
