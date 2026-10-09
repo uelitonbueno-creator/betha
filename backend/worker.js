@@ -10199,7 +10199,11 @@ const PANEL_CACHED_SOURCES=Object.freeze({
 });
 async function cachedPanelSources(env,tenant,auth,system){
  if(!env.AUTH_DB||!env.BI_SYNC_RAW||!PANEL_CACHED_SOURCES[system])return [];
- if(auth.access?.admin!==true&&auth.access?.technical!==true&&!auth.tenantAdmin)return [];
+ if(auth.access?.admin!==true&&auth.access?.technical!==true&&!auth.tenantAdmin){
+  const views=permissionViewsForAccess(auth.access);
+  const prefixes={contabil:"contabil-",compras:"compras-",folha:"folha-"};
+  if(!views.some(view=>view.startsWith(prefixes[system]||"__invalid__")))return [];
+ }
  const allowed=PANEL_CACHED_SOURCES[system];
  const results=await env.AUTH_DB.prepare("SELECT resource,loaded,pages,status,fields_json FROM bi_multisystem_loads WHERE tenant_id=? AND system=? ORDER BY resource LIMIT 30").bind(tenant.id,system).all();
  const sources=[];
@@ -10360,6 +10364,13 @@ async function handlePanelDrafts(request,env,url){
   if(!/^(tributos|contabilidade|compras|folha)$/.test(system))return json(request,env,400,{error:"INVALID_SYSTEM"});
   const db=env.BI_PANEL_DB;
   const viewOf=input=>{const view=String(input?.viewId||"");if(view&&!/^[a-z0-9][a-z0-9-]{0,79}$/.test(view))throw new Error("INVALID_PANEL_VIEW");return view;};
+  const requirePlacementPermission=view=>{
+    if(!view)return;
+    if(auth.access?.admin===true||auth.access?.technical===true||auth.tenantAdmin)return;
+    const views=permissionViewsForAccess(auth.access);
+    const prefix=system==="contabil"?"contabil-":system==="compras"?"compras-":system==="folha"?"folha-":null;
+    if(!views.includes(view)||(prefix?!view.startsWith(prefix):!["visao-geral","arrecadacao","debitos","divida","parcelamentos"].includes(view)))throw new Error("PANEL_VIEW_FORBIDDEN");
+  };
   const orderOf=input=>{const n=Number(input?.sortOrder??0);if(!Number.isSafeInteger(n)||n<0||n>100000)throw new Error("INVALID_PANEL_ORDER");return n;};
   const itemMatch=url.pathname.match(/^\/api\/panel-drafts\/([0-9a-f-]{36})$/);
   try{
@@ -10368,6 +10379,7 @@ async function handlePanelDrafts(request,env,url){
       if(raw.length>5000)return json(request,env,413,{error:"ORDER_REQUEST_TOO_LARGE"});
       let data;try{data=JSON.parse(raw);}catch{return json(request,env,400,{error:"INVALID_JSON"});}
       const viewId=viewOf(data);
+      requirePlacementPermission(viewId);
       const ids=data?.ids;
       if(!viewId||!Array.isArray(ids)||ids.length>100||ids.length<1||new Set(ids).size!==ids.length||ids.some(id=>typeof id!=="string"||!/^[0-9a-f-]{36}$/.test(id)))return json(request,env,400,{error:"INVALID_PANEL_ORDER"});
       const existing=await db.prepare("SELECT id FROM bi_panel_drafts WHERE tenant_id=? AND system_id=? AND owner_id=? AND view_id=?").bind(tenant.id,system,owner,viewId).all();
@@ -10386,6 +10398,7 @@ async function handlePanelDrafts(request,env,url){
       if(raw.length>18000)return json(request,env,413,{error:"PANEL_DRAFT_TOO_LARGE"});
       let data;try{data=JSON.parse(raw);}catch{return json(request,env,400,{error:"INVALID_JSON"});}
       const d=validatePanelDraftPayload(data),id=crypto.randomUUID(),viewId=viewOf(data),sortOrder=orderOf(data);
+      requirePlacementPermission(viewId);
       await authorizePanelDefinition(env,tenant,auth,system,d);
       await db.prepare("INSERT INTO bi_panel_drafts(id,tenant_id,system_id,owner_id,title,definition_json,view_id,sort_order) VALUES(?,?,?,?,?,?,?,?)").bind(id,tenant.id,system,owner,d.title,JSON.stringify(d),viewId,sortOrder).run();
       return json(request,env,201,{id,title:d.title,definition:d,viewId,sortOrder});
@@ -10405,7 +10418,7 @@ async function handlePanelDrafts(request,env,url){
     }
     return json(request,env,405,{error:"METHOD_NOT_ALLOWED"});
   }catch(err){
-    if(["INVALID_PANEL_DRAFT","FILTER_DRAFTS_NOT_ENABLED","PANEL_DRAFT_TOO_LARGE","INVALID_PANEL_VIEW","INVALID_PANEL_ORDER","PANEL_FIELD_NOT_ALLOWED","PANEL_SOURCE_NOT_ALLOWED"].includes(err.message))return json(request,env,400,{error:err.message});
+    if(["INVALID_PANEL_DRAFT","FILTER_DRAFTS_NOT_ENABLED","PANEL_DRAFT_TOO_LARGE","INVALID_PANEL_VIEW","INVALID_PANEL_ORDER","PANEL_FIELD_NOT_ALLOWED","PANEL_SOURCE_NOT_ALLOWED","PANEL_VIEW_FORBIDDEN"].includes(err.message))return json(request,env,400,{error:err.message});
     return json(request,env,503,{error:"PANEL_DRAFT_STORAGE_UNAVAILABLE"});
   }
 }
