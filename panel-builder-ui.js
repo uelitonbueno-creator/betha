@@ -114,8 +114,8 @@ const definition={title:title.value.trim(),sourceId:source.value,type:type.value
 dimension:dimension.value,measures:[metric],filters:[]};
 const result=core.validate(definition,catalog,{tenantId:"editor-local",systemId:context.currentSystemId});
 if(!result.ok){status.textContent=result.errors.join(" ");download.disabled=true;current=null;return;}
-current=definition;output.textContent=JSON.stringify(definition,null,2);save.disabled=!definition.sourceId.startsWith("bi:");preview.disabled=false;
-status.textContent=definition.sourceId.startsWith("sample:")?"AMOSTRA LOCAL: prévia e exportação JSON disponíveis.":definition.sourceId.startsWith("cache:")?"CACHE REAL: prévia de até 500 registros; salvamento ainda não habilitado.":"Definição validada localmente. Não publicada.";download.disabled=false;
+current=definition;output.textContent=JSON.stringify(definition,null,2);save.disabled=definition.sourceId.startsWith("sample:");preview.disabled=false;
+status.textContent=definition.sourceId.startsWith("sample:")?"AMOSTRA LOCAL: prévia e exportação JSON disponíveis.":definition.sourceId.startsWith("cache:")?"CACHE REAL: prévia de até 500 registros; salvamento sujeito à autorização do Worker.":"Definição validada localmente. Não publicada.";download.disabled=false;
 });
 preview.addEventListener("click",async()=>{
 if(!current)return;
