@@ -7,7 +7,7 @@
     "bi:imoveis": {label:"Imóveis",system:"tributos",dimensions:{bairro:"Bairro",zona:"Zona",situacao:"Situação"},measures:{count:"Quantidade"}},
     "bi:parcelamentos": {label:"Parcelamentos",system:"tributos",dimensions:{situacao:"Situação",ano:"Exercício"},measures:{count:"Quantidade"}}
   };
-  const state={id:null,source:"bi:debitos",chart:"bar",dimension:"bairro",measure:"saldo",aggregation:"sum",filterField:"",filterValue:"",filters:[],limit:20,name:"Débitos por bairro",panels:[],chartInstance:null,loading:false,previewRows:[],previewPartial:false,previewSeq:0};
+  const state={id:null,source:"bi:debitos",chart:"bar",dimension:"bairro",measure:"saldo",aggregation:"sum",filterField:"",filterValue:"",filters:[],limit:20,name:"Débitos por bairro",panels:[],chartInstance:null,loading:false,previewRows:[],previewPartial:false,previewSeq:0,previewKind:"preview",fullQueryRunning:false};
   const byId=id=>document.getElementById(id);
   let authorizedSources=new Set(), catalogScope="",sidebarScope="";
   const safe=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -38,7 +38,7 @@
           <fieldset class="bi-custom-filter-set"><legend>Filtros (todos devem corresponder)</legend><div id="biCustomFilters"></div><button type="button" id="biCustomAddFilter">+ Adicionar filtro</button></fieldset>
           <label>Exibir categorias<select id="biCustomLimit"><option value="5">Top 5</option><option value="10">Top 10</option><option value="20">Top 20</option><option value="50">Top 50</option></select></label>
           <label>Visualização<select id="biCustomChart"><option value="bar">Barras</option><option value="horizontalBar">Barras horizontais</option><option value="line">Linhas</option><option value="doughnut">Donut</option><option value="pie">Pizza</option><option value="table">Tabela</option><option value="kpi">Indicador KPI</option></select></label>
-          <div class="bi-custom-actions"><button type="button" id="biCustomPreview">Atualizar prévia</button><button type="button" id="biCustomExport">Exportar CSV (prévia)</button><button type="submit" class="bi-custom-primary">Salvar painel</button></div>
+          <div class="bi-custom-actions"><button type="button" id="biCustomPreview">Atualizar prévia</button><button type="button" id="biCustomFullQuery">Analisar todos os dados carregados</button><button type="button" id="biCustomCancelQuery" hidden>Cancelar análise</button><button type="button" id="biCustomExport">Exportar CSV (prévia)</button><button type="submit" class="bi-custom-primary">Salvar painel</button></div>
           <p id="biCustomStatus" role="status"></p>
         </form><div class="bi-custom-preview"><div class="bi-custom-preview-title"><strong>Pré-visualização</strong><small id="biCustomInfo">Dados do cache autorizado</small></div><div id="biCustomChartWrap"><canvas id="biCustomCanvas"></canvas></div><div id="biCustomTable"></div><div id="biCustomDrill" hidden></div><div id="biCustomList" hidden></div></div></div>
       </div>`;
@@ -51,6 +51,8 @@
     byId("biCustomAddFilter").onclick=()=>{if(state.filters.length>=6)return status("Limite de seis filtros.",true);state.filters.push({field:Object.keys(SOURCES[state.source].dimensions)[0],operator:"eq",value:""});renderFilters();};
     byId("biCustomLimit").onchange=e=>{state.limit=Number(e.target.value);};
     byId("biCustomPreview").onclick=preview;
+    byId("biCustomFullQuery").onclick=runCompleteAnalysis;
+    byId("biCustomCancelQuery").onclick=()=>{state.previewSeq++;setQueryRunning(false);status("Consulta interrompida.");};
     byId("biCustomExport").onclick=exportPreview;
     const navNew=byId("customPanelSidebarNew"),navList=byId("customPanelSidebarList"),mobile=byId("mobileCustomPanelButton");
     if(navNew)navNew.onclick=()=>show("new");
@@ -157,20 +159,76 @@
     status("");
   }
   function destroyChart(){if(state.chartInstance){state.chartInstance.destroy();state.chartInstance=null;}}
+  function setQueryRunning(active){
+    state.fullQueryRunning=active;
+    const run=byId("biCustomFullQuery"),cancel=byId("biCustomCancelQuery");
+    if(run)run.disabled=active;
+    if(cancel)cancel.hidden=!active;
+  }
+  function mergeAggregate(target,part){
+    target.sum+=Number(part.sum||0);target.count+=Number(part.count||0);
+    if(part.min!==null&&Number.isFinite(Number(part.min)))
+      target.min=target.min===null?part.min:Math.min(Number(target.min),Number(part.min));
+    if(part.max!==null&&Number.isFinite(Number(part.max)))
+      target.max=target.max===null?part.max:Math.max(Number(target.max),Number(part.max));
+  }
+  function aggregateValue(group,aggregation){
+    return !group.count?0:aggregation==="count"?group.count:aggregation==="avg"?group.sum/group.count:aggregation==="min"?group.min:aggregation==="max"?group.max:group.sum;
+  }
+  async function runCompleteAnalysis(){
+    const scope=context().tenant+":"+context().system,config=cfg(),fingerprint=JSON.stringify(config);
+    const seq=++state.previewSeq,groups=new Map(),total={sum:0,count:0,min:null,max:null};
+    let cursor=null,scanned=0,loaded=0,last=null;
+    setQueryRunning(true);status("Consultando blocos armazenados no cache...");
+    try{
+      do{
+        const result=await request("/api/custom-panels/query","POST",{...config,cursor});
+        if(seq!==state.previewSeq||scope!==context().tenant+":"+context().system||fingerprint!==JSON.stringify(cfg()))return;
+        for(const group of result.groups||[]){
+          let existing=groups.get(group.label);
+          if(!existing){
+            if(groups.size>=10000)throw Error("Muitas categorias para esta análise. Adicione filtros mais específicos.");
+            existing={label:group.label,sum:0,count:0,min:null,max:null};groups.set(group.label,existing);
+          }
+          mergeAggregate(existing,group);
+        }
+        mergeAggregate(total,result.total||{});
+        scanned+=result.scanned||0;loaded+=result.loaded||0;
+        cursor=result.cursor||null;last=result;
+        status("Analisadas "+(result.pagesProcessed||0)+" de "+(result.snapshotPages||0)+" páginas · "+scanned.toLocaleString("pt-BR")+" registros lidos.");
+      }while(cursor);
+      if(!last)return;
+      const rows=[...groups.values()].map(g=>({label:g.label,value:aggregateValue(g,config.aggregation)}))
+        .sort((a,b)=>b.value-a.value).slice(0,config.limit);
+      renderResult({rows,scanned,loaded,totalValue:aggregateValue(total,config.aggregation),
+        updatedAt:last.updatedAt,partial:!last.sourceComplete},"full");
+    }catch(error){
+      if(seq===state.previewSeq)status(error.message,true);
+    }finally{
+      if(seq===state.previewSeq)setQueryRunning(false);
+    }
+  }
   async function preview(){
     const scope=context().tenant+":"+context().system;
     const seq=++state.previewSeq;
     try{
-      status("Consultando cache...");
-      const result=await request("/api/custom-panels/preview","POST",cfg());
-      if(scope!==context().tenant+":"+context().system||seq!==state.previewSeq)return;
-      const rows=result.rows||[];state.previewRows=rows;state.previewPartial=Boolean(result.partial);destroyChart();
+      setQueryRunning(false);
+      status("Consultando prévia de até 12 páginas...");
+      const config=cfg(),fingerprint=JSON.stringify(config);
+      const result=await request("/api/custom-panels/preview","POST",config);
+      if(scope!==context().tenant+":"+context().system||seq!==state.previewSeq||fingerprint!==JSON.stringify(cfg()))return;
+      renderResult(result,"preview");
+      status(result.partial?"Prévia parcial: use 'Analisar todos os dados carregados' para agregar as demais páginas.":"Prévia pronta.");
+    }catch(e){if(seq===state.previewSeq)status(e.message,true);}
+  }
+  function renderResult(result,mode="preview"){
+      const rows=result.rows||[];state.previewRows=rows;state.previewPartial=Boolean(result.partial);state.previewKind=mode;destroyChart();
       byId("biCustomList").hidden=true;byId("biCustomTable").innerHTML="";byId("biCustomDrill").hidden=true;
       const wrap=byId("biCustomChartWrap");wrap.hidden=state.chart==="table";
-      byId("biCustomInfo").textContent=(result.partial?"PRÉVIA PARCIAL · ":"")+(result.scanned||0)+" registros lidos · "+(result.loaded||0)+" considerados · "+(result.updatedAt||"cache");
+      byId("biCustomInfo").textContent=(mode==="full"?"ANÁLISE COMPLETA":"PRÉVIA")+(result.partial?" · DADOS PARCIAIS":"") +" · "+(result.scanned||0)+" registros lidos · "+(result.loaded||0)+" considerados · "+(result.updatedAt||"cache");
       if(!rows.length){
         wrap.hidden=true;
-        byId("biCustomTable").innerHTML='<p class="bi-custom-empty">Nenhum registro encontrado para os filtros selecionados nesta prévia'+(result.partial?' parcial':'')+'.</p>';
+        byId("biCustomTable").innerHTML='<p class="bi-custom-empty">Nenhum registro encontrado para os filtros selecionados nesta análise'+(result.partial?' parcial':'')+'.</p>';
         status(result.partial?"Dados ainda em atualização; a prévia pode estar incompleta.":"Não foram encontrados registros para a configuração selecionada.");
         return;
       }
@@ -182,17 +240,14 @@
         const type=state.chart==="horizontalBar"?"bar":state.chart;
         state.chartInstance=new Chart(byId("biCustomCanvas"),{type,data:{labels:rows.map(r=>r.label),datasets:[{label:state.name,data:rows.map(r=>r.value),backgroundColor:["#1673b8","#3c92d1","#68a7d6","#9bbdd9","#b1c9de"],borderColor:"#1673b8",borderWidth:1}]},options:{responsive:true,indexAxis:state.chart==="horizontalBar"?"y":"x",maintainAspectRatio:false,onClick:(_event,elements)=>{const item=elements?.[0];if(item)drillInto(rows[item.index]?.label);}}});
       }
-      status(result.partial?"Prévia baseada em parte dos dados carregados.":"Prévia pronta.");
-    }catch(e){status(e.message,true);}
   }
-
 
   function exportPreview(){
     if(!state.previewRows.length){status("Atualize a prévia antes de exportar.",true);return;}
     const csv=[["Categoria","Valor"],...state.previewRows.map(r=>[r.label,r.value])].map(row=>row.map(value=>'"'+String(value??"").replace(/"/g,'""')+'"').join(";")).join("\r\n");
     const blob=new Blob([String.fromCharCode(0xFEFF)+csv],{type:"text/csv;charset=utf-8"});
     const url=URL.createObjectURL(blob);const anchor=document.createElement("a");anchor.href=url;
-    anchor.download="bi-vella-previa"+(state.previewPartial?"-parcial":"")+".csv";anchor.click();
+    anchor.download="bi-vella-"+(state.previewKind==="full"?"analise":"previa")+"-top"+state.limit+(state.previewPartial?"-parcial":"")+".csv";anchor.click();
     setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
   async function drillInto(category){
