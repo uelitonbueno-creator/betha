@@ -7,7 +7,7 @@
     "bi:imoveis": {label:"Imóveis",system:"tributos",dimensions:{bairro:"Bairro",zona:"Zona",situacao:"Situação"},measures:{count:"Quantidade"}},
     "bi:parcelamentos": {label:"Parcelamentos",system:"tributos",dimensions:{situacao:"Situação",ano:"Exercício"},measures:{count:"Quantidade"}}
   };
-  const state={id:null,source:"bi:debitos",chart:"bar",dimension:"bairro",measure:"saldo",aggregation:"sum",filterField:"",filterValue:"",filters:[],limit:20,name:"Débitos por bairro",panels:[],chartInstance:null,loading:false,previewRows:[],previewPartial:false,previewSeq:0,previewKind:"preview",fullQueryRunning:false,previewSignature:""};
+  const state={id:null,updatedAt:null,source:"bi:debitos",chart:"bar",dimension:"bairro",measure:"saldo",aggregation:"sum",filterField:"",filterValue:"",filters:[],limit:20,name:"Débitos por bairro",panels:[],chartInstance:null,loading:false,previewRows:[],previewPartial:false,previewSeq:0,previewKind:"preview",fullQueryRunning:false,previewSignature:""};
   const byId=id=>document.getElementById(id);
   let authorizedSources=new Set(), catalogScope="",sidebarScope="";
   const safe=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -16,7 +16,7 @@
   async function request(path,method="GET",payload){
     const {tenant}=context();if(!tenant)throw Error("Selecione uma entidade antes de criar o painel.");
     const r=await fetch(apiUrl(path),{method,credentials:"include",headers:{"Content-Type":"application/json","X-Tenant-Id":tenant},body:payload===undefined?undefined:JSON.stringify(payload)});
-    const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(({INITIAL_LOAD_REQUIRED:"Realize a carga inicial da fonte.",CUSTOM_PANEL_SOURCE_NOT_LOADED:"A fonte ainda não possui dados carregados.",CUSTOM_PANEL_D1_NOT_CONFIGURED:"A persistência D1 ainda não está configurada.",CUSTOM_PANEL_SOURCE_INVALID:"Fonte não autorizada para este sistema.",DATA_RESOURCE_PERMISSION_DENIED:"Você não tem permissão para acessar esta fonte."})[data.error]||data.error||"Não foi possível executar a operação.");return data;
+    const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(({INITIAL_LOAD_REQUIRED:"Realize a carga inicial da fonte.",CUSTOM_PANEL_SOURCE_NOT_LOADED:"A fonte ainda não possui dados carregados.",CUSTOM_PANEL_D1_NOT_CONFIGURED:"A persistência D1 ainda não está configurada.",CUSTOM_PANEL_SOURCE_INVALID:"Fonte não autorizada para este sistema.",CUSTOM_PANEL_EDIT_CONFLICT:"Este painel foi alterado em outra sessão. Reabra-o antes de salvar.",CUSTOM_PANEL_SYSTEM_CHANGE_DENIED:"Não é permitido mudar o sistema de um painel existente. Duplique-o para criar outro.",DATA_RESOURCE_PERMISSION_DENIED:"Você não tem permissão para acessar esta fonte."})[data.error]||data.error||"Não foi possível executar a operação.");return data;
   }
   const option=(value,label,selected)=>'<option value="'+safe(value)+'"'+(String(value)===String(selected)?" selected":"")+">"+safe(label)+"</option>";
   const options=(map,selected)=>Object.entries(map).map(([k,v])=>option(k,v,selected)).join("");
@@ -60,7 +60,7 @@
     if(navNew)navNew.onclick=()=>show("new");
     if(navList)navList.onclick=()=>show("list");
     if(mobile)mobile.onclick=()=>show("list");
-    byId("biCustomForm").onsubmit=async e=>{e.preventDefault();const scope=context().tenant+":"+context().system;try{state.name=byId("biCustomName").value;const result=await request(state.id?"/api/custom-panels/"+encodeURIComponent(state.id):"/api/custom-panels",state.id?"PUT":"POST",cfg());if(scope!==context().tenant+":"+context().system)return;state.id=result.panel.id;history.replaceState(null,"",location.pathname+location.search+"#painel="+encodeURIComponent(state.id));status("Painel salvo. O endereço desta página permite reabrir a análise.");await loadSidebar(true);}catch(e){status(e.message,true);}};
+    byId("biCustomForm").onsubmit=async e=>{e.preventDefault();const scope=context().tenant+":"+context().system;try{state.name=byId("biCustomName").value;const result=await request(state.id?"/api/custom-panels/"+encodeURIComponent(state.id):"/api/custom-panels",state.id?"PUT":"POST",{...cfg(),...(state.id?{updated_at:state.updatedAt}:{})});if(scope!==context().tenant+":"+context().system)return;state.id=result.panel.id;state.updatedAt=result.panel.updated_at;history.replaceState(null,"",location.pathname+location.search+"#painel="+encodeURIComponent(state.id));status("Painel salvo. O endereço desta página permite reabrir a análise.");await loadSidebar(true);}catch(e){status(e.message,true);}};
   }
   function status(message,error=false){const el=byId("biCustomStatus");el.textContent=message;el.classList.toggle("error",error);}
 
@@ -95,7 +95,7 @@
     catalogScope=scope;
   }
   function resetDraft(){
-    state.id=null;state.name="Novo painel";state.filters=[];state.limit=20;
+    state.id=null;state.updatedAt=null;state.name="Novo painel";state.filters=[];state.limit=20;
     state.chart="bar";state.aggregation="sum";
     const first=[...authorizedSources][0]||"";
     state.source=first;
@@ -295,7 +295,7 @@
   async function loadList(){
     const scope=context().tenant+":"+context().system;
     try{
-      const response=await request("/api/custom-panels");
+      const response=await request("/api/custom-panels?system="+encodeURIComponent(context().system));
       if(scope!==context().tenant+":"+context().system)return;
       const box=byId("biCustomList");box.hidden=false;box.innerHTML="<strong>Meus painéis</strong>"+(response.panels||[]).map(p=>'<article><span>'+safe(p.name)+'</span><button type="button" data-edit="'+safe(p.id)+'">Editar</button><button type="button" data-link="'+safe(p.id)+'">Copiar link</button><button type="button" data-dup="'+safe(p.id)+'">Duplicar</button><button type="button" data-del="'+safe(p.id)+'">Excluir</button></article>').join("");
       box.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>openPanel(response.panels.find(p=>p.id===b.dataset.edit)));
@@ -308,7 +308,7 @@
   function openPanel(panel,duplicate=false){
     if(!panel)return;
     if(!authorizedSources.has(panel.source)){status("A fonte deste painel não está carregada ou não está autorizada para a entidade atual.",true);return;}
-    Object.assign(state,{id:duplicate?null:panel.id,name:duplicate?panel.name+" (cópia)":panel.name,source:panel.source,dimension:panel.dimension,measure:panel.measure,aggregation:panel.aggregation,chart:panel.chart,filters:Array.isArray(panel.filters)?panel.filters.map(f=>({...f})):[],limit:panel.limit||20});
+    Object.assign(state,{id:duplicate?null:panel.id,updatedAt:duplicate?null:panel.updated_at,name:duplicate?panel.name+" (cópia)":panel.name,source:panel.source,dimension:panel.dimension,measure:panel.measure,aggregation:panel.aggregation,chart:panel.chart,filters:Array.isArray(panel.filters)?panel.filters.map(f=>({...f})):[],limit:panel.limit||20});
     renderFields();byId("biCustomList").hidden=true;if(!duplicate)history.replaceState(null,"",location.pathname+location.search+"#painel="+encodeURIComponent(panel.id));preview();
   }
   async function openSavedFromUrl(){
@@ -341,7 +341,7 @@
         byId("customPanelSidebarItems")?.replaceChildren();
         byId("biCustomList")?.replaceChildren();
         if(byId("biCustomRoot"))byId("biCustomRoot").hidden=true;
-        state.id=null;state.previewRows=[];state.previewSeq++;destroyChart();
+        state.id=null;state.updatedAt=null;state.previewRows=[];state.previewSeq++;destroyChart();
       }
       if(byId("customPanelSidebar"))byId("customPanelSidebar").hidden=true;
       if(byId("mobileCustomPanelButton"))byId("mobileCustomPanelButton").hidden=true;
