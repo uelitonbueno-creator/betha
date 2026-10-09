@@ -6266,6 +6266,127 @@ async function ensureMultiSystemLoadSchema(env){
   await env.AUTH_DB.prepare(
     "CREATE INDEX IF NOT EXISTS idx_bi_multisystem_loads_status ON bi_multisystem_loads (tenant_id,system,status)"
   ).run();
+  await env.AUTH_DB.prepare(
+    "CREATE TABLE IF NOT EXISTS bi_multisystem_summaries (tenant_id TEXT NOT NULL, system TEXT NOT NULL, resource TEXT NOT NULL, summary_json TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (tenant_id,system,resource))"
+  ).run();
+}
+
+function multiSystemSimpleValue(value){
+  if(value===null||value===undefined)return null;
+  if(typeof value==="string"||typeof value==="number"||typeof value==="boolean")return value;
+  if(value&&typeof value==="object"&&!Array.isArray(value)){
+    for(const key of ["descricao","nome","numero","codigo","id"]){
+      const nested=value[key];
+      if(nested!==null&&nested!==undefined&&nested!=="")return nested;
+    }
+  }
+  return null;
+}
+
+function multiSystemMapAdd(target,key,amount=1,maxKeys=160){
+  const label=String(key??"").trim()||"Não informado";
+  if(!Object.prototype.hasOwnProperty.call(target,label)&&Object.keys(target).length>=maxKeys)return;
+  target[label]=(Number(target[label])||0)+(Number(amount)||0);
+}
+
+function multiSystemMonthKey(value){
+  if(!value)return null;
+  const text=String(value);
+  const direct=text.match(/^(\d{4})-(\d{2})/);
+  if(direct)return direct[1]+"-"+direct[2];
+  const br=text.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if(br)return br[3]+"-"+br[2];
+  const date=new Date(text);
+  if(Number.isNaN(date.getTime()))return null;
+  return date.getFullYear()+"-"+String(date.getMonth()+1).padStart(2,"0");
+}
+
+function emptyMultiSystemSummary(system,resource){
+  return {
+    version:1,
+    system,
+    resource,
+    lastPage:-1,
+    count:0,
+    totalValue:0,
+    monthly:{},
+    groups:{},
+    secondaryGroups:{},
+    updatedAt:null
+  };
+}
+
+async function updateMultiSystemSummary(env,tenant,system,source,pageNo,rows){
+  if(!env.AUTH_DB||!Array.isArray(rows)||!rows.length)return;
+  const current=await env.AUTH_DB.prepare(
+    "SELECT summary_json FROM bi_multisystem_summaries WHERE tenant_id=?1 AND system=?2 AND resource=?3 LIMIT 1"
+  ).bind(String(tenant.id),system,source.resource).first();
+
+  let summary=emptyMultiSystemSummary(system,source.resource);
+  try{
+    const parsed=JSON.parse(String(current?.summary_json||"null"));
+    if(parsed&&typeof parsed==="object")summary={...summary,...parsed};
+  }catch{}
+
+  const numericPage=Math.max(0,Number(pageNo)||0);
+  if(Number(summary.lastPage)>=numericPage)return;
+
+  for(const row of rows){
+    if(!row||typeof row!=="object")continue;
+    summary.count=(Number(summary.count)||0)+1;
+
+    if(system==="contabil"&&source.resource==="empenhos"){
+      const value=Number(multiSystemSimpleValue(row.valor));
+      if(Number.isFinite(value))summary.totalValue=(Number(summary.totalValue)||0)+value;
+      const month=multiSystemMonthKey(multiSystemSimpleValue(row.data));
+      if(month)multiSystemMapAdd(summary.monthly,month,Number.isFinite(value)?value:0,180);
+      const creditor=multiSystemSimpleValue(row.credor);
+      if(creditor!==null)multiSystemMapAdd(summary.groups,creditor,Number.isFinite(value)?value:0,160);
+    }else if(system==="compras"&&source.resource==="processos-administrativos"){
+      const situation=multiSystemSimpleValue(row.situacao);
+      const hiring=multiSystemSimpleValue(row.formaContratacao);
+      const object=multiSystemSimpleValue(row.objeto);
+      if(situation!==null)multiSystemMapAdd(summary.groups,situation,1,80);
+      if(hiring!==null)multiSystemMapAdd(summary.secondaryGroups,hiring,1,80);
+      if(object!==null)multiSystemMapAdd(summary.monthly,object,1,120);
+    }else if(system==="compras"&&source.resource==="fornecedores"){
+      const name=multiSystemSimpleValue(row.nome??row.razaoSocial??row.nomeFantasia);
+      if(name!==null)multiSystemMapAdd(summary.groups,name,1,160);
+    }
+  }
+
+  summary.lastPage=numericPage;
+  summary.updatedAt=new Date().toISOString();
+  await env.AUTH_DB.prepare(
+    "INSERT INTO bi_multisystem_summaries (tenant_id,system,resource,summary_json,updated_at) VALUES (?1,?2,?3,?4,?5) ON CONFLICT(tenant_id,system,resource) DO UPDATE SET summary_json=excluded.summary_json,updated_at=excluded.updated_at"
+  ).bind(String(tenant.id),system,source.resource,JSON.stringify(summary),summary.updatedAt).run();
+}
+
+async function resetMultiSystemSummary(env,tenantId,system,resource){
+  if(!env.AUTH_DB)return;
+  await env.AUTH_DB.prepare(
+    "DELETE FROM bi_multisystem_summaries WHERE tenant_id=?1 AND system=?2 AND resource=?3"
+  ).bind(String(tenantId),system,resource).run();
+}
+
+async function getMultiSystemSummary(env,tenantId,system,resource){
+  if(!env.AUTH_DB)return null;
+  const row=await env.AUTH_DB.prepare(
+    "SELECT s.summary_json,s.updated_at,l.status,l.loaded,l.pages,l.http_status,l.error,l.fields_json FROM bi_multisystem_summaries s LEFT JOIN bi_multisystem_loads l ON l.tenant_id=s.tenant_id AND l.system=s.system AND l.resource=s.resource WHERE s.tenant_id=?1 AND s.system=?2 AND s.resource=?3 LIMIT 1"
+  ).bind(String(tenantId),system,resource).first();
+  if(!row)return null;
+  try{
+    const summary=JSON.parse(String(row.summary_json||"null"));
+    return summary&&typeof summary==="object"?{
+      ...summary,
+      loadStatus:row.status||null,
+      loaded:Number(row.loaded)||0,
+      pages:Number(row.pages)||0,
+      httpStatus:row.http_status||null,
+      error:row.error||null,
+      fieldsProfile:parseMultiSystemFieldProfile(row.fields_json)
+    }:null;
+  }catch{return null;}
 }
 
 function multiSystemResourcePrefix(tenantId,system,resource){
@@ -6428,7 +6549,9 @@ async function loadMultiSystemIncrementalResource(env,tenant,system,source,state
     objectKey:complete
       ? multiSystemResourcePrefix(tenant.id,system,source.resource)
       : (pageObjectKey||state?.object_key||multiSystemResourcePrefix(tenant.id,system,source.resource)),
-    profile:merged
+    profile:merged,
+    pageNo:pages,
+    rows
   };
 }
 
@@ -6474,6 +6597,8 @@ async function advanceMultiSystem(env,tenant,system,configUpdatedAt){
       const hasUsefulFields=profile.selected.some(field=>field!=="id");
       const shouldRestart=discoveryFinished&&hasUsefulFields&&Math.max(0,Number(previous?.loaded)||0)>0;
 
+      if(shouldRestart)await resetMultiSystemSummary(env,tenant.id,system,source.resource);
+
       await env.AUTH_DB.prepare(
         "INSERT INTO bi_multisystem_loads (tenant_id,system,resource,status,loaded,pages,http_status,error,object_key,fields_json,updated_at) VALUES (?1,?2,?3,?4,?5,?6,200,NULL,?7,?8,?9) ON CONFLICT(tenant_id,system,resource) DO UPDATE SET status=excluded.status,loaded=excluded.loaded,pages=excluded.pages,http_status=excluded.http_status,error=NULL,object_key=excluded.object_key,fields_json=excluded.fields_json,updated_at=excluded.updated_at"
       ).bind(
@@ -6515,6 +6640,7 @@ async function advanceMultiSystem(env,tenant,system,configUpdatedAt){
   try{
     const profile=parseMultiSystemFieldProfile(previous?.fields_json);
     const result=await loadMultiSystemIncrementalResource(env,tenant,system,source,previous,profile);
+    await updateMultiSystemSummary(env,tenant,system,source,result.pageNo,result.rows);
     await env.AUTH_DB.prepare(
       "UPDATE bi_multisystem_loads SET status=?1,loaded=?2,pages=?3,http_status=?4,error=NULL,object_key=?5,fields_json=?6,updated_at=?7 WHERE tenant_id=?8 AND system=?9 AND resource=?10"
     ).bind(
