@@ -90,5 +90,11 @@ const def={title:"Test chart",sourceId:"cache:contabil:empenhos",type:"bar",dime
  assert.equal((await call("DELETE","municipio-b","alice","/api/panel-drafts/"+id+"?system=contabil")).status,404);
  assert.equal((await call("DELETE","municipio-a","alice","/api/panel-drafts/"+id+"?system=contabil")).status,200);
  assert.equal((await call("GET","municipio-a","alice",url)).body.items.length,1);
+ const noView=await call("POST","municipio-a","alice","/api/panel-drafts/reorder?system=contabil",{viewId:"contabil-empenhos",ids:[second,second]});
+ assert.equal(noView.status,400,"Duplicate panel ids must be rejected");
+ const unknown=await call("POST","municipio-a","alice","/api/panel-drafts/reorder?system=contabil",{viewId:"contabil-empenhos",ids:["00000000-1111-4111-8111-111111111999"]});
+ assert.equal(unknown.status,409,"Reordering unknown drafts must be rejected");
+ assert.equal((await call("GET","municipio-a","bob",url)).body.items.length,0,"No cross-user leakage");
+ assert.equal((await call("GET","municipio-b","alice",url)).body.items.length,0,"No cross-tenant leakage");
  console.log("Panel D1 mock CRUD, isolation and reorder passed");
 })().catch(error=>{console.error(error);process.exitCode=1;});
