@@ -44,7 +44,7 @@ actions.append(build,download,save,drafts,load,remove);form.append(actions,statu
 let catalog=[],context=null,current=null,selectedDraftId="";
 function remote(){
   const tenant=new URLSearchParams(location.search).get("tenant")||new URLSearchParams(location.search).get("entidadeId")||"";
-  const base=String(window.BI_CONFIG?.BACKEND_URL||"").replace(/\\/$/,"");
+  const base=String(window.BI_CONFIG?.BACKEND_URL||"").replace(/\/$/,"");
   if(!tenant||!base)throw new Error("Contexto de entidade ou backend indisponível.");
   return {endpoint:base+"/api/panel-drafts?system="+encodeURIComponent(context.currentSystemId),tenant};
 }
