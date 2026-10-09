@@ -18,8 +18,9 @@ const panel=make("div",{className:"bi-builder-card"});
 const header=make("header",{className:"bi-builder-head"});
 header.append(make("h2",{},"Criar painel personalizado"));
 const close=make("button",{type:"button","aria-label":"Fechar construtor"},"✕");header.append(close);panel.append(header);
-const note=make("p",{},"Editor de rascunho. As definições não são publicadas nem aplicadas a dados reais sem validação no backend.");
-panel.append(note);
+const note=make("p",{},"Construtor de painéis. Fontes demonstrativas são identificadas; somente fontes autorizadas podem consultar dados reais.");
+const sourceStatus=make("div",{className:"bi-builder-source-status",role:"status","aria-live":"polite"});
+panel.append(note,sourceStatus);
 const form=make("form",{className:"bi-builder-form"});
 const title=make("input",{name:"title",maxlength:"120",required:"",placeholder:"Ex.: Receita por mês"});
 const source=make("select",{name:"sourceId",required:""});
@@ -81,10 +82,21 @@ if(!usable)status.textContent="Esta fonte ainda não possui dimensões disponív
 async function open(){
 context=window.BIVellaSearchContext.getState();
 options(placement,[["","Não adicionar ao painel"],...(context.allowedViews||[]).map(v=>[v,v])]);
-catalog=[];if(window.BIPanelSampleBuilder?.catalog(context.currentSystemId).length){catalog=window.BIPanelSampleBuilder.catalog(context.currentSystemId);status.textContent="AMOSTRA LOCAL — dados demonstrativos, sem consulta à Betha.";}
+catalog=[];sourceStatus.textContent="";
+if(window.BIPanelSampleBuilder?.catalog(context.currentSystemId).length){
+  catalog=window.BIPanelSampleBuilder.catalog(context.currentSystemId);
+  status.textContent="AMOSTRA LOCAL — dados demonstrativos, sem consulta à Betha.";
+  try{
+    const sourceReport=await requestBuilder("GET","source-status");
+    const available=(sourceReport.resources||[]).filter(x=>x.records>0);
+    sourceStatus.textContent=available.length
+      ? "Cargas reais identificadas: "+available.map(x=>x.resource+" ("+x.records+" registros)").join("; ")+". Execução personalizada real ainda não habilitada."
+      : "Nenhuma carga real disponível para consulta personalizada. Editor em modo AMOSTRA LOCAL.";
+  }catch(e){sourceStatus.textContent="Estado das cargas reais indisponível. Editor em modo AMOSTRA LOCAL.";}
+}
 else try{const response=await requestBuilder("GET","catalog");catalog=(response.sources||[]).filter(s=>s.fields.some(f=>f.dimension)&&s.fields.some(f=>f.measure));}catch(err){status.textContent="Catálogo não disponível: "+err.message;}
 options(source,catalog.map(s=>[s.id,s.id]));
-title.value="";type.value="bar";agg.value="sum";status.textContent="";output.textContent="";clearPreview();current=null;download.disabled=true;preview.disabled=true;
+title.value="";type.value="bar";agg.value="sum";if(!catalog.some(x=>x.mode==="sample"))status.textContent="";output.textContent="";clearPreview();current=null;download.disabled=true;preview.disabled=true;
 fillFields();dialog.hidden=false;dirty=false;selectedDraftId="";selectedSortOrder=0;placement.value="";save.disabled=true;close.focus();refreshDrafts();
 }
 function dismiss(){clearPreview();dialog.hidden=true;trigger.focus();}
