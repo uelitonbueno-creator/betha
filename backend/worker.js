@@ -10436,6 +10436,7 @@ async function handlePanelDrafts(request,env,url){
       if(raw.length>18000)return json(request,env,413,{error:"PANEL_DRAFT_TOO_LARGE"});
       let data;try{data=JSON.parse(raw);}catch{return json(request,env,400,{error:"INVALID_JSON"});}
       const d=validatePanelDraftPayload(data),viewId=viewOf(data),sortOrder=orderOf(data);
+      requirePlacementPermission(viewId);
       await authorizePanelDefinition(env,tenant,auth,system,d);
       const result=await db.prepare("UPDATE bi_panel_drafts SET title=?,definition_json=?,view_id=?,sort_order=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND tenant_id=? AND system_id=? AND owner_id=?").bind(d.title,JSON.stringify(d),viewId,sortOrder,itemMatch[1],tenant.id,system,owner).run();
       return json(request,env,result.meta?.changes?200:404,result.meta?.changes?{id:itemMatch[1],definition:d,viewId,sortOrder}:{error:"NOT_FOUND"});
