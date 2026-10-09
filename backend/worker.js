@@ -9493,7 +9493,7 @@ function customPanelRowMatches(row,filters){
   if(f.operator==="neq")return a!==b;
   if(f.operator==="contains")return a.toLocaleLowerCase("pt-BR").includes(b.toLocaleLowerCase("pt-BR"));
   if(raw==null||a.trim()===""||b.trim()==="")return false;
-  if(/^\\d{4}(?:-\\d{2}){0,2}$/.test(a)&&/^\\d{4}(?:-\\d{2}){0,2}$/.test(b) && f.field.startsWith("pagamento:"))
+  if(/^\d{4}(?:-\d{2}){0,2}$/.test(a)&&/^\d{4}(?:-\d{2}){0,2}$/.test(b) && f.field.startsWith("pagamento:"))
    return f.operator==="gt"?a>b:f.operator==="gte"?a>=b:f.operator==="lt"?a<b:a<=b;
   const x=panelNumber(raw),y=panelNumber(f.value);
   if(!Number.isFinite(x)||!Number.isFinite(y))return false;
