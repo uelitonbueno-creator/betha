@@ -1,4 +1,6 @@
--- Aplicar na base D1 ligada ao Worker como BI_PANEL_DB.
+-- Banco padrão: AUTH_DB (wrangler.jsonc); BI_PANEL_DB opcional se configurado.
+-- A rotina ensurePanelDraftSchema inicializa/atualiza automaticamente o esquema.
+-- Migração manual apenas antes da inicialização automática, em ordem com as seguintes.
 CREATE TABLE IF NOT EXISTS bi_panel_drafts (
  id TEXT PRIMARY KEY,
  tenant_id TEXT NOT NULL,
