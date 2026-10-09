@@ -82,7 +82,7 @@ test("a prévia não precisa inicializar D1 e só usa fonte com permissão", () 
 test("HTML e construtor oferecem entradas de navegação desktop e mobile", () => {
   for(const id of ["customPanelSidebar", "customPanelSidebarItems", "mobileCustomPanelButton"])
     assert.ok(html.includes('id="'+id+'"'));
-  assert.ok(builder.includes('request("/api/custom-panels/catalog")'));
+  assert.ok(builder.includes('request("/api/custom-panels/catalog?system="'));
   assert.ok(builder.includes('async function loadSidebar('));
   assert.ok(builder.includes("authorizedSources.has(id)"));
 });
@@ -92,6 +92,7 @@ test("motor paginado soma blocos sucessivos sem enviar registros brutos", async 
   const runtime={
     panelNumber(value){return value==null||value===""?null:Number(value);},
     normalizePanelRow(row){return row;},
+    customPanelNormalizeRow(row){return row;},
     syncConfig:async()=>({latestJob:"aa000000-0000-0000-0000-000000000000"}),
     syncJob:async()=>({sources:{"bi:debitos":{pages:15,complete:true}},finishedAt:"2026-10-09T15:00:00Z"}),
     syncScope:async()=>"test-scope",
@@ -129,6 +130,7 @@ test("consulta paginada rejeita cursor inválido e não declara carga parcial co
   const runtime={
     panelNumber(value){return value==null?null:Number(value);},
     normalizePanelRow(row){return row;},
+    customPanelNormalizeRow(row){return row;},
     syncConfig:async()=>({latestJob:"bb000000-0000-0000-0000-000000000000"}),
     syncJob:async()=>({sources:{"bi:debitos":{pages:1,complete:completed}}}),
     syncScope:async()=>"scope",
@@ -175,4 +177,58 @@ test("integração preserva cargas multissistema e as rotas de painéis", () => 
   assert.ok(worker.includes("async function customPanelQueryBatch"),"Motor paginado ausente");
   assert.ok(worker.includes('url.pathname.startsWith("/api/custom-panels/")'),"Rota de painéis ausente");
   assert.ok(worker.includes('url.pathname==="/api/custom-panels/query"'),"Consulta agregada ausente");
+});
+
+test("fontes multissistema exigem permissão por painel e não incluem campos pessoais", () => {
+  sandbox.permissionViewsForAccess=access=>access.views||[];
+  const billing={system:"contabil",source:"contabil:empenhos",dimension:"situacao",measure:"count",aggregation:"count"};
+  assert.throws(()=>validate(billing),/DATA_RESOURCE_PERMISSION_DENIED/);
+  const checked=validate(billing,{views:["contabil-empenhos"]});
+  assert.equal(checked.system,"contabil");
+  assert.equal(checked.source,"contabil:empenhos");
+  const unauthorized={system:"folha",source:"folha:matriculas",dimension:"nome",measure:"count",aggregation:"count"};
+  assert.throws(()=>validate(unauthorized,{views:["folha-servidores"]}),/CUSTOM_PANEL_FIELD_INVALID/);
+  const fields=sandbox.CUSTOM_PANEL_MULTISYSTEM||null;
+  assert.ok(worker.includes("customPanelMultiFields(meta,row)"));
+  assert.ok(!worker.includes('dimensions:["nome","cpf"]'));
+});
+
+test("análise R2 respeita o tenant, agrega páginas e reconhece fonte incompleta", async () => {
+  const engineCode=sliceBetween(worker,"function customPanelDimensionValue(","async function handleCustomPanelRequest(");
+  const meta={system:"contabil",resource:"empenhos"};
+  let status="complete",tenantOfObject="municipio-a";
+  const runtime={
+    CUSTOM_PANEL_MULTISYSTEM:{"contabil:empenhos":meta},
+    customPanelMultiSourceRows:async()=>[{resource:"empenhos",status,pages:2,updated_at:"2026-10-09T16:00:00Z"}],
+    customPanelMultiFields:()=>({dimensions:["situacao"],measures:["count","valorEmpenhado"]}),
+    multiSystemPageObjectKey:(tenant,system,resource,page)=>tenant+"/"+system+"/"+resource+"/"+page,
+    customPanelNormalizeRow:row=>row,
+    panelNumber:value=>value===null||value===undefined?null:Number(value),
+    panelDate:value=>new Date(value),
+    json:(_request,_env,httpStatus,body)=>({httpStatus,body}),
+    Error,Number,Map,Object,Math,Date,String,Array
+  };
+  const pages={
+    "municipio-a/contabil/empenhos/0":[{situacao:"Aberto",valorEmpenhado:100},{situacao:"Pago",valorEmpenhado:30}],
+    "municipio-a/contabil/empenhos/1":[{situacao:"Aberto",valorEmpenhado:50}]
+  };
+  const env={AUTH_DB:{},BI_SYNC_RAW:{get:async key=>{
+    const records=pages[key];return records?{json:async()=>({
+      tenantId:tenantOfObject,system:"contabil",resource:"empenhos",rows:records
+    })}:null;
+  }}};
+  vm.createContext(runtime);
+  vm.runInContext(engineCode+"\\nthis.multiQuery=customPanelMultiQueryBatch;",runtime);
+  const cfg={...defaults,system:"contabil",source:"contabil:empenhos",dimension:"situacao",measure:"valorEmpenhado",aggregation:"sum"};
+  const result=await runtime.multiQuery({},env,{id:"municipio-a"},cfg,{},false);
+  assert.equal(result.httpStatus,200);
+  assert.equal(result.body.total.sum,180);
+  assert.equal(result.body.groups.length,2);
+  assert.equal(result.body.cursor,null);
+  assert.equal(result.body.sourceComplete,true);
+  status="running";
+  const partial=await runtime.multiQuery({},env,{id:"municipio-a"},cfg,{},false);
+  assert.equal(partial.body.sourceComplete,false);
+  tenantOfObject="municipio-b";
+  await assert.rejects(runtime.multiQuery({},env,{id:"municipio-a"},cfg,{},false),/CUSTOM_PANEL_CACHE_SCOPE_INVALID/);
 });
