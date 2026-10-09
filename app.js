@@ -10,6 +10,7 @@
   const HOME_VIEW="inicio";
   const DEFAULT_VIEW="visao-geral";
   const ADMIN_VIEWS = new Set(["usuarios-admin","configuracoes-admin"]);
+  const REAL_MULTI_SYSTEM_HOME_VIEWS = new Set(["contabil-visao-geral","compras-visao-geral"]);
   const bethaApp = document.getElementById("bethaApp");
   const authGate = document.getElementById("authGate");
   const tenantGate = document.getElementById("tenantGate");
@@ -436,7 +437,9 @@
     const summary=document.getElementById("sourceSummary");
     if(!summary) return;
 
-    if(def.localSample||payload?.meta?.sampleMode){
+    const realMode=payload?.meta?.realData===true;
+    const sampleMode=payload?.meta?.sampleMode===true || (!realMode&&Boolean(def.localSample));
+    if(sampleMode){
       const meta=payload?.meta||{};
       const activeSystem=currentSystemInfo();
       const rows=Number(Object.values(meta.sourceRows||{})[0]||0);
@@ -453,6 +456,21 @@
         generated?'<span class="source-chip"><strong>GERADA</strong> · '+escapeHtml(generated)+'</span>':"",
         '<span class="source-chip source-chip-zero-api"><strong>API</strong> · 0 chamadas Cloudflare</span>'
       ].filter(Boolean).join("");
+      return;
+    }
+
+    if(realMode){
+      const activeSystem=currentSystemInfo();
+      const realSources=Array.isArray(payload?.meta?.realSources)?payload.meta.realSources:[];
+      if(title) title.textContent="Fontes reais desta visão";
+      if(description) description.textContent="Dados carregados das APIs Betha, armazenados no BI Vella e consolidados em segundo plano.";
+      summary.innerHTML=[
+        '<span class="source-chip"><strong>BETHA</strong> · '+escapeHtml(activeSystem?.name||currentSystemId)+'</span>',
+        ...realSources.map(item=>
+          '<span class="source-chip"><strong>'+escapeHtml(item.resource||"Fonte")+'</strong> · '+
+          Number(item.loaded||0).toLocaleString("pt-BR")+' registros · '+escapeHtml(String(item.status||"parcial"))+'</span>'
+        )
+      ].join("");
       return;
     }
 
@@ -1209,7 +1227,8 @@
         toggleKpiFavorite(view,kpi);
       });
       el.addEventListener("click", () => {
-        if(def.localSample){openLocalSampleKpiDetail(kpi);return;}
+        if(def.localSample&&currentPayload?.meta?.sampleMode===true){openLocalSampleKpiDetail(kpi);return;}
+        if(def.localSample&&currentPayload?.meta?.realData===true){showToast("Detalhamento dos registros reais será liberado conforme as fontes analíticas forem consolidadas.");return;}
         if(def.apiSource){openChartDetail(displayChartDefinition(def.charts[0]));return;}
         const candidates=dashboardCharts(view).filter(chart=>chart.source===kpi.source);
         const target=candidates.find(chart=>chart.id===kpi.chart)||candidates.find(chart=>chart.dimension===kpi.field)||candidates.find(chart=>(chart.measures||[]).includes(kpi.field))||candidates.find(chart=>(chart.measures||[]).includes("count"));
@@ -2330,10 +2349,48 @@
     syncVisibility();
   }
 
+  function syncDashboardDataMode(payload,view=currentView) {
+    const def=dashboards[view]||{};
+    const realMode=payload?.meta?.realData===true;
+    const sampleMode=payload?.meta?.sampleMode===true || (!realMode&&Boolean(def.localSample));
+
+    const badge=document.getElementById("sampleModeBadge");
+    if(badge){
+      badge.hidden=!sampleMode;
+      const text=badge.querySelector("span");
+      if(text&&sampleMode) text.textContent="Amostra de teste · fallback local";
+    }
+
+    const coverage=document.getElementById("integrationCoverage");
+    if(coverage){
+      coverage.classList.toggle("is-sample",sampleMode);
+      const title=coverage.querySelector(".coverage-title strong");
+      const detail=coverage.querySelector(".coverage-title span");
+      if(title) title.textContent=sampleMode?"Cobertura da amostra local":"Cobertura da integração";
+      if(detail) detail.textContent=sampleMode
+        ?"Registros sintéticos usados somente como fallback quando a fonte real ainda não está disponível."
+        : realMode
+          ?"Registros reais já consolidados das APIs Betha. Fontes em andamento são atualizadas pelo cron."
+          :"Registros efetivamente lidos das fontes autorizadas nesta carga.";
+    }
+
+    if(realMode){
+      document.querySelectorAll("#chartGrid .source-badge").forEach(badgeEl=>{
+        badgeEl.textContent="BETHA";
+        badgeEl.classList.remove("sample");
+      });
+      for(const kpi of def.kpis||[]){
+        const meta=document.querySelector('[data-kpi="'+cssEscape(kpi.id)+'"] span');
+        if(meta) meta.textContent="Betha · "+String(kpi.field||"dados reais");
+      }
+    }
+  }
+
   function renderPayload(payload) {
     currentPayload = payload || {};
     setDashboardLoading(false);
     const def = dashboards[currentView];
+    syncDashboardDataMode(payload,currentView);
     populateDashboardFilterOptions(payload);
     renderOverviewAttention(payload);
     const kpis = payload.kpis || {};
@@ -3694,8 +3751,58 @@
     }
   }
 
+  async function loadRealMultiSystemDashboard(view) {
+    const generation=++dashboardLoadGeneration;
+    const requestedTenant=tenantId;
+    const requestedSystem=currentSystemId;
+    const active=()=>generation===dashboardLoadGeneration&&currentView===view&&tenantId===requestedTenant&&currentSystemId===requestedSystem;
+
+    setRefreshBusy(true);
+    setDashboardLoading(true);
+    setStatus("waiting","Carregando dados reais da Betha...");
+
+    let fallback=false;
+    try{
+      const params=new URLSearchParams({
+        periodo:document.getElementById("periodo")?.value||"ano",
+        exercicio:document.getElementById("exercicio")?.value||String(currentYear)
+      });
+      for(const [key,value] of Object.entries(currentDashboardFilters(view)))params.set(key,value);
+
+      const payload=await api("/api/dashboard/"+encodeURIComponent(view)+"?"+params.toString(),{timeoutMs:30000});
+      if(!active())return;
+
+      if(payload?.meta?.realData!==true){
+        fallback=true;
+      }else{
+        renderPayload(payload);
+        const audit=payload?.meta?.sourceAudit?.[requestedSystem]||{};
+        const loaded=Number(audit.loaded||0);
+        const complete=audit.complete===true;
+        setLastUpdated(payload?.meta?.updatedAt||payload?.meta?.generatedAt||new Date().toISOString(),"Betha");
+        setStatus(
+          complete?"online":"waiting",
+          "DADOS REAIS · "+loaded.toLocaleString("pt-BR")+" registros processados"+
+          (complete?" · carga concluída":" · carga em andamento")
+        );
+      }
+    }catch(error){
+      if(!active())return;
+      console.warn("Falha ao carregar dados reais do sistema; usando fallback local:",error);
+      fallback=true;
+    }finally{
+      if(active()&&!fallback)setRefreshBusy(false);
+    }
+
+    if(fallback&&active()){
+      setRefreshBusy(false);
+      return loadLocalSampleDashboard(view);
+    }
+  }
+
   async function loadDashboardData(view, options = {}) {
     if(view===HOME_VIEW) view=currentSystemInfo()?.homeView||DEFAULT_VIEW;
+    if(REAL_MULTI_SYSTEM_HOME_VIEWS.has(view)) return loadRealMultiSystemDashboard(view);
     if(dashboards[view]?.localSample) return loadLocalSampleDashboard(view);
     if(dashboards[view]?.apiSource) return loadApiPanelDashboard(view);
     const generation=++dashboardLoadGeneration;
@@ -4245,7 +4352,7 @@
             serie:column.label||column.id||"Valor",
             categoria:row.label??"",
             valor:summaryCellDisplay(row.values?.[index],column.format||"number"),
-            fonte:def.localSample?"AMOSTRA LOCAL":"Painel"
+            fonte:currentPayload?.meta?.sampleMode===true?"AMOSTRA LOCAL":currentPayload?.meta?.realData===true?"BETHA":"Painel"
           });
         });
       }
@@ -4898,7 +5005,8 @@
   }
 
   function openChartDetail(chartDef, selected) {
-    if(dashboards[currentView]?.localSample){openLocalSampleChartDetail(chartDef,selected);return;}
+    if(dashboards[currentView]?.localSample&&currentPayload?.meta?.sampleMode===true){openLocalSampleChartDetail(chartDef,selected);return;}
+    if(dashboards[currentView]?.localSample&&currentPayload?.meta?.realData===true){showToast("Detalhamento dos registros reais será liberado conforme as fontes analíticas forem consolidadas.");return;}
     if(chartDef.apiPanel){openApiPanelDetail(chartDef,selected);return;}
     const data=currentPayload?.charts?.[chartDef.id];
     let selectedHtml="";
