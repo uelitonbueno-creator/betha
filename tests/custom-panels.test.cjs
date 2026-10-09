@@ -145,3 +145,26 @@ test("consulta paginada rejeita cursor inválido e não declara carga parcial co
   const complete=await runtime.queryBatch({},env,{},defaults,{});
   assert.equal(complete.body.sourceComplete,true);
 });
+
+test("agrupamentos de pagamento respeitam mês, dia, ano e ordem cronológica", () => {
+  const timeCode=sliceBetween(worker,"function customPanelDimensionValue(","function customPanelNewAggregate()");
+  const runtime={panelDate:v=>new Date(v),panelNumber:v=>v==null?null:Number(v)};
+  vm.createContext(runtime);
+  vm.runInContext(timeCode+"\nthis.dimension=customPanelDimensionValue;this.matches=customPanelRowMatches;this.sortRows=customPanelSortRows;",runtime);
+  const record={pagamento:"2026-10-09T12:00:00Z"};
+  assert.equal(runtime.dimension(record,"pagamento:mes"),"2026-10");
+  assert.equal(runtime.dimension(record,"pagamento:dia"),"2026-10-09");
+  assert.equal(runtime.dimension(record,"pagamento:ano"),"2026");
+  assert.ok(runtime.matches(record,[{field:"pagamento:mes",operator:"gte",value:"2026-09"}]));
+  assert.equal(runtime.matches(record,[{field:"pagamento:mes",operator:"lt",value:"2026-09"}]),false);
+  const ordered=runtime.sortRows([{label:"2026-03",value:100},{label:"2026-10",value:20},{label:"2026-06",value:40}],"pagamento:mes",2);
+  assert.equal(ordered[0].label,"2026-06");
+  assert.equal(ordered[1].label,"2026-10");
+});
+
+test("débitos e pagamentos aceitam contagem real de registros", () => {
+  assert.ok(sandbox.catalog["bi:debitos"].measures.includes("count"));
+  assert.ok(sandbox.catalog["bi:pagamentos"].measures.includes("count"));
+  assert.equal(validate({measure:"count",aggregation:"count"}).aggregation,"count");
+  assert.throws(()=>validate({measure:"count",aggregation:"sum"}),/CUSTOM_PANEL_AGGREGATION_INVALID/);
+});
