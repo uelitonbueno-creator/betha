@@ -2617,6 +2617,20 @@ async function fetchBethaRows(env,tenant,source,resource,{limit=1000,maxPages=nu
   };
 }
 
+function publicBethaSourceErrorDetail(error) {
+  const code=String(error?.message||"");
+  const status=Number(error?.status)||Number((code.match(/BETHA_HTTP_(\d{3})/)||[])[1])||null;
+  if(status===401) return "Credencial da fonte não autorizada.";
+  if(status===403) return "Integração sem permissão para consultar esta fonte.";
+  if(status===429) return "Limite temporário de requisições atingido; nova tentativa será feita automaticamente.";
+  if(status&&status>=500) return "Falha temporária na fonte Betha; nova tentativa será feita automaticamente.";
+  if(code==="The operation was aborted"||code==="AbortError"||code==="REQUEST_TIMEOUT") {
+    return "A fonte demorou para responder; nova tentativa será feita automaticamente.";
+  }
+  if(code==="SOURCE_PAGE_LIMIT") return "A fonte possui mais páginas do que o limite atual de processamento.";
+  return code ? "Não foi possível consultar esta fonte neste momento." : null;
+}
+
 async function safeBethaRows(env,tenant,source,resource,options={}) {
   if (env.BI_DASHBOARD_LOAD && Object.keys(options).length===0) {
     const load=env.BI_DASHBOARD_LOAD;
@@ -2666,13 +2680,14 @@ async function safeBethaRows(env,tenant,source,resource,options={}) {
     }
   }
 
-  const detail=lastError && lastError.remoteBody
+  const diagnosticDetail=lastError && lastError.remoteBody
     ? (typeof lastError.remoteBody==="string"
         ? lastError.remoteBody.slice(0,240)
         : JSON.stringify(lastError.remoteBody).slice(0,240))
     : null;
+  const detail=publicBethaSourceErrorDetail(lastError);
 
-  console.warn("dashboard source failed",source,resource,lastError && lastError.message,detail);
+  console.warn("dashboard source failed",source,resource,lastError && lastError.message,diagnosticDetail);
 
   return {
     rows:[],
