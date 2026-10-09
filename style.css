@@ -7913,3 +7913,11 @@ bth-app{--menu-bg-color:var(--vella-sidebar)}
 @media(max-width:460px){
   .workspace{padding-top:12px!important}
 }
+
+
+/* BI Vella: remover o recuo herdado da faixa superior legada no desktop. */
+@media(min-width:1101px){
+  .workspace{padding-top:12px!important}
+  .desktop-sidebar{margin-top:-12px!important;top:0!important;height:100dvh!important;border-radius:0 0 12px 0}
+  .bi-product-brand{display:none!important}
+}
