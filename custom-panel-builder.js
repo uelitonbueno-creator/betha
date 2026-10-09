@@ -7,7 +7,7 @@
     "bi:imoveis": {label:"Imóveis",system:"tributos",dimensions:{bairro:"Bairro",zona:"Zona",situacao:"Situação"},measures:{count:"Quantidade"}},
     "bi:parcelamentos": {label:"Parcelamentos",system:"tributos",dimensions:{situacao:"Situação",ano:"Exercício"},measures:{count:"Quantidade"}}
   };
-  const state={id:null,source:"bi:debitos",chart:"bar",dimension:"bairro",measure:"valorSaldo",aggregation:"sum",filterField:"",filterValue:"",filters:[],limit:20,name:"Débitos por bairro",panels:[],chartInstance:null,loading:false,previewRows:[],previewPartial:false};
+  const state={id:null,source:"bi:debitos",chart:"bar",dimension:"bairro",measure:"valorSaldo",aggregation:"sum",filterField:"",filterValue:"",filters:[],limit:20,name:"Débitos por bairro",panels:[],chartInstance:null,loading:false,previewRows:[],previewPartial:false,previewSeq:0};
   const byId=id=>document.getElementById(id);
   const safe=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   function context(){const s=window.BIVellaSearchContext?.getState?.()||{};return {tenant:String(s.tenantId||s.tenant?.id||new URLSearchParams(location.search).get("tenant")||""),system:s.currentSystemId||"tributos"};}
@@ -88,9 +88,12 @@
   }
   function destroyChart(){if(state.chartInstance){state.chartInstance.destroy();state.chartInstance=null;}}
   async function preview(){
+    const scope=context().tenant+":"+context().system;
+    const seq=++state.previewSeq;
     try{
       status("Consultando cache...");
       const result=await request("/api/custom-panels/preview","POST",cfg());
+      if(scope!==context().tenant+":"+context().system||seq!==state.previewSeq)return;
       const rows=result.rows||[];state.previewRows=rows;state.previewPartial=Boolean(result.partial);destroyChart();
       byId("biCustomList").hidden=true;byId("biCustomTable").innerHTML="";byId("biCustomDrill").hidden=true;
       const wrap=byId("biCustomChartWrap");wrap.hidden=state.chart==="table";
@@ -150,7 +153,9 @@
     ensureUi();
     if(!context().tenant)return;
     try {
+      const scope=context().tenant+":"+context().system;
       const result=await request("/api/custom-panels/"+encodeURIComponent(id));
+      if(scope!==context().tenant+":"+context().system||context().system!=="tributos")return;
       byId("biCustomRoot").hidden=false;
       openPanel(result.panel);
     }catch(error){status(error.message,true);}
@@ -159,7 +164,7 @@
   window.addEventListener("hashchange",openSavedFromUrl);
   window.addEventListener("popstate",openSavedFromUrl);
   let lastContext="";
-  const timer=setInterval(()=>{const gate=byId("authGate");const open=byId("biCustomOpen");if(open)open.hidden=Boolean(gate&&!gate.hidden)||!context().tenant||context().system!=="tributos";const scope=context().tenant+":"+context().system;if(scope!==lastContext){lastContext=scope;if(byId("biCustomRoot"))byId("biCustomRoot").hidden=true;state.id=null;state.previewRows=[];destroyChart();if(scope.split(":")[0])openSavedFromUrl();}},1500);
+  const timer=setInterval(()=>{const gate=byId("authGate");const open=byId("biCustomOpen");if(open)open.hidden=Boolean(gate&&!gate.hidden)||!context().tenant||context().system!=="tributos";const scope=context().tenant+":"+context().system;if(scope!==lastContext){lastContext=scope;if(byId("biCustomRoot"))byId("biCustomRoot").hidden=true;state.id=null;state.previewRows=[];state.previewSeq++;destroyChart();if(scope.split(":")[0])openSavedFromUrl();}},1500);
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",ensureUi);else ensureUi();
   window.BIVellaCustomPanels={open:show};
 })();
