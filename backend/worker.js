@@ -9521,11 +9521,13 @@ async function handleCustomPanelRequest(request,env,url){
   const entry=job.sources?.[body.source];
   if(!entry)return json(request,env,409,{error:"CUSTOM_PANEL_SOURCE_NOT_LOADED"});
   const scope=await syncScope(tenant),groups=new Map(),pageCount=Math.min(entry.pages||0,12);
-  let loaded=0;
+  let loaded=0,scanned=0,missingPage=false;
+  const total={sum:0,count:0,min:Infinity,max:-Infinity};
   for(let pageNo=0;pageNo<pageCount;pageNo++){
    const page=await env.BI_SESSIONS.get(scope+":rows:"+jobId+":"+body.source+":"+pageNo,"json");
-   if(!Array.isArray(page))break;
+   if(!Array.isArray(page)){missingPage=true;break;}
    for(let index=0;index<page.length;index++){
+    scanned++;
     const row=normalizePanelRow(page[index],body.source,index);
     if(!body.filters.every(f=>{
       const value=row[f.field];
@@ -9541,6 +9543,7 @@ async function handleCustomPanelRequest(request,env,url){
     if(drill!==null&&label===drill&&drillRows.length<50)drillRows.push({categoria:label,valor:row[body.measure]??null,...Object.fromEntries(body.filters.map(f=>[f.field,row[f.field]??null]))});
     const numeric=body.measure==="count"?1:Number(row[body.measure]);
     if(!Number.isFinite(numeric))continue;
+    total.sum+=numeric;total.count++;total.min=Math.min(total.min,numeric);total.max=Math.max(total.max,numeric);
     let g=groups.get(label);if(!g){g={label,sum:0,count:0,min:Infinity,max:-Infinity};groups.set(label,g);}
     g.sum+=numeric;g.count++;g.min=Math.min(g.min,numeric);g.max=Math.max(g.max,numeric);
     loaded++;
@@ -9548,7 +9551,8 @@ async function handleCustomPanelRequest(request,env,url){
   }
   const values=[...groups.values()].map(g=>({label:g.label,value:body.aggregation==="count"?g.count:body.aggregation==="avg"?g.sum/g.count:body.aggregation==="min"?g.min:body.aggregation==="max"?g.max:g.sum}));
   values.sort((a,b)=>b.value-a.value);
-  return json(request,env,200,{rows:values.slice(0,body.limit),loaded,updatedAt:job.finishedAt||job.startedAt,partial:pageCount<(entry.pages||0)||!entry.complete,source:body.source,drillRows:drill===null?undefined:drillRows,drillCategory:drill});
+  const totalValue=!total.count?0:body.aggregation==="count"?total.count:body.aggregation==="avg"?total.sum/total.count:body.aggregation==="min"?total.min:body.aggregation==="max"?total.max:total.sum;
+  return json(request,env,200,{rows:values.slice(0,body.limit),loaded,scanned,totalValue,updatedAt:job.finishedAt||job.startedAt,partial:missingPage||pageCount<(entry.pages||0)||!entry.complete,source:body.source,drillRows:drill===null?undefined:drillRows,drillCategory:drill});
  }
  return json(request,env,405,{error:"METHOD_NOT_ALLOWED"});
 }
