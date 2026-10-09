@@ -49,5 +49,5 @@ const def={title:"Empenhos por ano",sourceId:"cache:contabil:empenhos",type:"bar
  await scope.authorizePanelDefinition(env,tenant,auth,"contabil",scope.validatePanelDraftPayload({definition:def}));
  await assert.rejects(()=>scope.authorizePanelDefinition(env,tenant,auth,"contabil",{...def,dimension:"cpf",measures:def.measures}),/PANEL_FIELD_NOT_ALLOWED/);
  await assert.rejects(()=>scope.previewCachedPanel(env,tenant,auth,"compras",def),/PANEL_SOURCE_NOT_ALLOWED/);
- assert.equal(scope.validatePanelDraftPayload({definition:{...def,sourceId:"sample:contabil"}}),undefined);
+ assert.throws(()=>scope.validatePanelDraftPayload({definition:{...def,sourceId:"sample:contabil"}}),/INVALID_PANEL_DRAFT/);
 })().then(()=>console.log("Panel cache authorization tests passed")).catch(error=>{console.error(error);process.exitCode=1;});
