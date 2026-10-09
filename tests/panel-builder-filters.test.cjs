@@ -24,6 +24,11 @@ const definition={
  filters:[{field:"status",op:"eq",value:String(first.status)}]
 };
 (async()=>{
+ const suggestions=await api.filterValues("compras","status");
+ assert.equal(suggestions.mode,"sample");
+ assert(suggestions.values.includes(String(first.status)));
+ assert(suggestions.values.length<=40);
+ await assert.rejects(api.filterValues("compras","valorHomologado"),/Campo de filtro não autorizado/);
  const result=await api.preview(definition,"compras");
  const matching=sample.rows.filter(row=>row.status===first.status);
  assert.equal(result.scanned,100);
