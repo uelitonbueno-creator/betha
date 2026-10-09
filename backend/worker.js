@@ -9495,7 +9495,10 @@ async function handleCustomPanelRequest(request,env,url){
   return json(request,env,201,{panel:{...panel,id:newId}});
  }
  if(url.pathname==="/api/custom-panels/preview"&&method==="POST"){
-  const body=validateCustomPanel(await request.json(),auth);
+  const input=await request.json();
+  const body=validateCustomPanel(input,auth);
+  const drill=typeof input.drillCategory==="string"&&input.drillCategory.length<=100?input.drillCategory:null;
+  const drillRows=[];
   if(!env.BI_SESSIONS)throw new Error("SESSION_STORE_NOT_CONFIGURED");
   // Limite de páginas protege a memória do Worker; o resultado informa quando é parcial.
   const config=await syncConfig(env,tenant);
@@ -9514,6 +9517,7 @@ async function handleCustomPanelRequest(request,env,url){
     const row=normalizePanelRow(page[index],body.source,index);
     if(!body.filters.every(f=>String(row[f.field]??"")===String(f.value)))continue;
     const label=String(row[body.dimension]??"Não informado").slice(0,100);
+    if(drill!==null&&label===drill&&drillRows.length<50)drillRows.push({categoria:label,valor:row[body.measure]??null,...Object.fromEntries(body.filters.map(f=>[f.field,row[f.field]??null]))});
     const numeric=body.measure==="count"?1:Number(row[body.measure]);
     if(!Number.isFinite(numeric))continue;
     let g=groups.get(label);if(!g){g={label,sum:0,count:0,min:Infinity,max:-Infinity};groups.set(label,g);}
@@ -9523,7 +9527,7 @@ async function handleCustomPanelRequest(request,env,url){
   }
   const values=[...groups.values()].map(g=>({label:g.label,value:body.aggregation==="count"?g.count:body.aggregation==="avg"?g.sum/g.count:body.aggregation==="min"?g.min:body.aggregation==="max"?g.max:g.sum}));
   values.sort((a,b)=>b.value-a.value);
-  return json(request,env,200,{rows:values.slice(0,body.limit),loaded,updatedAt:job.finishedAt||job.startedAt,partial:pageCount<(entry.pages||0)||!entry.complete,source:body.source});
+  return json(request,env,200,{rows:values.slice(0,body.limit),loaded,updatedAt:job.finishedAt||job.startedAt,partial:pageCount<(entry.pages||0)||!entry.complete,source:body.source,drillRows:drill===null?undefined:drillRows,drillCategory:drill});
  }
  return json(request,env,405,{error:"METHOD_NOT_ALLOWED"});
 }
