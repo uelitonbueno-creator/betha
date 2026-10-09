@@ -17,8 +17,8 @@ function context(){
  const state=window.BIVellaSearchContext?.getState?.();
  if(!state)return null;
  const query=new URLSearchParams(location.search);
- const tenant=query.get("tenant")||query.get("entidadeId")||"";
- const view=query.get("view")||state.homeView;
+ const tenant=state.tenantId||query.get("tenant")||query.get("entidadeId")||"";
+ const view=state.currentView||query.get("view")||state.homeView;
  if(!tenant||!state.allowedViews?.includes(view))return null;
  return {tenant,system:state.currentSystemId,view};
 }
