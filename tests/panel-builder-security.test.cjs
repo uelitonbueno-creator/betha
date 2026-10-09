@@ -74,7 +74,8 @@ const def={title:"Empenhos por ano",sourceId:"cache:contabil:empenhos",type:"bar
  const options=await scope.cachedPanelFilterValues(env,tenant,auth,"contabil",{sourceId:"cache:contabil:empenhos",field:"situacao"});
  assert.deepEqual(Array.from(options.values),["ABERTO","PAGO"]);
  assert.equal(options.partial,true);
- assert.equal(options.scanned,6);
+ assert.equal(options.scanned,4,"Filter suggestions only inspect the first two pages");
+ assert.equal(options.pagesRead,2);
  await assert.rejects(
    ()=>scope.cachedPanelFilterValues(env,tenant,{access:{views:["compras-processos"]}},"contabil",{sourceId:"cache:contabil:empenhos",field:"situacao"}),
    /PANEL_SOURCE_NOT_ALLOWED/
