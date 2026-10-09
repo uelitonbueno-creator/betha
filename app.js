@@ -2140,17 +2140,46 @@
     });
   }
 
+  function friendlySourceErrorDetail(value,status=null) {
+    const raw=String(value||"").trim();
+    const statusCode=Number(status)||Number((raw.match(/(?:HTTP|classificationCode)[_ ":=]*(\d{3})/i)||[])[1])||null;
+
+    if(statusCode===401 || /BETHA_HTTP_401/i.test(raw)) {
+      return "A credencial desta fonte não está autorizada. Atualize a integração para continuar.";
+    }
+    if(statusCode===403 || /BETHA_HTTP_403/i.test(raw)) {
+      return "A integração não possui permissão para consultar esta fonte.";
+    }
+    if(statusCode===429 || /BETHA_HTTP_429/i.test(raw)) {
+      return "A fonte atingiu um limite temporário de requisições. A atualização será retomada automaticamente.";
+    }
+    if(
+      (statusCode && statusCode>=500) ||
+      /BETHA_HTTP_5\d\d|classificationCode["']?\s*[:=]\s*["']?5\d\d|stackTrace|AbstractLoadPlanBasedEntityLoader|org\.hibernate|Occurred? an error interno/i.test(raw)
+    ) {
+      return "A fonte Betha respondeu com uma falha temporária. O painel será atualizado automaticamente quando o serviço normalizar.";
+    }
+    if(/SOURCE_PAGE_LIMIT/i.test(raw)) {
+      return "A fonte possui mais registros do que o limite atual de páginas. A carga continuará após o ajuste do processamento.";
+    }
+    if(!raw) return "Não foi possível consultar esta fonte neste momento.";
+    if(raw.length>180 || /^[\[{]/.test(raw)) {
+      return "Não foi possível consultar esta fonte neste momento. A atualização automática continuará em segundo plano.";
+    }
+    return raw;
+  }
+
   function chartSourceState(source,payload) {
     const audits=payload?.meta?.sourceAudit||{};
     const warnings=Array.isArray(payload?.meta?.warnings)?payload.meta.warnings:[];
     const candidates=[String(source),...sourceKeyCandidates(source)];
     const matched=candidates.map(key=>({key,audit:audits[key]})).filter(x=>x.audit);
     const warning=warnings.find(w=>candidates.includes(String(w?.source||"")));
-    if(warning) return {kind:"error",detail:warning.errorDetail||warning.error||"Falha informada pela fonte"};
+    if(warning) return {kind:"error",detail:friendlySourceErrorDetail(warning.errorDetail||warning.error,warning.errorStatus)};
     if(!matched.length) return {kind:"unavailable",detail:"A carga não informou cobertura para esta fonte."};
     if(matched.some(x=>x.audit?.error)) {
       const a=matched.find(x=>x.audit?.error)?.audit||{};
-      return {kind:"error",detail:a.errorDetail||a.error||"Falha ao consultar a fonte."};
+      return {kind:"error",detail:friendlySourceErrorDetail(a.errorDetail||a.error,a.errorStatus)};
     }
     const loaded=matched.reduce((n,x)=>n+(Number(x.audit?.loaded)||0),0);
     const complete=matched.every(x=>x.audit?.complete===true);
@@ -2342,17 +2371,18 @@
             ? value.toLocaleString("pt-BR") + " carregados / API " + reported.toLocaleString("pt-BR")
             : value.toLocaleString("pt-BR") + " carregados");
         const pages = Number(audit.pages || 0);
+        const friendlyError=error ? friendlySourceErrorDetail(errorDetail||error,errorStatus) : "";
         const title = sampleMode
           ? "Dados sintéticos locais · 0 chamadas à API / Cloudflare"
           : (error
-            ? "Falha: " + error + (errorStatus ? " (HTTP " + errorStatus + ")" : "") + (errorDetail ? " · " + errorDetail : "")
+            ? friendlyError
             : (mismatch
               ? "Total informado pela API diverge do total carregado"
               : status + " · " + pages + " página(s)"));
         const detailText = sampleMode
           ? "AMOSTRA LOCAL · 0 API"
           : (error
-            ? [errorStatus ? "HTTP " + errorStatus : error, errorDetail].filter(Boolean).join(" · ")
+            ? friendlyError
             : (status + (pages ? " · " + pages + " pág." : "")));
         return `<div class="coverage-item coverage-audit${sampleMode?" is-sample":""}" title="${escapeHtml(title)}">
           <span class="coverage-dot ${stateClass}"></span>
