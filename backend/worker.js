@@ -9457,7 +9457,7 @@ function validateCustomPanel(data,auth){
  if(!Number.isInteger(data.limit)||data.limit<1||data.limit>50)throw new Error("CUSTOM_PANEL_LIMIT_INVALID");
  const name=String(data.name||"").trim();if(!name||name.length>100)throw new Error("CUSTOM_PANEL_NAME_INVALID");
  const filters=data.filters||[];
- if(!Array.isArray(filters)||filters.length>6||filters.some(f=>!f||!cat.dimensions.includes(f.field)||f.operator!=="eq"||typeof f.value!=="string"&&typeof f.value!=="number"||String(f.value).length>120))throw new Error("CUSTOM_PANEL_FILTER_INVALID");
+ if(!Array.isArray(filters)||filters.length>6||filters.some(f=>!f||!cat.dimensions.includes(f.field)||!["eq","neq","contains","gt","gte","lt","lte"].includes(f.operator)||typeof f.value!=="string"&&typeof f.value!=="number"||String(f.value).length>120))throw new Error("CUSTOM_PANEL_FILTER_INVALID");
  return {config_version:1,name,system:"tributos",source,dimension,measure,aggregation,chart:data.chart,limit:data.limit,filters};
 }
 async function handleCustomPanelRequest(request,env,url){
@@ -9515,7 +9515,16 @@ async function handleCustomPanelRequest(request,env,url){
    if(!Array.isArray(page))break;
    for(let index=0;index<page.length;index++){
     const row=normalizePanelRow(page[index],body.source,index);
-    if(!body.filters.every(f=>String(row[f.field]??"")===String(f.value)))continue;
+    if(!body.filters.every(f=>{
+      const value=row[f.field];
+      const a=String(value??""),b=String(f.value);
+      if(f.operator==="eq")return a===b;
+      if(f.operator==="neq")return a!==b;
+      if(f.operator==="contains")return a.toLocaleLowerCase("pt-BR").includes(b.toLocaleLowerCase("pt-BR"));
+      const x=Number(value),y=Number(f.value);
+      if(value==null||a.trim()===""||b.trim()===""||!Number.isFinite(x)||!Number.isFinite(y))return false;
+      return f.operator==="gt"?x>y:f.operator==="gte"?x>=y:f.operator==="lt"?x<y:x<=y;
+    }))continue;
     const label=String(row[body.dimension]??"Não informado").slice(0,100);
     if(drill!==null&&label===drill&&drillRows.length<50)drillRows.push({categoria:label,valor:row[body.measure]??null,...Object.fromEntries(body.filters.map(f=>[f.field,row[f.field]??null]))});
     const numeric=body.measure==="count"?1:Number(row[body.measure]);
