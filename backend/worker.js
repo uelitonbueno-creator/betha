@@ -9642,6 +9642,344 @@ function errorResponse(request,env,error) {
   return json(request,env,statusByCode[code]||500,{error:code});
 }
 
+const CUSTOM_PANEL_SOURCES=Object.freeze({
+ "bi:debitos":{label:"Débitos",dimensions:["situacao","ano","bairro","receita"],measures:["lancado","saldo","count"]},
+ "bi:pagamentos":{label:"Pagamentos",dimensions:["ano","receita","pagamento","pagamento:mes","pagamento:dia","pagamento:ano"],measures:["pago","count"]},
+ "bi:imoveis":{label:"Imóveis",dimensions:["bairro","zona","situacao"],measures:["count"]},
+ "bi:parcelamentos":{label:"Parcelamentos",dimensions:["situacao","ano"],measures:["count"]}
+});
+const CUSTOM_PANEL_MULTISYSTEM=Object.freeze({
+ "contabil:empenhos":{system:"contabil",resource:"empenhos",label:"Empenhos",permissionViews:["contabil-empenhos","contabil-visao-geral"],dimensions:["exercicio","ano","situacao","status","tipo","unidade","orgao","secretaria","natureza"],measures:["count","valor","valorEmpenhado","valorLiquidado","valorPago"]},
+ "contabil:movimentacoes-despesas":{system:"contabil",resource:"movimentacoes-despesas",label:"Movimentações de despesas",permissionViews:["contabil-despesa","contabil-movimentos"],dimensions:["exercicio","ano","situacao","status","tipo","unidade","orgao","natureza"],measures:["count","valor","valorEmpenhado","valorLiquidado","valorPago"]},
+ "contabil:movimentacoes-receitas":{system:"contabil",resource:"movimentacoes-receitas",label:"Movimentações de receitas",permissionViews:["contabil-receita","contabil-movimentos"],dimensions:["exercicio","ano","situacao","status","tipo","unidade","orgao","natureza"],measures:["count","valor","valorArrecadado","valorPrevisto"]},
+ "compras:processos-administrativos":{system:"compras",resource:"processos-administrativos",label:"Processos administrativos",permissionViews:["compras-processos","compras-visao-geral"],dimensions:["exercicio","ano","situacao","status","modalidade","tipo","unidade","secretaria"],measures:["count","valor","valorEstimado","valorHomologado"]},
+ "compras:fornecedores":{system:"compras",resource:"fornecedores",label:"Fornecedores (quantitativos)",permissionViews:["compras-fornecedores"],dimensions:["situacao","status","tipo","categoria","municipio","cidade"],measures:["count"]},
+ "folha:matriculas":{system:"folha",resource:"matriculas",label:"Matrículas (quantitativos)",permissionViews:["folha-servidores","folha-visao-geral"],dimensions:["situacao","status","vinculo","tipoVinculo","cargo","lotacao","secretaria","unidade"],measures:["count"]},
+ "folha:funcionarios-cargos":{system:"folha",resource:"funcionarios-cargos",label:"Cargos (quantitativos)",permissionViews:["folha-cargos","folha-visao-geral"],dimensions:["situacao","status","cargo","lotacao","secretaria","unidade"],measures:["count"]}
+});
+function customPanelSystemOf(source){return CUSTOM_PANEL_MULTISYSTEM[source]?.system||((CUSTOM_PANEL_SOURCES[source])?"tributos":null);}
+function customPanelAuthorize(auth,source){
+ const cfg=CUSTOM_PANEL_MULTISYSTEM[source];
+ if(!cfg)return panelReadAuthorized(auth,source);
+ const views=permissionViewsForAccess(auth.access);
+ if(!cfg.permissionViews.some(view=>views.includes(view)))throw new Error("DATA_RESOURCE_PERMISSION_DENIED");
+}
+function customPanelNumericField(field){return field==="count"||/^(?:valor|valorEmpenhado|valorLiquidado|valorPago|valorArrecadado|valorPrevisto|valorEstimado|valorHomologado)$/.test(field);}
+function customPanelMultiFields(cfg,row){
+ let fields=[];
+ try{const value=JSON.parse(row.fields_json||"[]");if(Array.isArray(value))fields=value.filter(f=>typeof f==="string");}catch{}
+ const set=new Set(fields);
+ return {
+  dimensions:cfg.dimensions.filter(f=>set.has(f)),
+  measures:cfg.measures.filter(f=>f==="count"||set.has(f)&&customPanelNumericField(f))
+ };
+}
+async function customPanelMultiSourceRows(env,tenant,system){
+ if(!env.AUTH_DB||!env.BI_SYNC_RAW)return [];
+ try{
+  const result=await env.AUTH_DB.prepare("SELECT resource,status,loaded,pages,fields_json,object_key,updated_at FROM bi_multisystem_loads WHERE tenant_id=?1 AND system=?2 AND pages>0").bind(String(tenant.id),system).all();
+  return (result.results||[]).filter(r=>Number(r.pages)>0&&String(r.object_key||"").indexOf("/bootstrap.json")<0);
+ }catch(error){
+  if(/no such table/i.test(String(error?.message||"")))return [];
+  throw error;
+ }
+}
+function customPanelNormalizeRow(raw,source){
+ if(CUSTOM_PANEL_SOURCES[source])return normalizePanelRow(raw,source);
+ const cfg=CUSTOM_PANEL_MULTISYSTEM[source],row={};
+ if(!cfg||!raw||typeof raw!=="object")return row;
+ for(const f of [...cfg.dimensions,...cfg.measures]){
+  const value=raw[f];
+  row[f]=f==="count"?1:cfg.measures.includes(f)?panelNumber(value):panelScalar(value);
+ }
+ return row;
+}
+let customPanelD1SchemaReady=null;
+async function customPanelDb(env){
+ if(!env.AUTH_DB)throw new Error("CUSTOM_PANEL_D1_NOT_CONFIGURED");
+ // Inicialização sob demanda apenas uma vez por isolate; nenhuma migração dos dados brutos.
+ if(!customPanelD1SchemaReady){
+  customPanelD1SchemaReady=(async()=>{
+   await env.AUTH_DB.prepare("CREATE TABLE IF NOT EXISTS bi_custom_panels (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, system TEXT NOT NULL, name TEXT NOT NULL, config_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)").run();
+   await env.AUTH_DB.prepare("CREATE INDEX IF NOT EXISTS idx_bi_custom_panels_scope ON bi_custom_panels(tenant_id,user_id,system)").run();
+  })().catch(error=>{customPanelD1SchemaReady=null;throw error;});
+ }
+ await customPanelD1SchemaReady;
+ return env.AUTH_DB;
+}
+function validateCustomPanel(data,auth){
+ if(!data||Array.isArray(data)||typeof data!=="object")throw new Error("CUSTOM_PANEL_INVALID");
+ const source=String(data.source||""),cat=CUSTOM_PANEL_SOURCES[source]||CUSTOM_PANEL_MULTISYSTEM[source];
+ if(!cat||data.system!==customPanelSystemOf(source))throw new Error("CUSTOM_PANEL_SOURCE_INVALID");
+ customPanelAuthorize(auth,source);
+ const dimension=String(data.dimension||""),measure=String(data.measure||""),aggregation=String(data.aggregation||"");
+ if(!cat.dimensions.includes(dimension)||!cat.measures.includes(measure))throw new Error("CUSTOM_PANEL_FIELD_INVALID");
+ if(!["sum","avg","min","max","count"].includes(aggregation)||(measure==="count"&&aggregation!=="count"))throw new Error("CUSTOM_PANEL_AGGREGATION_INVALID");
+ if(!["bar","horizontalBar","line","doughnut","pie","table","kpi"].includes(data.chart))throw new Error("CUSTOM_PANEL_CHART_INVALID");
+ if(!Number.isInteger(data.limit)||data.limit<1||data.limit>50)throw new Error("CUSTOM_PANEL_LIMIT_INVALID");
+ const name=String(data.name||"").trim();if(!name||name.length>100)throw new Error("CUSTOM_PANEL_NAME_INVALID");
+ const filters=data.filters||[];
+ if(!Array.isArray(filters)||filters.length>6||filters.some(f=>!f||!cat.dimensions.includes(f.field)||!["eq","neq","contains","gt","gte","lt","lte"].includes(f.operator)||typeof f.value!=="string"&&typeof f.value!=="number"||String(f.value).length>120))throw new Error("CUSTOM_PANEL_FILTER_INVALID");
+ return {config_version:1,name,system:data.system,source,dimension,measure,aggregation,chart:data.chart,limit:data.limit,filters};
+}
+
+/* Engine paginado: processa blocos de registros dentro do Worker e retorna apenas agregados. */
+function customPanelDimensionValue(row,field){
+ if(field==="pagamento:mes"||field==="pagamento:dia"||field==="pagamento:ano"){
+  const date=panelDate(row.pagamento);
+  if(!date)return "Data não informada";
+  const year=String(date.getUTCFullYear());
+  const month=String(date.getUTCMonth()+1).padStart(2,"0");
+  const day=String(date.getUTCDate()).padStart(2,"0");
+  return field==="pagamento:ano"?year:field==="pagamento:mes"?year+"-"+month:year+"-"+month+"-"+day;
+ }
+ return row[field];
+}
+function customPanelSortRows(rows,dimension,limit){
+ const time=/^pagamento:(?:mes|dia|ano)$/.test(dimension);
+ rows.sort((a,b)=>time?String(b.label).localeCompare(String(a.label)):b.value-a.value);
+ const result=rows.slice(0,limit);
+ return time?result.reverse():result;
+}
+function customPanelRowMatches(row,filters){
+ return filters.every(f=>{
+  const raw=customPanelDimensionValue(row,f.field),a=String(raw??""),b=String(f.value);
+  if(f.operator==="eq")return a===b;
+  if(f.operator==="neq")return a!==b;
+  if(f.operator==="contains")return a.toLocaleLowerCase("pt-BR").includes(b.toLocaleLowerCase("pt-BR"));
+  if(raw==null||a.trim()===""||b.trim()==="")return false;
+  if(/^\d{4}(?:-\d{2}){0,2}$/.test(a)&&/^\d{4}(?:-\d{2}){0,2}$/.test(b) && f.field.startsWith("pagamento:"))
+   return f.operator==="gt"?a>b:f.operator==="gte"?a>=b:f.operator==="lt"?a<b:a<=b;
+  const x=panelNumber(raw),y=panelNumber(f.value);
+  if(!Number.isFinite(x)||!Number.isFinite(y))return false;
+  return f.operator==="gt"?x>y:f.operator==="gte"?x>=y:f.operator==="lt"?x<y:x<=y;
+ });
+}
+function customPanelNewAggregate(){return {sum:0,count:0,min:null,max:null};}
+function customPanelAccumulate(target,numeric){
+ target.sum+=numeric;target.count++;
+ target.min=target.min===null?numeric:Math.min(target.min,numeric);
+ target.max=target.max===null?numeric:Math.max(target.max,numeric);
+}
+function customPanelAggregatePage(rawRows,body,groups,total,drillRows=null,drill=null){
+ let scanned=0,loaded=0;
+ for(let i=0;i<rawRows.length;i++){
+  scanned++;
+  const row=customPanelNormalizeRow(rawRows[i],body.source);
+  if(!customPanelRowMatches(row,body.filters))continue;
+  const label=String(customPanelDimensionValue(row,body.dimension)??"Não informado").slice(0,100);
+  const numeric=body.measure==="count"?1:panelNumber(row[body.measure]);
+  if(numeric===null||!Number.isFinite(numeric))continue;
+  if(drill!==null&&drillRows&&label===drill&&drillRows.length<50)
+   drillRows.push({categoria:label,valor:body.measure==="count"?1:row[body.measure],...Object.fromEntries(body.filters.map(f=>[f.field,row[f.field]??null]))});
+  let bucket=groups.get(label);
+  if(!bucket){
+   if(groups.size>=5000)throw new Error("CUSTOM_PANEL_CATEGORY_LIMIT");
+   bucket={label,...customPanelNewAggregate()};groups.set(label,bucket);
+  }
+  customPanelAccumulate(bucket,numeric);customPanelAccumulate(total,numeric);loaded++;
+ }
+ return {scanned,loaded};
+}
+function customPanelAggregatedValue(group,aggregation){
+ if(!group||!group.count)return 0;
+ return aggregation==="count"?group.count:aggregation==="avg"?group.sum/group.count:aggregation==="min"?group.min:aggregation==="max"?group.max:group.sum;
+}
+async function customPanelQueryBatch(request,env,tenant,body,input){
+ if(!env.BI_SESSIONS)throw new Error("SESSION_STORE_NOT_CONFIGURED");
+ const config=await syncConfig(env,tenant),activeJob=config.latestJob||config.activeJob;
+ if(!activeJob)return json(request,env,409,{error:"INITIAL_LOAD_REQUIRED"});
+ const cursor=input.cursor;
+ if(cursor!==undefined&&cursor!==null &&
+  (!cursor||typeof cursor!=="object"||Array.isArray(cursor)||
+   typeof cursor.jobId!=="string"||!/^[a-f0-9-]{36}$/i.test(cursor.jobId)||
+   !Number.isInteger(cursor.nextPage)||cursor.nextPage<0||cursor.nextPage>500||
+   !Number.isInteger(cursor.snapshotPages)||cursor.snapshotPages<0||cursor.snapshotPages>500))
+  throw new Error("CUSTOM_PANEL_CURSOR_INVALID");
+ if(cursor&&cursor.jobId!==activeJob)throw new Error("CUSTOM_PANEL_SNAPSHOT_CHANGED");
+ const job=await syncJob(env,tenant,activeJob);
+ if(!job)return json(request,env,409,{error:"INITIAL_LOAD_REQUIRED"});
+ const entry=job.sources?.[body.source];
+ if(!entry)return json(request,env,409,{error:"CUSTOM_PANEL_SOURCE_NOT_LOADED"});
+ const available=Math.min(500,Math.max(0,Number(entry.pages)||0));
+ const snapshotPages=cursor?cursor.snapshotPages:available;
+ const nextPage=cursor?cursor.nextPage:0;
+ if(snapshotPages>available||nextPage>snapshotPages)throw new Error("CUSTOM_PANEL_CURSOR_INVALID");
+ if(snapshotPages===0)return json(request,env,409,{error:"CUSTOM_PANEL_SOURCE_NOT_LOADED"});
+ const finish=Math.min(nextPage+12,snapshotPages);
+ const groups=new Map(),total=customPanelNewAggregate();
+ const scope=await syncScope(tenant);
+ let scanned=0,loaded=0;
+ for(let page=nextPage;page<finish;page++){
+  const rows=await env.BI_SESSIONS.get(scope+":rows:"+activeJob+":"+body.source+":"+page,"json");
+  if(!Array.isArray(rows))throw new Error("CUSTOM_PANEL_CACHE_PAGE_MISSING");
+  const counts=customPanelAggregatePage(rows,body,groups,total);
+  scanned+=counts.scanned;loaded+=counts.loaded;
+ }
+ return json(request,env,200,{
+  groups:[...groups.values()],total,scanned,loaded,
+  cursor:finish<snapshotPages?{jobId:activeJob,nextPage:finish,snapshotPages}:null,
+  pagesProcessed:finish,snapshotPages,
+  sourceComplete:entry.complete===true&&snapshotPages===available,
+  updatedAt:job.finishedAt||job.startedAt
+ });
+}
+
+async function customPanelMultiQueryBatch(request,env,tenant,body,input,preview=false){
+ const meta=CUSTOM_PANEL_MULTISYSTEM[body.source];
+ if(!meta||!env.AUTH_DB||!env.BI_SYNC_RAW)throw new Error("CUSTOM_PANEL_MULTISYSTEM_NOT_CONFIGURED");
+ const state=(await customPanelMultiSourceRows(env,tenant,meta.system)).find(row=>row.resource===meta.resource);
+ if(!state)return json(request,env,409,{error:"CUSTOM_PANEL_SOURCE_NOT_LOADED"});
+ const fields=customPanelMultiFields(meta,state);
+ if(!fields.dimensions.includes(body.dimension)||!fields.measures.includes(body.measure)||
+  body.filters.some(f=>!fields.dimensions.includes(f.field)))
+  return json(request,env,409,{error:"CUSTOM_PANEL_SOURCE_FIELDS_UNAVAILABLE"});
+ const available=Math.max(0,Math.min(5000,Number(state.pages)||0));
+ // Limite explícito para não gerar 5.000 requisições ao R2 por análise.
+ const scanCap=1000;
+ const cursor=preview?null:input.cursor||null;
+ if(cursor&&(!Number.isInteger(cursor.nextPage)||cursor.nextPage<0||cursor.nextPage>scanCap||
+    !Number.isInteger(cursor.snapshotPages)||cursor.snapshotPages<0||cursor.snapshotPages>scanCap))
+  throw new Error("CUSTOM_PANEL_CURSOR_INVALID");
+ const version=String(state.updated_at||"")+"|"+String(state.pages||0)+"|"+String(state.loaded||0);
+ const fingerprint=await sha256Hex(JSON.stringify([body.source,body.dimension,body.measure,body.aggregation,body.filters]));
+ if(cursor&&(cursor.source!==body.source||cursor.version!==version||cursor.fingerprint!==fingerprint))throw new Error("CUSTOM_PANEL_SNAPSHOT_CHANGED");
+ const snapshotPages=cursor?cursor.snapshotPages:Math.min(available,scanCap);
+ const nextPage=cursor?cursor.nextPage:0;
+ if(snapshotPages>available||nextPage>snapshotPages)throw new Error("CUSTOM_PANEL_CURSOR_INVALID");
+ const pagesToRead=preview?Math.min(12,snapshotPages):Math.min(nextPage+8,snapshotPages);
+ if(snapshotPages===0)return json(request,env,409,{error:"CUSTOM_PANEL_SOURCE_NOT_LOADED"});
+ const groups=new Map(),total=customPanelNewAggregate();
+ const drill=preview&&typeof input.drillCategory==="string"&&input.drillCategory.length<=100?input.drillCategory:null;
+ const drillRows=[];
+ let scanned=0,loaded=0;
+ for(let page=nextPage;page<pagesToRead;page++){
+  const object=await env.BI_SYNC_RAW.get(multiSystemPageObjectKey(tenant.id,meta.system,meta.resource,page));
+  if(!object)throw new Error("CUSTOM_PANEL_CACHE_PAGE_MISSING");
+  const payload=await object.json();
+  if(String(payload?.tenantId)!==String(tenant.id)||payload.system!==meta.system||payload.resource!==meta.resource||
+     !Array.isArray(payload.rows))throw new Error("CUSTOM_PANEL_CACHE_SCOPE_INVALID");
+  const counts=customPanelAggregatePage(payload.rows,body,groups,total,drillRows,drill);
+  scanned+=counts.scanned;loaded+=counts.loaded;
+ }
+ const sourceComplete=state.status==="complete"&&snapshotPages===available;
+ if(preview){
+  const values=customPanelSortRows([...groups.values()].map(g=>({label:g.label,value:customPanelAggregatedValue(g,body.aggregation)})),body.dimension,body.limit);
+  return json(request,env,200,{
+   rows:values,totalValue:customPanelAggregatedValue(total,body.aggregation),
+   loaded,scanned,partial:pagesToRead<available||!sourceComplete,source:body.source,
+   updatedAt:state.updated_at||null,drillRows:drill===null?undefined:drillRows,drillCategory:drill
+  });
+ }
+ return json(request,env,200,{
+  groups:[...groups.values()],total,scanned,loaded,
+  cursor:pagesToRead<snapshotPages?{nextPage:pagesToRead,snapshotPages,source:body.source,version,fingerprint}:null,
+  pagesProcessed:pagesToRead,snapshotPages,
+  sourceComplete,updatedAt:state.updated_at||null
+ });
+}
+async function handleCustomPanelRequest(request,env,url){
+ const tenant=await resolveTenant(env,getTenantId(request,url));
+ const auth=await authorizeTenant(request,env,tenant);
+ const user=String(auth.userId||"");if(!user)throw new Error("USER_TOKEN_REQUIRED");
+ if(url.pathname==="/api/custom-panels/catalog" && request.method==="GET"){
+  const system=String(url.searchParams.get("system")||"tributos");
+  if(!["tributos","contabil","compras","folha"].includes(system))return json(request,env,400,{error:"CUSTOM_PANEL_SYSTEM_INVALID"});
+  let sources=[];
+  if(system==="tributos")sources=Object.entries(CUSTOM_PANEL_SOURCES).filter(([id])=>{try{customPanelAuthorize(auth,id);return true;}catch{return false;}})
+   .map(([id,meta])=>({id,system,label:meta.label,dimensions:meta.dimensions,measures:meta.measures,ready:true}));
+  else{
+   const rows=await customPanelMultiSourceRows(env,tenant,system);
+   for(const [id,meta]of Object.entries(CUSTOM_PANEL_MULTISYSTEM)){
+    if(meta.system!==system)continue;
+    try{customPanelAuthorize(auth,id);}catch{continue;}
+    const row=rows.find(r=>r.resource===meta.resource);
+    if(!row)continue;
+    const fields=customPanelMultiFields(meta,row);
+    if(!fields.dimensions.length||!fields.measures.length)continue;
+    sources.push({id,system,label:meta.label,dimensions:fields.dimensions,measures:fields.measures,loaded:row.loaded,pages:row.pages,complete:row.status==="complete",ready:true});
+   }
+  }
+  return json(request,env,200,{sources,system});
+ }
+ if(url.pathname==="/api/custom-panels/query" && request.method==="POST"){
+  const input=await request.json();
+  const body=validateCustomPanel(input,auth);
+  return CUSTOM_PANEL_MULTISYSTEM[body.source]
+   ?customPanelMultiQueryBatch(request,env,tenant,body,input,false)
+   :customPanelQueryBatch(request,env,tenant,body,input);
+ }
+ const db=url.pathname==="/api/custom-panels/preview"?null:await customPanelDb(env);
+ const match=url.pathname.match(/^\/api\/custom-panels\/([a-f0-9-]{36})$/i);
+ const id=match?.[1];
+ const method=request.method;
+ const readConfig=row=>{const c=JSON.parse(row.config_json);return {...c,id:row.id,created_at:row.created_at,updated_at:row.updated_at};};
+ if(url.pathname==="/api/custom-panels"&&method==="GET"){
+  const rows=await db.prepare("SELECT * FROM bi_custom_panels WHERE tenant_id=?1 AND user_id=?2 AND system=?3 ORDER BY updated_at DESC LIMIT 100").bind(tenant.id,user,String(url.searchParams.get("system")||"tributos")).all();
+  return json(request,env,200,{panels:(rows.results||[]).map(readConfig).filter(p=>{try{customPanelAuthorize(auth,p.source);return true;}catch{return false;}})});
+ }
+ if(id&&method==="GET"){
+  const row=await db.prepare("SELECT * FROM bi_custom_panels WHERE id=?1 AND tenant_id=?2 AND user_id=?3 LIMIT 1").bind(id,tenant.id,user).first();
+  if(!row)return json(request,env,404,{error:"CUSTOM_PANEL_NOT_FOUND"});
+  const panel=readConfig(row);customPanelAuthorize(auth,panel.source);return json(request,env,200,{panel});
+ }
+ if(id&&method==="DELETE"){
+  const result=await db.prepare("DELETE FROM bi_custom_panels WHERE id=?1 AND tenant_id=?2 AND user_id=?3").bind(id,tenant.id,user).run();
+  return json(request,env,result.meta?.changes?200:404,{ok:!!result.meta?.changes});
+ }
+ if((url.pathname==="/api/custom-panels"&&method==="POST")||(id&&method==="PUT")){
+  const body=await request.json();const panel=validateCustomPanel(body,auth);
+  const timestamp=new Date().toISOString();
+  if(id){
+   const existing=await db.prepare("SELECT system,config_json,updated_at FROM bi_custom_panels WHERE id=?1 AND tenant_id=?2 AND user_id=?3 LIMIT 1").bind(id,tenant.id,user).first();
+   if(!existing)return json(request,env,404,{error:"CUSTOM_PANEL_NOT_FOUND"});
+   if(existing.system!==panel.system)return json(request,env,409,{error:"CUSTOM_PANEL_SYSTEM_CHANGE_DENIED"});
+   customPanelAuthorize(auth,JSON.parse(existing.config_json).source);
+   if(typeof body.updated_at!=="string"||body.updated_at!==existing.updated_at)return json(request,env,409,{error:"CUSTOM_PANEL_EDIT_CONFLICT"});
+   const result=await db.prepare("UPDATE bi_custom_panels SET name=?1,config_json=?2,updated_at=?3 WHERE id=?4 AND tenant_id=?5 AND user_id=?6 AND updated_at=?7").bind(panel.name,JSON.stringify(panel),timestamp,id,tenant.id,user,existing.updated_at).run();
+   if(!result.meta?.changes)return json(request,env,409,{error:"CUSTOM_PANEL_EDIT_CONFLICT"});
+   return json(request,env,200,{panel:{...panel,id,updated_at:timestamp}});
+  }
+  const newId=crypto.randomUUID();
+  await db.prepare("INSERT INTO bi_custom_panels(id,tenant_id,user_id,system,name,config_json,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)").bind(newId,tenant.id,user,panel.system,panel.name,JSON.stringify(panel),timestamp,timestamp).run();
+  return json(request,env,201,{panel:{...panel,id:newId,updated_at:timestamp}});
+ }
+ if(url.pathname==="/api/custom-panels/preview"&&method==="POST"){
+  const input=await request.json();
+  const body=validateCustomPanel(input,auth);
+  if(CUSTOM_PANEL_MULTISYSTEM[body.source])return customPanelMultiQueryBatch(request,env,tenant,body,input,true);
+  const drill=typeof input.drillCategory==="string"&&input.drillCategory.length<=100?input.drillCategory:null;
+  const drillRows=[];
+  if(!env.BI_SESSIONS)throw new Error("SESSION_STORE_NOT_CONFIGURED");
+  // Limite de páginas protege a memória do Worker; o resultado informa quando é parcial.
+  const config=await syncConfig(env,tenant);
+  const jobId=config.latestJob||config.activeJob;
+  if(!jobId)return json(request,env,409,{error:"INITIAL_LOAD_REQUIRED"});
+  const job=await syncJob(env,tenant,jobId);
+  if(!job)return json(request,env,409,{error:"INITIAL_LOAD_REQUIRED"});
+  const entry=job.sources?.[body.source];
+  if(!entry)return json(request,env,409,{error:"CUSTOM_PANEL_SOURCE_NOT_LOADED"});
+  const scope=await syncScope(tenant),groups=new Map(),pageCount=Math.min(entry.pages||0,12);
+  let loaded=0,scanned=0,missingPage=false;
+  const total=customPanelNewAggregate();
+  for(let pageNo=0;pageNo<pageCount;pageNo++){
+   const page=await env.BI_SESSIONS.get(scope+":rows:"+jobId+":"+body.source+":"+pageNo,"json");
+   if(!Array.isArray(page)){missingPage=true;break;}
+   const counts=customPanelAggregatePage(page,body,groups,total,drillRows,drill);
+   scanned+=counts.scanned;loaded+=counts.loaded;
+  }
+  const values=[...groups.values()].map(g=>({label:g.label,value:customPanelAggregatedValue(g,body.aggregation)}));
+  const ordered=customPanelSortRows(values,body.dimension,body.limit);
+  return json(request,env,200,{
+   rows:ordered,loaded,scanned,totalValue:customPanelAggregatedValue(total,body.aggregation),
+   updatedAt:job.finishedAt||job.startedAt,
+   partial:missingPage||pageCount<(entry.pages||0)||!entry.complete,
+   source:body.source,drillRows:drill===null?undefined:drillRows,drillCategory:drill
+  });
+ }
+ return json(request,env,405,{error:"METHOD_NOT_ALLOWED"});
+}
+
 export default {
   async scheduled(event,env,ctx){ctx.waitUntil(Promise.allSettled([runBackgroundSync(env),runMultiSystemBootstrap(env)]));},
   async fetch(request,env) {
@@ -10260,6 +10598,11 @@ export default {
         }
         return errorResponse(request,env,error);
       }
+    }
+
+    if (url.pathname==="/api/custom-panels" || url.pathname.startsWith("/api/custom-panels/")) {
+      try { return await handleCustomPanelRequest(request,env,url); }
+      catch(error) { return errorResponse(request,env,error); }
     }
 
     if (url.pathname==="/api/search" && request.method==="GET") {

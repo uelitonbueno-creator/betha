@@ -138,6 +138,13 @@
               <strong id="sidebarSystemMenuLabel">TRIBUTOS</strong>
             </div>
             <nav id="sidebarPanelList" class="sidebar-panel-list" aria-label="Painéis do sistema atual"></nav>
+            <section id="customPanelSidebar" class="custom-panel-sidebar" aria-label="Painéis personalizados" hidden>
+              <div class="custom-panel-sidebar-title">MEUS PAINÉIS</div>
+              <div id="customPanelSidebarItems" class="custom-panel-sidebar-items"></div>
+              <button id="customPanelSidebarList" class="sidebar-panel-option" type="button"><i class="mdi mdi-view-dashboard-outline" aria-hidden="true"></i><span>Gerenciar meus painéis</span></button>
+              <button id="customPanelSidebarNew" class="sidebar-panel-option" type="button"><i class="mdi mdi-plus-circle-outline" aria-hidden="true"></i><span>+ Criar painel</span></button>
+              <button id="customPanelSidebarRefresh" class="sidebar-panel-option" type="button" title="Consultar novamente as fontes carregadas"><i class="mdi mdi-refresh" aria-hidden="true"></i><span>Atualizar fontes</span></button>
+            </section>
           </div>
         </div>
       </aside>
@@ -155,6 +162,7 @@
           <span>Painel</span>
           <select id="mobilePanelSelect" aria-label="Painel atual"></select>
         </label>
+        <button id="mobileCustomPanelButton" class="mobile-custom-panel-button" type="button" hidden>Meus painéis</button>
       </section>
       <section class="surface">
         <section id="syntheticHomeView" hidden aria-labelledby="syntheticHomeTitle">
@@ -791,5 +799,6 @@
   <script src="api-panel-catalog.js?v=20261006-chart-visible9"></script>
   <script src="app.js?v=20261007-worker-persistence-v93"></script>
   <script src="global-search.js?v=20261007-local-search1"></script>
+  <script src="custom-panel-builder.js?v=20261009-multisystem2"></script>
 </body>
 </html>
