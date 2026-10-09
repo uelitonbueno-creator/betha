@@ -1162,8 +1162,8 @@ async function readPanelSnapshot(env,key,sourceKey,pages) {
 // Background source snapshots are scoped to the saved credentials and entity.
 const SYNC_TTL=7*24*3600;
 const SYNC_INTERVALS=[0,15,30,60,180,360,720,1440];
-const SYNC_SOURCES_PER_TICK=6;
-const SYNC_CONCURRENCY=3;
+const SYNC_SOURCES_PER_TICK=3;
+const SYNC_CONCURRENCY=2;
 const SYNC_MAX_RETRIES=6;
 const SYNC_PAGE_SIZES=[250,100,50];
 const SYNC_TIMEOUT_BY_PAGE={250:20000,100:30000,50:30000};
