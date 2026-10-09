@@ -1233,13 +1233,15 @@ function normalizeRunningSyncJob(job,cards){
   // builds now send Betha's required cpaFields=true parameter.
   const retryAdditionalFields=card.id==='bi:imoveis-campos-adicionais'&&
    entry.error==='BETHA_HTTP_422'&&entry.additionalFieldsCriterionRetry!==true;
-  if(entry.error&&(syncIsTransientCode(entry.error)||retryAdditionalFields)){
+  const retryLegacyPageLimit=entry.error==='SOURCE_PAGE_LIMIT';
+  if(entry.error&&(syncIsTransientCode(entry.error)||retryAdditionalFields||retryLegacyPageLimit)){
    entry.lastError=entry.error;
    entry.lastErrorAt=entry.lastErrorAt||new Date().toISOString();
    entry.error=null;
    entry.complete=false;
-   entry.retryCount=retryAdditionalFields?0:Math.max(1,entry.retryCount);
-   entry.pageSize=retryAdditionalFields?100:syncNextPageSize(entry.pageSize);
+   entry.retryCount=retryAdditionalFields||retryLegacyPageLimit?0:Math.max(1,entry.retryCount);
+   entry.pageSize=retryAdditionalFields?100:(retryLegacyPageLimit?entry.pageSize:syncNextPageSize(entry.pageSize));
+   // Never restart a large source: continue from the last committed row.
    entry.nextOffset=entry.loaded;
    if(retryAdditionalFields){
     entry.cpaFieldsRetry=true;
@@ -1275,7 +1277,6 @@ function pendingSyncIndexes(job,cards,limit=SYNC_SOURCES_PER_TICK){
 async function advanceSyncSource(env,tenant,scope,job,card){
  const entry=normalizeSyncEntry(job.sources[card.id]||{},syncInitialPageSize(card.resource));
  try{
-  if(entry.pages>=500)throw new Error('SOURCE_PAGE_LIMIT');
   const pageSize=entry.pageSize||250;
   const timeout=SYNC_TIMEOUT_BY_PAGE[pageSize]||14000;
   const result=await fetchBethaRows({...env,BI_SOURCE_TIMEOUT_MS:timeout},tenant,card.source,card.resource,{
@@ -1386,7 +1387,7 @@ async function backgroundSources(env,tenant,keys,url){
  if(!id){if(config.enabled)throw new Error('INITIAL_LOAD_IN_PROGRESS');return null;}
  const job=await syncJob(env,tenant,id);if(!job)throw new Error('INITIAL_LOAD_REQUIRED');
  let frozen=null;const pageParam=url.searchParams.get('cachePages');
- if(pageParam){try{frozen=JSON.parse(pageParam);}catch{throw new Error('DASHBOARD_CURSOR_INVALID');}if(!frozen||typeof frozen!=='object'||Array.isArray(frozen)||Object.values(frozen).some(v=>!Number.isInteger(v)||v<0||v>500))throw new Error('DASHBOARD_CURSOR_INVALID');}
+ if(pageParam){try{frozen=JSON.parse(pageParam);}catch{throw new Error('DASHBOARD_CURSOR_INVALID');}if(!frozen||typeof frozen!=='object'||Array.isArray(frozen)||Object.values(frozen).some(v=>!Number.isInteger(v)||v<0))throw new Error('DASHBOARD_CURSOR_INVALID');}
  const scope=await syncScope(tenant),sources={},pages={};let pending=false;
  for(const key of keys){const entry=job.sources[key];const count=frozen?frozen[key]:entry?.pages||0;
   if(frozen&&(!Number.isInteger(count)||count>(entry?.pages||0)))throw new Error('DASHBOARD_CURSOR_INVALID');
@@ -1410,7 +1411,7 @@ async function buildApiPanels(env,tenant,auth,key,url,detailId=null) {
  const prefix=await panelLoadScope(tenant,auth,key,url.searchParams.get('loadId')||'');
  let expected;try{expected=JSON.parse(url.searchParams.get('cursor')||'{}');}catch{throw new Error('DASHBOARD_CURSOR_INVALID');}
  const dependencies=[...new Set(card.panels.flatMap(panelDependencies))];
- if(!expected||typeof expected!=='object'||Array.isArray(expected)||Object.entries(expected).some(([k,v])=>!dependencies.includes(k)||!Number.isInteger(v)||v<0||v>500))throw new Error('DASHBOARD_CURSOR_INVALID');
+ if(!expected||typeof expected!=='object'||Array.isArray(expected)||Object.entries(expected).some(([k,v])=>!dependencies.includes(k)||!Number.isInteger(v)||v<0))throw new Error('DASHBOARD_CURSOR_INVALID');
  const panels=detailId?card.panels.filter(p=>p.id===detailId):card.panels;if(!panels.length)throw new Error('DASHBOARD_CURSOR_INVALID');
  const keys=detailId?[...new Set([key,...panels.flatMap(panelDependencies)])]:dependencies;
  const load={prefix,expected,cursors:{},hasMore:false,pending:new Map()},sources={};let next=0;
@@ -10992,7 +10993,7 @@ export default {
           let expected;
           try { expected=JSON.parse(cursorText); } catch { throw new Error("DASHBOARD_CURSOR_INVALID"); }
           if (!expected||Array.isArray(expected)||typeof expected!=="object"||
-              Object.values(expected).some(value=>!Number.isInteger(value)||value<0||value>500)) {
+              Object.values(expected).some(value=>!Number.isInteger(value)||value<0)) {
             throw new Error("DASHBOARD_CURSOR_INVALID");
           }
           const scope=await sha256Hex(JSON.stringify([tenant.id,tenant.userAccess,auth.context.database,auth.context.entity]));
