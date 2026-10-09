@@ -9825,6 +9825,56 @@ async function customPanelQueryBatch(request,env,tenant,body,input){
  });
 }
 
+async function customPanelMultiQueryBatch(request,env,tenant,body,input,preview=false){
+ const meta=CUSTOM_PANEL_MULTISYSTEM[body.source];
+ if(!meta||!env.AUTH_DB||!env.BI_SYNC_RAW)throw new Error("CUSTOM_PANEL_MULTISYSTEM_NOT_CONFIGURED");
+ const state=(await customPanelMultiSourceRows(env,tenant,meta.system)).find(row=>row.resource===meta.resource);
+ if(!state)return json(request,env,409,{error:"CUSTOM_PANEL_SOURCE_NOT_LOADED"});
+ const fields=customPanelMultiFields(meta,state);
+ if(!fields.dimensions.includes(body.dimension)||!fields.measures.includes(body.measure)||
+  body.filters.some(f=>!fields.dimensions.includes(f.field)))
+  return json(request,env,409,{error:"CUSTOM_PANEL_SOURCE_FIELDS_UNAVAILABLE"});
+ const available=Math.max(0,Math.min(5000,Number(state.pages)||0));
+ // Limite explícito para não gerar 5.000 requisições ao R2 por análise.
+ const scanCap=1000;
+ const cursor=preview?null:input.cursor||null;
+ if(cursor&&(!Number.isInteger(cursor.nextPage)||cursor.nextPage<0||cursor.nextPage>scanCap||
+    !Number.isInteger(cursor.snapshotPages)||cursor.snapshotPages<0||cursor.snapshotPages>scanCap))
+  throw new Error("CUSTOM_PANEL_CURSOR_INVALID");
+ const snapshotPages=cursor?cursor.snapshotPages:Math.min(available,scanCap);
+ const nextPage=cursor?cursor.nextPage:0;
+ if(snapshotPages>available||nextPage>snapshotPages)throw new Error("CUSTOM_PANEL_CURSOR_INVALID");
+ const pagesToRead=preview?Math.min(12,snapshotPages):Math.min(nextPage+8,snapshotPages);
+ if(snapshotPages===0)return json(request,env,409,{error:"CUSTOM_PANEL_SOURCE_NOT_LOADED"});
+ const groups=new Map(),total=customPanelNewAggregate();
+ const drill=preview&&typeof input.drillCategory==="string"&&input.drillCategory.length<=100?input.drillCategory:null;
+ const drillRows=[];
+ let scanned=0,loaded=0;
+ for(let page=nextPage;page<pagesToRead;page++){
+  const object=await env.BI_SYNC_RAW.get(multiSystemPageObjectKey(tenant.id,meta.system,meta.resource,page));
+  if(!object)throw new Error("CUSTOM_PANEL_CACHE_PAGE_MISSING");
+  const payload=await object.json();
+  if(String(payload?.tenantId)!==String(tenant.id)||payload.system!==meta.system||payload.resource!==meta.resource||
+     !Array.isArray(payload.rows))throw new Error("CUSTOM_PANEL_CACHE_SCOPE_INVALID");
+  const counts=customPanelAggregatePage(payload.rows,body,groups,total,drillRows,drill);
+  scanned+=counts.scanned;loaded+=counts.loaded;
+ }
+ const sourceComplete=state.status==="complete"&&snapshotPages===available;
+ if(preview){
+  const values=customPanelSortRows([...groups.values()].map(g=>({label:g.label,value:customPanelAggregatedValue(g,body.aggregation)})),body.dimension,body.limit);
+  return json(request,env,200,{
+   rows:values,totalValue:customPanelAggregatedValue(total,body.aggregation),
+   loaded,scanned,partial:pagesToRead<available||!sourceComplete,source:body.source,
+   updatedAt:state.updated_at||null,drillRows:drill===null?undefined:drillRows,drillCategory:drill
+  });
+ }
+ return json(request,env,200,{
+  groups:[...groups.values()],total,scanned,loaded,
+  cursor:pagesToRead<snapshotPages?{nextPage:pagesToRead,snapshotPages}:null,
+  pagesProcessed:pagesToRead,snapshotPages,
+  sourceComplete,updatedAt:state.updated_at||null
+ });
+}
 async function handleCustomPanelRequest(request,env,url){
  const tenant=await resolveTenant(env,getTenantId(request,url));
  const auth=await authorizeTenant(request,env,tenant);
@@ -9852,7 +9902,9 @@ async function handleCustomPanelRequest(request,env,url){
  if(url.pathname==="/api/custom-panels/query" && request.method==="POST"){
   const input=await request.json();
   const body=validateCustomPanel(input,auth);
-  return customPanelQueryBatch(request,env,tenant,body,input);
+  return CUSTOM_PANEL_MULTISYSTEM[body.source]
+   ?customPanelMultiQueryBatch(request,env,tenant,body,input,false)
+   :customPanelQueryBatch(request,env,tenant,body,input);
  }
  const db=url.pathname==="/api/custom-panels/preview"?null:await customPanelDb(env);
  const match=url.pathname.match(/^\/api\/custom-panels\/([a-f0-9-]{36})$/i);
@@ -9887,6 +9939,7 @@ async function handleCustomPanelRequest(request,env,url){
  if(url.pathname==="/api/custom-panels/preview"&&method==="POST"){
   const input=await request.json();
   const body=validateCustomPanel(input,auth);
+  if(CUSTOM_PANEL_MULTISYSTEM[body.source])return customPanelMultiQueryBatch(request,env,tenant,body,input,true);
   const drill=typeof input.drillCategory==="string"&&input.drillCategory.length<=100?input.drillCategory:null;
   const drillRows=[];
   if(!env.BI_SESSIONS)throw new Error("SESSION_STORE_NOT_CONFIGURED");
