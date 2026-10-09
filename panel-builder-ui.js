@@ -96,7 +96,7 @@ if(window.BIPanelSampleBuilder?.catalog(context.currentSystemId).length){
     const sourceReport=await requestBuilder("GET","source-status");
     const available=(sourceReport.resources||[]).filter(x=>x.records>0);
     sourceStatus.textContent=available.length
-      ? "Cargas reais identificadas: "+available.map(x=>x.resource+" ("+x.records+" registros)").join("; ")+". Execução personalizada real ainda não habilitada."
+      ? "Cargas com permissão identificadas: "+available.map(x=>x.resource+" ("+x.records+" registros)").join("; ")+(sourceReport.previewEnabled?". Prévia real parcial disponível.":". Aguardando fonte com campos compatíveis.")
       : "Nenhuma carga real disponível para consulta personalizada. Editor em modo AMOSTRA LOCAL.";
   }catch(e){sourceStatus.textContent="Estado das cargas reais indisponível. Editor em modo AMOSTRA LOCAL.";}
 }
