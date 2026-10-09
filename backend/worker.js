@@ -6302,11 +6302,18 @@ async function runMultiSystemBootstrap(env){
     if((totals[system]||0)>=MULTISYSTEM_BOOTSTRAP_TARGET)continue;
     const sources=MULTISYSTEM_BOOTSTRAP_SOURCES[system]||[];
     const states=await env.AUTH_DB.prepare(
-      "SELECT resource,status,loaded FROM bi_multisystem_loads WHERE tenant_id=?1 AND system=?2"
+      "SELECT resource,status,loaded,http_status,updated_at FROM bi_multisystem_loads WHERE tenant_id=?1 AND system=?2"
     ).bind(String(tenant.id),system).all();
-    const byResource=new Map((states.results||[]).map(row=>[String(row.resource),row]));
-    const source=sources.find(item=>byResource.get(item.resource)?.status!=="complete"&&byResource.get(item.resource)?.status!=="error");
-    const retrySource=source||sources.find(item=>byResource.get(item.resource)?.status!=="complete");
+    const stateRows=states.results||[];
+    const byResource=new Map(stateRows.map(row=>[String(row.resource),row]));
+    const authBlocked=stateRows.some(row=>row.status==="error"&&[401,403].includes(Number(row.http_status)));
+    if(authBlocked)continue;
+    const unattempted=sources.find(item=>!byResource.has(item.resource));
+    const retryable=sources.find(item=>{
+      const state=byResource.get(item.resource);
+      return state&&state.status==="error"&&![401,403,404].includes(Number(state.http_status));
+    });
+    const retrySource=unattempted||retryable;
     if(!retrySource)continue;
 
     const startedAt=new Date().toISOString();
