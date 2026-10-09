@@ -2,8 +2,8 @@
 (() => {
   "use strict";
   const SOURCES = {
-    "bi:debitos": {label:"Débitos",system:"tributos",dimensions:{situacao:"Situação",ano:"Exercício",bairro:"Bairro",receita:"Receita"},measures:{lancado:"Valor lançado",saldo:"Saldo"}},
-    "bi:pagamentos": {label:"Pagamentos",system:"tributos",dimensions:{ano:"Exercício",receita:"Receita",pagamento:"Data exata do pagamento","pagamento:mes":"Mês do pagamento","pagamento:dia":"Dia do pagamento","pagamento:ano":"Ano do pagamento"},measures:{pago:"Valor pago"}},
+    "bi:debitos": {label:"Débitos",system:"tributos",dimensions:{situacao:"Situação",ano:"Exercício",bairro:"Bairro",receita:"Receita"},measures:{lancado:"Valor lançado",saldo:"Saldo",count:"Quantidade de débitos"}},
+    "bi:pagamentos": {label:"Pagamentos",system:"tributos",dimensions:{ano:"Exercício",receita:"Receita",pagamento:"Data exata do pagamento","pagamento:mes":"Mês do pagamento","pagamento:dia":"Dia do pagamento","pagamento:ano":"Ano do pagamento"},measures:{pago:"Valor pago",count:"Quantidade de pagamentos"}},
     "bi:imoveis": {label:"Imóveis",system:"tributos",dimensions:{bairro:"Bairro",zona:"Zona",situacao:"Situação"},measures:{count:"Quantidade"}},
     "bi:parcelamentos": {label:"Parcelamentos",system:"tributos",dimensions:{situacao:"Situação",ano:"Exercício"},measures:{count:"Quantidade"}}
   };
