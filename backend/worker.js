@@ -6558,19 +6558,20 @@ async function loadMultiSystemIncrementalResource(env,tenant,system,source,state
 
 function multiSystemStateNeedsWork(source,state,configUpdatedAt){
   if(!state)return true;
-  const profile=parseMultiSystemFieldProfile(state.fields_json);
-  const hasCandidates=Array.isArray(source?.fieldCandidates)&&source.fieldCandidates.length>0;
-  if(hasCandidates&&(!profile.discoveryDone||profile.version!==MULTISYSTEM_FIELD_DISCOVERY_VERSION))return true;
-
-  if(state.status==="complete"){
-    return String(state.object_key||"").endsWith("/bootstrap.json");
-  }
   if(state.status==="error"){
     const httpStatus=Number(state.http_status)||0;
     const failedAt=Date.parse(String(state.updated_at||""))||0;
     if([401,403].includes(httpStatus))return configUpdatedAt>failedAt;
     if(httpStatus===404)return false;
     return Date.now()-failedAt>=5*60*1000;
+  }
+
+  const profile=parseMultiSystemFieldProfile(state.fields_json);
+  const hasCandidates=Array.isArray(source?.fieldCandidates)&&source.fieldCandidates.length>0;
+  if(hasCandidates&&(!profile.discoveryDone||profile.version!==MULTISYSTEM_FIELD_DISCOVERY_VERSION))return true;
+
+  if(state.status==="complete"){
+    return String(state.object_key||"").endsWith("/bootstrap.json");
   }
   return true;
 }
