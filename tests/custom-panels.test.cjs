@@ -86,3 +86,62 @@ test("HTML e construtor oferecem entradas de navegação desktop e mobile", () =
   assert.ok(builder.includes('async function loadSidebar('));
   assert.ok(builder.includes("authorizedSources.has(id)"));
 });
+
+test("motor paginado soma blocos sucessivos sem enviar registros brutos", async () => {
+  const engineCode=sliceBetween(worker,"function customPanelRowMatches(","async function handleCustomPanelRequest(");
+  const runtime={
+    panelNumber(value){return value==null||value===""?null:Number(value);},
+    normalizePanelRow(row){return row;},
+    syncConfig:async()=>({latestJob:"aa000000-0000-0000-0000-000000000000"}),
+    syncJob:async()=>({sources:{"bi:debitos":{pages:15,complete:true}},finishedAt:"2026-10-09T15:00:00Z"}),
+    syncScope:async()=>"test-scope",
+    json(_request,_env,status,body){return {status,body};},
+    Error,Number,Map,Object,Math,Date,String,Array
+  };
+  const pages=new Map();
+  for(let p=0;p<15;p++)pages.set("test-scope:rows:aa000000-0000-0000-0000-000000000000:bi:debitos:"+p,[
+    {bairro:"Centro",ano:"2026",saldo:10},{bairro:"Centro",ano:"2026",saldo:null},
+    {bairro:"Sul",ano:"2025",saldo:20}
+  ]);
+  const env={BI_SESSIONS:{get:async key=>pages.get(key)||null}};
+  vm.createContext(runtime);
+  vm.runInContext(engineCode+"\nthis.queryBatch=customPanelQueryBatch;",runtime);
+  const config={...defaults,filters:[{field:"ano",operator:"eq",value:"2026"}]};
+  const first=await runtime.queryBatch({},env,{},config,{});
+  assert.equal(first.status,200);
+  assert.equal(first.body.total.sum,120);
+  assert.equal(first.body.total.count,12);
+  assert.equal(first.body.scanned,36);
+  assert.equal(first.body.groups.length,1);
+  assert.ok(first.body.cursor);
+  assert.equal(first.body.groups[0].label,"Centro");
+  const second=await runtime.queryBatch({},env,{},config,{cursor:first.body.cursor});
+  assert.equal(second.body.cursor,null);
+  assert.equal(second.body.sourceComplete,true);
+  assert.equal(first.body.total.sum+second.body.total.sum,150);
+  assert.equal(first.body.loaded+second.body.loaded,15);
+  assert.ok(!Object.hasOwn(first.body,"rows"),"Endpoint só devolve agregados por categoria");
+});
+
+test("consulta paginada rejeita cursor inválido e não declara carga parcial como completa", async () => {
+  const engineCode=sliceBetween(worker,"function customPanelRowMatches(","async function handleCustomPanelRequest(");
+  let completed=false;
+  const runtime={
+    panelNumber(value){return value==null?null:Number(value);},
+    normalizePanelRow(row){return row;},
+    syncConfig:async()=>({latestJob:"bb000000-0000-0000-0000-000000000000"}),
+    syncJob:async()=>({sources:{"bi:debitos":{pages:1,complete:completed}}}),
+    syncScope:async()=>"scope",
+    json(_request,_env,status,body){return {status,body};},
+    Error,Number,Map,Object,Math,Date,String,Array
+  };
+  const env={BI_SESSIONS:{get:async()=>[{bairro:"Centro",saldo:1}]}};
+  vm.createContext(runtime);
+  vm.runInContext(engineCode+"\nthis.queryBatch=customPanelQueryBatch;",runtime);
+  await assert.rejects(runtime.queryBatch({},env,{},defaults,{cursor:{jobId:"invalido",nextPage:0,snapshotPages:1}}),/CUSTOM_PANEL_CURSOR_INVALID/);
+  const partial=await runtime.queryBatch({},env,{},defaults,{});
+  assert.equal(partial.body.sourceComplete,false);
+  completed=true;
+  const complete=await runtime.queryBatch({},env,{},defaults,{});
+  assert.equal(complete.body.sourceComplete,true);
+});
