@@ -71,6 +71,18 @@ const def={title:"Empenhos por ano",sourceId:"cache:contabil:empenhos",type:"bar
  );
  assert.equal(catalogResponse.status,200,"Canonical contabil ID must be accepted");
  assert.equal(catalogResponse.body.sources[0].id,"cache:contabil:empenhos");
+ const options=await scope.cachedPanelFilterValues(env,tenant,auth,"contabil",{sourceId:"cache:contabil:empenhos",field:"situacao"});
+ assert.deepEqual(Array.from(options.values),["ABERTO","PAGO"]);
+ assert.equal(options.partial,true);
+ assert.equal(options.scanned,6);
+ await assert.rejects(
+   ()=>scope.cachedPanelFilterValues(env,tenant,{access:{views:["compras-processos"]}},"contabil",{sourceId:"cache:contabil:empenhos",field:"situacao"}),
+   /PANEL_SOURCE_NOT_ALLOWED/
+ );
+ await assert.rejects(
+   ()=>scope.cachedPanelFilterValues(env,tenant,auth,"contabil",{sourceId:"cache:contabil:empenhos",field:"cpf"}),
+   /PANEL_FILTER_NOT_ALLOWED/
+ );
  const sources=await scope.cachedPanelSources(env,tenant,auth,"contabil");
  assert.deepEqual(Array.from(sources,x=>x.id),["cache:contabil:empenhos"],"No access to unrelated accounting resource");
  const result=await scope.previewCachedPanel(env,tenant,auth,"contabil",def);
