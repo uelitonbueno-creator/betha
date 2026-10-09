@@ -9931,13 +9931,18 @@ async function handleCustomPanelRequest(request,env,url){
   const body=await request.json();const panel=validateCustomPanel(body,auth);
   const timestamp=new Date().toISOString();
   if(id){
-   const result=await db.prepare("UPDATE bi_custom_panels SET name=?1,config_json=?2,updated_at=?3 WHERE id=?4 AND tenant_id=?5 AND user_id=?6").bind(panel.name,JSON.stringify(panel),timestamp,id,tenant.id,user).run();
-   if(!result.meta?.changes)return json(request,env,404,{error:"CUSTOM_PANEL_NOT_FOUND"});
-   return json(request,env,200,{panel:{...panel,id}});
+   const existing=await db.prepare("SELECT system,config_json,updated_at FROM bi_custom_panels WHERE id=?1 AND tenant_id=?2 AND user_id=?3 LIMIT 1").bind(id,tenant.id,user).first();
+   if(!existing)return json(request,env,404,{error:"CUSTOM_PANEL_NOT_FOUND"});
+   if(existing.system!==panel.system)return json(request,env,409,{error:"CUSTOM_PANEL_SYSTEM_CHANGE_DENIED"});
+   customPanelAuthorize(auth,JSON.parse(existing.config_json).source);
+   if(typeof body.updated_at!=="string"||body.updated_at!==existing.updated_at)return json(request,env,409,{error:"CUSTOM_PANEL_EDIT_CONFLICT"});
+   const result=await db.prepare("UPDATE bi_custom_panels SET name=?1,config_json=?2,updated_at=?3 WHERE id=?4 AND tenant_id=?5 AND user_id=?6 AND updated_at=?7").bind(panel.name,JSON.stringify(panel),timestamp,id,tenant.id,user,existing.updated_at).run();
+   if(!result.meta?.changes)return json(request,env,409,{error:"CUSTOM_PANEL_EDIT_CONFLICT"});
+   return json(request,env,200,{panel:{...panel,id,updated_at:timestamp}});
   }
   const newId=crypto.randomUUID();
   await db.prepare("INSERT INTO bi_custom_panels(id,tenant_id,user_id,system,name,config_json,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)").bind(newId,tenant.id,user,panel.system,panel.name,JSON.stringify(panel),timestamp,timestamp).run();
-  return json(request,env,201,{panel:{...panel,id:newId}});
+  return json(request,env,201,{panel:{...panel,id:newId,updated_at:timestamp}});
  }
  if(url.pathname==="/api/custom-panels/preview"&&method==="POST"){
   const input=await request.json();
