@@ -6168,7 +6168,8 @@ async function buildDetailPage(env,tenant,resource,url,options={}) {
 
 
 const MULTISYSTEM_BOOTSTRAP_TENANT="paulafreitas";
-const MULTISYSTEM_BOOTSTRAP_TARGET=100;
+const MULTISYSTEM_PAGE_SIZE=100;
+const MULTISYSTEM_MAX_PAGES_PER_RESOURCE=5000;
 const MULTISYSTEM_BOOTSTRAP_SOURCES=Object.freeze({
   contabil:[
     {resource:"empenhos",base:"https://contabil.suite.betha.cloud",path:"/dados/v1/empenhos"},
@@ -6197,8 +6198,12 @@ async function ensureMultiSystemLoadSchema(env){
   ).run();
 }
 
-function multiSystemObjectKey(tenantId,system,resource){
-  return "multisystem/"+encodeURIComponent(String(tenantId))+"/"+encodeURIComponent(String(system))+"/"+encodeURIComponent(String(resource))+"/bootstrap.json";
+function multiSystemResourcePrefix(tenantId,system,resource){
+  return "multisystem/"+encodeURIComponent(String(tenantId))+"/"+encodeURIComponent(String(system))+"/"+encodeURIComponent(String(resource))+"/";
+}
+
+function multiSystemPageObjectKey(tenantId,system,resource,pageNo){
+  return multiSystemResourcePrefix(tenantId,system,resource)+"page-"+String(Math.max(0,Number(pageNo)||0)).padStart(6,"0")+".json";
 }
 
 function multiSystemFieldNames(rows){
@@ -6208,6 +6213,16 @@ function multiSystemFieldNames(rows){
     for(const key of Object.keys(row))fields.add(key);
     if(fields.size>=200)break;
   }
+  return [...fields].slice(0,200);
+}
+
+function mergeMultiSystemFields(previous,rows){
+  const fields=new Set();
+  try{
+    const parsed=JSON.parse(String(previous||"[]"));
+    if(Array.isArray(parsed))for(const field of parsed)fields.add(String(field));
+  }catch{}
+  for(const field of multiSystemFieldNames(rows))fields.add(field);
   return [...fields].slice(0,200);
 }
 
@@ -6232,63 +6247,119 @@ async function multiSystemGetPage(env,tenant,source,offset,limit){
       error.status=response.status;
       throw error;
     }
-    return {rows:payloadRows(parsed.body),body:parsed.body,status:response.status};
+    return {
+      rows:payloadRows(parsed.body),
+      body:parsed.body,
+      status:response.status
+    };
   }finally{
     clearTimeout(timer);
   }
 }
 
-async function loadMultiSystemBootstrapResource(env,tenant,system,source){
-  const rows=[];
-  const seen=new Set();
-  let pages=0;
-  let offset=0;
-  let httpStatus=200;
-  while(rows.length<MULTISYSTEM_BOOTSTRAP_TARGET&&pages<4){
-    const remaining=MULTISYSTEM_BOOTSTRAP_TARGET-rows.length;
-    const limit=Math.min(50,remaining);
-    const result=await multiSystemGetPage(env,tenant,source,offset,limit);
-    httpStatus=result.status;
-    pages++;
-    const pageRows=result.rows||[];
-    for(const row of pageRows){
-      const id=firstValue(row,["id","codigo","idIntegracao","uuid","matricula.id"]);
-      const key=id===undefined||id===null||id===""?null:String(id);
-      if(key&&seen.has(key))continue;
-      if(key)seen.add(key);
-      rows.push(row);
-      if(rows.length>=MULTISYSTEM_BOOTSTRAP_TARGET)break;
-    }
-    if(pageRows.length<limit)break;
-    offset+=limit;
-  }
+async function loadMultiSystemIncrementalResource(env,tenant,system,source,state){
+  const loaded=Math.max(0,Number(state?.loaded)||0);
+  const pages=Math.max(0,Number(state?.pages)||0);
+  if(pages>=MULTISYSTEM_MAX_PAGES_PER_RESOURCE)throw new Error("MULTISYSTEM_PAGE_LIMIT");
 
-  const objectKey=multiSystemObjectKey(tenant.id,system,source.resource);
-  if(rows.length&&env.BI_SYNC_RAW){
-    await env.BI_SYNC_RAW.put(objectKey,JSON.stringify({
+  const result=await multiSystemGetPage(env,tenant,source,loaded,MULTISYSTEM_PAGE_SIZE);
+  const rows=result.rows||[];
+  const meta=payloadPageMeta(result.body,loaded,MULTISYSTEM_PAGE_SIZE,rows.length);
+  const complete=meta.hasNext===false||rows.length===0||rows.length<MULTISYSTEM_PAGE_SIZE;
+
+  let pageObjectKey=null;
+  if(rows.length){
+    pageObjectKey=multiSystemPageObjectKey(tenant.id,system,source.resource,pages);
+    await env.BI_SYNC_RAW.put(pageObjectKey,JSON.stringify({
       tenantId:tenant.id,
       system,
       resource:source.resource,
       source:"betha-api",
+      offset:loaded,
+      page:pages,
       loaded:rows.length,
       loadedAt:new Date().toISOString(),
       rows
     }),{httpMetadata:{contentType:"application/json"}});
   }
-  return {loaded:rows.length,pages,httpStatus,objectKey,fields:multiSystemFieldNames(rows)};
+
+  const nextLoaded=loaded+rows.length;
+  const nextPages=pages+(rows.length?1:0);
+  return {
+    loaded:nextLoaded,
+    pages:nextPages,
+    httpStatus:result.status,
+    complete,
+    objectKey:complete
+      ? multiSystemResourcePrefix(tenant.id,system,source.resource)
+      : (pageObjectKey||state?.object_key||multiSystemResourcePrefix(tenant.id,system,source.resource)),
+    fields:mergeMultiSystemFields(state?.fields_json,rows)
+  };
 }
 
-async function multiSystemBootstrapTotals(env,tenantId){
-  if(!env.AUTH_DB)return {};
-  const result=await env.AUTH_DB.prepare(
-    "SELECT system,SUM(CASE WHEN status='complete' THEN loaded ELSE 0 END) AS loaded FROM bi_multisystem_loads WHERE tenant_id=?1 GROUP BY system"
-  ).bind(String(tenantId)).all();
-  return Object.fromEntries((result.results||[]).map(row=>[String(row.system),Number(row.loaded)||0]));
+function multiSystemStateNeedsWork(state,configUpdatedAt){
+  if(!state)return true;
+  if(state.status==="complete"){
+    // The first production version marked the initial 100-row bootstrap as
+    // complete. A bootstrap.json object means it still needs true pagination.
+    return String(state.object_key||"").endsWith("/bootstrap.json");
+  }
+  if(state.status==="error"){
+    const httpStatus=Number(state.http_status)||0;
+    const failedAt=Date.parse(String(state.updated_at||""))||0;
+    if([401,403].includes(httpStatus))return configUpdatedAt>failedAt;
+    if(httpStatus===404)return false;
+    return Date.now()-failedAt>=5*60*1000;
+  }
+  return true;
+}
+
+async function advanceMultiSystem(env,tenant,system,configUpdatedAt){
+  const sources=MULTISYSTEM_BOOTSTRAP_SOURCES[system]||[];
+  if(!sources.length)return;
+
+  const states=await env.AUTH_DB.prepare(
+    "SELECT resource,status,loaded,pages,http_status,error,object_key,fields_json,updated_at FROM bi_multisystem_loads WHERE tenant_id=?1 AND system=?2"
+  ).bind(String(tenant.id),system).all();
+  const byResource=new Map((states.results||[]).map(row=>[String(row.resource),row]));
+  const source=sources.find(item=>multiSystemStateNeedsWork(byResource.get(item.resource),configUpdatedAt));
+  if(!source)return;
+
+  const previous=byResource.get(source.resource)||null;
+  const startedAt=new Date().toISOString();
+  await env.AUTH_DB.prepare(
+    "INSERT INTO bi_multisystem_loads (tenant_id,system,resource,status,loaded,pages,updated_at) VALUES (?1,?2,?3,'running',0,0,?4) ON CONFLICT(tenant_id,system,resource) DO UPDATE SET status='running',error=NULL,updated_at=excluded.updated_at"
+  ).bind(String(tenant.id),system,source.resource,startedAt).run();
+
+  try{
+    const result=await loadMultiSystemIncrementalResource(env,tenant,system,source,previous);
+    await env.AUTH_DB.prepare(
+      "UPDATE bi_multisystem_loads SET status=?1,loaded=?2,pages=?3,http_status=?4,error=NULL,object_key=?5,fields_json=?6,updated_at=?7 WHERE tenant_id=?8 AND system=?9 AND resource=?10"
+    ).bind(
+      result.complete?"complete":"running",
+      result.loaded,
+      result.pages,
+      result.httpStatus,
+      result.objectKey,
+      JSON.stringify(result.fields),
+      new Date().toISOString(),
+      String(tenant.id),
+      system,
+      source.resource
+    ).run();
+  }catch(error){
+    const code=String(error?.message||error||"MULTISYSTEM_LOAD_FAILED");
+    const httpStatus=Number(error?.status)||null;
+    await env.AUTH_DB.prepare(
+      "UPDATE bi_multisystem_loads SET status='error',http_status=?1,error=?2,updated_at=?3 WHERE tenant_id=?4 AND system=?5 AND resource=?6"
+    ).bind(httpStatus,code.slice(0,240),new Date().toISOString(),String(tenant.id),system,source.resource).run();
+  }
 }
 
 async function runMultiSystemBootstrap(env){
   if(!env.AUTH_DB||!env.BI_SYNC_RAW)return;
   await ensureMultiSystemLoadSchema(env);
+
   let tenant;
   try{
     tenant=await resolveTenant(env,MULTISYSTEM_BOOTSTRAP_TENANT);
@@ -6297,57 +6368,14 @@ async function runMultiSystemBootstrap(env){
     return;
   }
 
-  const totals=await multiSystemBootstrapTotals(env,tenant.id);
   const tenantConfigState=await env.AUTH_DB.prepare(
     "SELECT updated_at FROM bi_tenant_configs WHERE id=?1 LIMIT 1"
   ).bind(String(tenant.id)).first();
   const configUpdatedAt=Date.parse(String(tenantConfigState?.updated_at||""))||0;
 
-  for(const system of ["contabil","compras","folha"]){
-    if((totals[system]||0)>=MULTISYSTEM_BOOTSTRAP_TARGET)continue;
-    const sources=MULTISYSTEM_BOOTSTRAP_SOURCES[system]||[];
-    const states=await env.AUTH_DB.prepare(
-      "SELECT resource,status,loaded,http_status,updated_at FROM bi_multisystem_loads WHERE tenant_id=?1 AND system=?2"
-    ).bind(String(tenant.id),system).all();
-    const stateRows=states.results||[];
-    const byResource=new Map(stateRows.map(row=>[String(row.resource),row]));
-    const authFailures=stateRows.filter(row=>row.status==="error"&&[401,403].includes(Number(row.http_status)));
-    const latestAuthFailureAt=authFailures.reduce((latest,row)=>Math.max(latest,Date.parse(String(row.updated_at||""))||0),0);
-    const authMayRetry=authFailures.length>0&&configUpdatedAt>latestAuthFailureAt;
-    if(authFailures.length>0&&!authMayRetry)continue;
-
-    const authRetry=authMayRetry?sources.find(item=>{
-      const state=byResource.get(item.resource);
-      return state&&state.status==="error"&&[401,403].includes(Number(state.http_status));
-    }):null;
-    const unattempted=sources.find(item=>!byResource.has(item.resource));
-    const retryable=sources.find(item=>{
-      const state=byResource.get(item.resource);
-      return state&&state.status==="error"&&![401,403,404].includes(Number(state.http_status));
-    });
-    const retrySource=authRetry||unattempted||retryable;
-    if(!retrySource)continue;
-
-    const startedAt=new Date().toISOString();
-    await env.AUTH_DB.prepare(
-      "INSERT INTO bi_multisystem_loads (tenant_id,system,resource,status,loaded,pages,updated_at) VALUES (?1,?2,?3,'running',0,0,?4) ON CONFLICT(tenant_id,system,resource) DO UPDATE SET status='running',error=NULL,updated_at=excluded.updated_at"
-    ).bind(String(tenant.id),system,retrySource.resource,startedAt).run();
-
-    try{
-      const result=await loadMultiSystemBootstrapResource(env,tenant,system,retrySource);
-      const status=result.loaded>0?"complete":"empty";
-      await env.AUTH_DB.prepare(
-        "UPDATE bi_multisystem_loads SET status=?1,loaded=?2,pages=?3,http_status=?4,error=NULL,object_key=?5,fields_json=?6,updated_at=?7 WHERE tenant_id=?8 AND system=?9 AND resource=?10"
-      ).bind(status,result.loaded,result.pages,result.httpStatus,result.objectKey,JSON.stringify(result.fields),new Date().toISOString(),String(tenant.id),system,retrySource.resource).run();
-    }catch(error){
-      const code=String(error?.message||error||"MULTISYSTEM_LOAD_FAILED");
-      const httpStatus=Number(error?.status)||null;
-      await env.AUTH_DB.prepare(
-        "UPDATE bi_multisystem_loads SET status='error',http_status=?1,error=?2,updated_at=?3 WHERE tenant_id=?4 AND system=?5 AND resource=?6"
-      ).bind(httpStatus,code.slice(0,240),new Date().toISOString(),String(tenant.id),system,retrySource.resource).run();
-    }
-    break;
-  }
+  await Promise.allSettled(
+    ["contabil","compras","folha"].map(system=>advanceMultiSystem(env,tenant,system,configUpdatedAt))
+  );
 }
 
 const MULTISYSTEM_SAMPLE_FILES=Object.freeze({
