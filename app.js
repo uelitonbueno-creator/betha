@@ -99,6 +99,7 @@
       const home=dashboards[homeView]||{};
       return {
         currentSystemId:String(currentSystemId),
+        tenantId:String(tenantId),
         systemName:String(system?.name||system?.label||currentSystemId||"Tributos"),
         homeView,
         localSample:Boolean(home.localSample),
