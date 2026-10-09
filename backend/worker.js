@@ -10179,15 +10179,20 @@ const PANEL_PREVIEW_FIELDS=Object.freeze({
     {id:"id",type:"string",dimension:true,measure:true,filterable:true}
   ]}
 });
-async function panelMultiSystemStatus(env,tenant,system){
+async function panelMultiSystemStatus(env,tenant,auth,system){
   if(!env.AUTH_DB)return {available:false,reason:"LOAD_DB_NOT_CONFIGURED",resources:[]};
   if(!env.BI_SYNC_RAW)return {available:false,reason:"RAW_STORAGE_NOT_CONFIGURED",resources:[]};
+  const permitted=PANEL_CACHED_RESOURCE_VIEWS[system]||{};
+  const privileged=auth.access?.admin===true||auth.access?.technical===true||auth.tenantAdmin;
+  const views=new Set(permissionViewsForAccess(auth.access));
   const rows=await env.AUTH_DB.prepare(
     "SELECT resource,status,loaded,pages,fields_json,updated_at FROM bi_multisystem_loads WHERE tenant_id=? AND system=? ORDER BY resource LIMIT 50"
   ).bind(tenant.id,system).all();
-  const resources=(rows.results||[]).map(row=>{
+  const resources=(rows.results||[]).filter(row=>
+    Object.prototype.hasOwnProperty.call(permitted,row.resource)&&
+    (privileged||permitted[row.resource].some(view=>views.has(view)))
+  ).map(row=>{
     const profile=parseMultiSystemFieldProfile(row.fields_json);
-    // Não expor nomes de campos pessoais ou quaisquer dados das páginas.
     return {resource:row.resource,status:row.status,records:Number(row.loaded)||0,
       pages:Number(row.pages)||0,fieldCount:profile.selected.length,updatedAt:row.updated_at};
   });
@@ -10298,9 +10303,11 @@ async function handlePanelPreview(request,env,url){
     if(!["tributos","contabilidade","compras","folha"].includes(system))return json(request,env,400,{error:"INVALID_SYSTEM"});
     if(url.pathname==="/api/panel-builder/source-status"&&request.method==="GET"){
       if(system==="tributos")return json(request,env,200,{system,mode:"authorized-api",available:true,resources:[]});
-      const result=await panelMultiSystemStatus(env,tenant,system);
+      const result=await panelMultiSystemStatus(env,tenant,auth,system);
+      const sources=await cachedPanelSources(env,tenant,auth,system);
       return json(request,env,200,{system,tenantId:tenant.id,mode:"cached-load",...result,
-        executionEnabled:false,note:"Fontes carregadas identificadas. Prévia real não habilitada até validação do esquema e das permissões."});
+        previewEnabled:sources.length>0,executionEnabled:false,
+        note:"Prévia parcial do cache disponível somente nas fontes e campos autorizados. Consolidação completa ainda não habilitada."});
     }
     if(url.pathname==="/api/panel-builder/catalog"&&request.method==="GET"){
       const sources=panelPreviewCatalog(system).filter(s=>{
