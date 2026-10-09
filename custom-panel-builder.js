@@ -62,13 +62,34 @@
   }
   function status(message,error=false){const el=byId("biCustomStatus");el.textContent=message;el.classList.toggle("error",error);}
 
+  const FIELD_LABELS={
+    count:"Quantidade",ano:"Exercício",exercicio:"Exercício",situacao:"Situação",
+    status:"Status",tipo:"Tipo",modalidade:"Modalidade",unidade:"Unidade",
+    secretaria:"Secretaria",orgao:"Órgão",natureza:"Natureza",categoria:"Categoria",
+    municipio:"Município",cidade:"Cidade",vinculo:"Vínculo",tipoVinculo:"Tipo de vínculo",
+    cargo:"Cargo",lotacao:"Lotação",valor:"Valor",valorEmpenhado:"Valor empenhado",
+    valorLiquidado:"Valor liquidado",valorPago:"Valor pago",valorArrecadado:"Valor arrecadado",
+    valorPrevisto:"Valor previsto",valorEstimado:"Valor estimado",valorHomologado:"Valor homologado"
+  };
   async function refreshCatalog(force=false){
     const {tenant,system}=context(),scope=tenant+":"+system;
-    if(!tenant||system!=="tributos"){authorizedSources=new Set();catalogScope="";return;}
+    if(!tenant||!["tributos","contabil","compras","folha"].includes(system)){authorizedSources=new Set();catalogScope="";return;}
     if(!force&&catalogScope===scope)return;
-    const result=await request("/api/custom-panels/catalog");
+    const result=await request("/api/custom-panels/catalog?system="+encodeURIComponent(system));
     if(scope!==context().tenant+":"+context().system)return;
-    authorizedSources=new Set((result.sources||[]).map(source=>String(source.id)).filter(id=>SOURCES[id]));
+    const ids=[];
+    for(const item of result.sources||[]){
+      if(item.system!==system||!Array.isArray(item.dimensions)||!Array.isArray(item.measures)||!item.dimensions.length||!item.measures.length)continue;
+      const existing=SOURCES[item.id];
+      const mapField=(keys,prior)=>Object.fromEntries(keys.map(key=>[key,prior?.[key]||FIELD_LABELS[key]||key]));
+      SOURCES[item.id]={
+        label:item.label||existing?.label||item.id,system,
+        dimensions:mapField(item.dimensions,existing?.dimensions),
+        measures:mapField(item.measures,existing?.measures)
+      };
+      ids.push(item.id);
+    }
+    authorizedSources=new Set(ids);
     catalogScope=scope;
   }
   function resetDraft(){
@@ -86,7 +107,7 @@
     const side=byId("customPanelSidebar"),mobile=byId("mobileCustomPanelButton");
     const {tenant,system}=context(),scope=tenant+":"+system;
     const auth=byId("authGate");
-    const visible=Boolean(tenant)&&system==="tributos"&&(!auth||auth.hidden);
+    const visible=Boolean(tenant)&&["tributos","contabil","compras","folha"].includes(system)&&(!auth||auth.hidden);
     if(!visible){
       if(side)side.hidden=true;if(mobile)mobile.hidden=true;sidebarScope="";
       return;
@@ -95,7 +116,7 @@
     try{
       await refreshCatalog();
       if(scope!==context().tenant+":"+context().system)return;
-      const result=await request("/api/custom-panels");
+      const result=await request("/api/custom-panels?system="+encodeURIComponent(context().system));
       if(scope!==context().tenant+":"+context().system)return;
       const list=byId("customPanelSidebarItems");
       if(list){
@@ -292,12 +313,12 @@
     const id=params.get("painel");
     if(!id||!/^[a-f0-9-]{36}$/i.test(id))return;
     ensureUi();
-    if(!context().tenant||context().system!=="tributos")return;
+    if(!context().tenant||!["tributos","contabil","compras","folha"].includes(context().system))return;
     try {
       const scope=context().tenant+":"+context().system;
       await refreshCatalog();
       const result=await request("/api/custom-panels/"+encodeURIComponent(id));
-      if(scope!==context().tenant+":"+context().system||context().system!=="tributos")return;
+      if(scope!==context().tenant+":"+context().system||result.panel.system!==context().system){status("Para abrir este painel, selecione o sistema ao qual ele pertence.");return;}
       byId("biCustomRoot").hidden=false;
       openPanel(result.panel);
     }catch(error){status(error.message,true);}
@@ -310,7 +331,7 @@
     const gate=byId("authGate"),unauthenticated=Boolean(gate&&!gate.hidden);
     const {tenant,system}=context(),scope=tenant+":"+system;
     const open=byId("biCustomOpen");
-    if(open)open.hidden=unauthenticated||!tenant||system!=="tributos";
+    if(open)open.hidden=unauthenticated||!tenant||!authorizedSources.size;
     if(unauthenticated){
       if(lastContext){
         lastContext="";sidebarScope="";catalogScope="";authorizedSources.clear();
@@ -328,7 +349,7 @@
       byId("customPanelSidebarItems")?.replaceChildren();
       if(byId("biCustomRoot"))byId("biCustomRoot").hidden=true;
       state.id=null;state.previewRows=[];state.previewSeq++;destroyChart();
-      if(tenant&&system==="tributos"){loadSidebar(true);openSavedFromUrl();}
+      if(tenant&&["tributos","contabil","compras","folha"].includes(system)){loadSidebar(true);openSavedFromUrl();}
       else{if(byId("customPanelSidebar"))byId("customPanelSidebar").hidden=true;if(byId("mobileCustomPanelButton"))byId("mobileCustomPanelButton").hidden=true;}
     }
   },1500);
