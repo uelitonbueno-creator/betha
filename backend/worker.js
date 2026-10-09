@@ -9658,6 +9658,66 @@ function errorResponse(request,env,error) {
 }
 
 
+
+const PANEL_PREVIEW_FIELDS=Object.freeze({
+  pagamentos:{systemId:"tributos",fields:[
+    {id:"dataPagamento",type:"string",dimension:true},
+    {id:"valorPago",type:"number",measure:true},
+    {id:"id",type:"string",dimension:true,measure:true}
+  ]},
+  debitos:{systemId:"tributos",fields:[
+    {id:"situacao",type:"string",dimension:true},
+    {id:"vlLancado",type:"number",measure:true},
+    {id:"id",type:"string",dimension:true,measure:true}
+  ]}
+});
+function panelPreviewCatalog(system){
+  if(system!=="tributos")return [];
+  return Object.entries(PANEL_PREVIEW_FIELDS).map(([id,v])=>({id:"bi:"+id,systemId:v.systemId,fields:v.fields}));
+}
+async function handlePanelPreview(request,env,url){
+  let tenant,auth;
+  try{
+    tenant=await resolveTenant(env,getTenantId(request,url));
+    auth=await authorizeTenant(request,env,tenant);
+    const system=String(url.searchParams.get("system")||"");
+    if(!["tributos","contabilidade","compras","folha"].includes(system))return json(request,env,400,{error:"INVALID_SYSTEM"});
+    if(url.pathname==="/api/panel-builder/catalog"&&request.method==="GET"){
+      const sources=panelPreviewCatalog(system).filter(s=>{
+        try{requireDataPermission(auth,"bi",s.id.slice(3));return true;}catch{return false;}
+      });
+      return json(request,env,200,{system,tenantId:tenant.id,sources});
+    }
+    if(url.pathname!=="/api/panel-builder/preview"||request.method!=="POST")return json(request,env,405,{error:"METHOD_NOT_ALLOWED"});
+    const raw=await request.text();
+    if(raw.length>18000)return json(request,env,413,{error:"PANEL_DRAFT_TOO_LARGE"});
+    let body;try{body=JSON.parse(raw);}catch{return json(request,env,400,{error:"INVALID_JSON"});}
+    const d=validatePanelDraftPayload(body);
+    const resource=d.sourceId.slice(3),allowed=PANEL_PREVIEW_FIELDS[resource];
+    if(!allowed||system!=="tributos")return json(request,env,403,{error:"PANEL_SOURCE_NOT_ALLOWED"});
+    requireDataPermission(auth,"bi",resource);
+    const fields=new Map(allowed.fields.map(f=>[f.id,f]));
+    if(!fields.get(d.dimension)?.dimension)return json(request,env,400,{error:"PANEL_DIMENSION_NOT_ALLOWED"});
+    for(const m of d.measures)if(!(m.field==="*"&&m.aggregation==="count")&&(!fields.get(m.field)?.measure||!["sum","avg","min","max","count"].includes(m.aggregation)))return json(request,env,400,{error:"PANEL_MEASURE_NOT_ALLOWED"});
+    const payload=await bethaGet(env,tenant,"bi",resource,"limit=500");
+    const rows=payloadRows(payload).slice(0,500),buckets=new Map();
+    for(const row of rows){
+      if(!row||typeof row!=="object")continue;
+      const dim=row[d.dimension],label=dim==null?"Não informado":String(dim).slice(0,160);
+      if(!buckets.has(label)){if(buckets.size>=200)break;buckets.set(label,{dimension:label,values:d.measures.map(()=>({n:0,total:0,min:Infinity,max:-Infinity}))});}
+      const entry=buckets.get(label);
+      d.measures.forEach((m,i)=>{
+        const x=m.field==="*"?1:row[m.field],v=entry.values[i];
+        if(m.aggregation==="count"){if(m.field==="*"||x!=null)v.n++;return;}
+        if(typeof x!=="number"||!Number.isFinite(x))return;
+        v.n++;v.total+=x;v.min=Math.min(v.min,x);v.max=Math.max(v.max,x);
+      });
+    }
+    const result=[...buckets.values()].map(x=>({dimension:x.dimension,values:x.values.map((v,i)=>{const op=d.measures[i].aggregation;return op==="count"?v.n:!v.n?null:op==="sum"?v.total:op==="avg"?v.total/v.n:op==="min"?v.min:v.max;})}));
+    return json(request,env,200,{rows:result,scanned:rows.length,partial:true,source:d.sourceId,note:"Prévia parcial: somente até 500 registros, sem paginação completa."});
+  }catch(err){return errorResponse(request,env,err);}
+}
+
 function validatePanelDraftPayload(input){
   if(!input||typeof input!=="object"||Array.isArray(input))throw new Error("INVALID_PANEL_DRAFT");
   const d=input.definition;
@@ -9724,6 +9784,7 @@ export default {
   async fetch(request,env) {
     const url=new URL(request.url);
     if (request.method==="OPTIONS") return new Response(null,{status:204,headers:corsHeaders(request,env)});
+    if (url.pathname==="/api/panel-builder/catalog" || url.pathname==="/api/panel-builder/preview") return handlePanelPreview(request,env,url);
     if (url.pathname==="/api/panel-drafts" || /^\/api\/panel-drafts\/[0-9a-f-]{36}$/.test(url.pathname)) return handlePanelDrafts(request,env,url);
 
     if (url.pathname==="/.well-known/oauth-authorization-server" && request.method==="GET") {
