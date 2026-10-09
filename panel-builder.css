@@ -1,0 +1,12 @@
+/* BI Vella — construtor de definições */
+.bi-builder-launch{position:fixed;right:22px;bottom:24px;z-index:1200;border:0;border-radius:24px;padding:12px 18px;background:#0b2842;color:white;font:600 14px system-ui;box-shadow:0 6px 20px #091d3550;cursor:pointer}
+.bi-builder-modal:not([hidden]){position:fixed;inset:0;background:#071727a8;z-index:1300;display:grid;place-items:center;padding:15px}
+.bi-builder-card{background:#fff;color:#163047;border-radius:14px;width:min(720px,100%);max-height:92dvh;overflow:auto;padding:24px;box-shadow:0 14px 60px #0005;font:14px system-ui}
+.bi-builder-head,.bi-builder-actions{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.bi-builder-head h2{font-size:22px;margin:0}.bi-builder-head button{border:0;background:none;cursor:pointer;font-size:23px}
+.bi-builder-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px;margin-top:16px}
+.bi-builder-form label{display:grid;gap:6px;font-weight:600}.bi-builder-form input,.bi-builder-form select{padding:11px;border:1px solid #bac9d5;border-radius:7px;min-width:0;background:white;color:#153047}
+.bi-builder-actions,.bi-builder-status,.bi-builder-json{grid-column:1/-1}
+.bi-builder-actions button{padding:10px 15px;border:1px solid #0b2842;background:#0b2842;color:white;border-radius:7px;cursor:pointer}.bi-builder-actions button:disabled{opacity:.45;cursor:not-allowed}
+.bi-builder-status{margin:0}.bi-builder-json{white-space:pre-wrap;overflow:auto;background:#f4f7fa;border-radius:8px;padding:12px;min-height:30px}
+@media(max-width:600px){.bi-builder-form{grid-template-columns:1fr}.bi-builder-launch{bottom:14px;right:12px}.bi-builder-card{padding:17px}}
