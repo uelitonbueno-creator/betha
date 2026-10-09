@@ -10418,7 +10418,7 @@ async function handlePanelDrafts(request,env,url){
     }
     return json(request,env,405,{error:"METHOD_NOT_ALLOWED"});
   }catch(err){
-    if(["INVALID_PANEL_DRAFT","FILTER_DRAFTS_NOT_ENABLED","PANEL_DRAFT_TOO_LARGE","INVALID_PANEL_VIEW","INVALID_PANEL_ORDER","PANEL_FIELD_NOT_ALLOWED","PANEL_SOURCE_NOT_ALLOWED","PANEL_VIEW_FORBIDDEN"].includes(err.message))return json(request,env,400,{error:err.message});
+    if(["INVALID_PANEL_DRAFT","FILTER_DRAFTS_NOT_ENABLED","PANEL_DRAFT_TOO_LARGE","INVALID_PANEL_VIEW","INVALID_PANEL_ORDER","PANEL_FIELD_NOT_ALLOWED","PANEL_SOURCE_NOT_ALLOWED","PANEL_VIEW_FORBIDDEN"].includes(err.message))return json(request,env,err.message==="PANEL_VIEW_FORBIDDEN"||err.message==="PANEL_SOURCE_NOT_ALLOWED"||err.message==="PANEL_FIELD_NOT_ALLOWED"?403:400,{error:err.message});
     return json(request,env,503,{error:"PANEL_DRAFT_STORAGE_UNAVAILABLE"});
   }
 }
