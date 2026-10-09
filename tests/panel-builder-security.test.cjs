@@ -46,6 +46,9 @@ const def={title:"Empenhos por ano",sourceId:"cache:contabil:empenhos",type:"bar
  const result=await scope.previewCachedPanel(env,tenant,auth,"contabil",def);
  assert.equal(result.scanned,6);
  assert.equal(result.rows[0].values[0],450);
+ const unauthorized={access:{views:["compras-processos"]}};
+ assert.equal((await scope.cachedPanelSources(env,tenant,unauthorized,"contabil")).length,0);
+
  await scope.authorizePanelDefinition(env,tenant,auth,"contabil",scope.validatePanelDraftPayload({definition:def}));
  await assert.rejects(()=>scope.authorizePanelDefinition(env,tenant,auth,"contabil",{...def,dimension:"cpf",measures:def.measures}),/PANEL_FIELD_NOT_ALLOWED/);
  await assert.rejects(()=>scope.previewCachedPanel(env,tenant,auth,"compras",def),/PANEL_SOURCE_NOT_ALLOWED/);
