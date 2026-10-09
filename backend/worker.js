@@ -6815,6 +6815,186 @@ function multiSystemSampleMeta(system,sample,rows) {
   };
 }
 
+function multiSystemSortedEntries(values,limit=12){
+  return Object.entries(values&&typeof values==="object"?values:{})
+    .map(([label,value])=>[String(label),Number(value)||0])
+    .sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"pt-BR"))
+    .slice(0,Math.max(1,Number(limit)||12));
+}
+
+function multiSystemMonthlyEntries(summary,periodo,exercicio){
+  const entries=Object.entries(summary?.monthly||{})
+    .filter(([key])=>/^\d{4}-\d{2}$/.test(String(key)))
+    .map(([key,value])=>[String(key),Number(value)||0])
+    .sort((a,b)=>a[0].localeCompare(b[0]));
+
+  if(periodo==="todos")return entries;
+  const year=String(Number(exercicio)||new Date().getFullYear());
+  if(periodo==="12m"){
+    const anchor=new Date(Number(year),new Date().getMonth(),1);
+    const start=new Date(anchor.getFullYear(),anchor.getMonth()-11,1);
+    const startKey=start.getFullYear()+"-"+String(start.getMonth()+1).padStart(2,"0");
+    const endKey=anchor.getFullYear()+"-"+String(anchor.getMonth()+1).padStart(2,"0");
+    return entries.filter(([key])=>key>=startKey&&key<=endKey);
+  }
+  if(periodo==="mes"){
+    const month=new Date().getMonth()+1;
+    const key=year+"-"+String(month).padStart(2,"0");
+    return entries.filter(([candidate])=>candidate===key);
+  }
+  return entries.filter(([key])=>key.startsWith(year+"-"));
+}
+
+function multiSystemMonthLabel(key){
+  const [year,month]=String(key).split("-");
+  const names=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  const index=Number(month)-1;
+  return (names[index]||month)+"/"+String(year).slice(-2);
+}
+
+function multiSystemRealMeta(system,summaries,extra={}){
+  const list=(summaries||[]).filter(Boolean);
+  const loaded=list.reduce((sum,item)=>sum+(Number(item.loaded)||Number(item.count)||0),0);
+  const pages=list.reduce((sum,item)=>sum+(Number(item.pages)||0),0);
+  const complete=list.length>0&&list.every(item=>item.loadStatus==="complete");
+  const errors=list.filter(item=>item.error).map(item=>({source:item.resource,error:item.error}));
+  const updatedAt=list.map(item=>item.updatedAt).filter(Boolean).sort().at(-1)||new Date().toISOString();
+  return {
+    dataMode:complete?"real":"real-partial",
+    realData:true,
+    sampleMode:false,
+    generatedAt:updatedAt,
+    updatedAt,
+    warning:complete?null:"DADOS REAIS DA BETHA · carga incremental em andamento.",
+    sourceRows:{[system]:loaded},
+    sourceTotals:{[system]:loaded},
+    sourceAudit:{
+      [system]:{
+        loaded,
+        reportedTotal:null,
+        complete,
+        pages,
+        error:errors.length?errors.map(item=>item.error).join("; "):null,
+        errorStatus:null,
+        fields:[...new Set(list.flatMap(item=>item.fieldsProfile?.selected||[]))]
+      }
+    },
+    warnings:errors,
+    realSources:list.map(item=>({
+      resource:item.resource,
+      loaded:Number(item.loaded)||0,
+      pages:Number(item.pages)||0,
+      status:item.loadStatus||"partial",
+      fields:item.fieldsProfile?.selected||[]
+    })),
+    ...extra
+  };
+}
+
+async function buildAccountingDashboard(env,tenant,url){
+  const summary=await getMultiSystemSummary(env,tenant.id,"contabil","empenhos");
+  if(!summary||Number(summary.count)<=0)return buildAccountingSampleDashboard(env,tenant,url);
+
+  const periodo=url.searchParams.get("periodo")||"ano";
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const monthly=multiSystemMonthlyEntries(summary,periodo,exercicio);
+  const hasPeriodData=monthly.length>0;
+  const inProgress=summary.loadStatus!=="complete";
+  const empenhado=hasPeriodData
+    ? monthly.reduce((sum,[,value])=>sum+Number(value||0),0)
+    : (inProgress?null:0);
+  const creditors=multiSystemSortedEntries(summary.groups,12);
+  const charts={
+    "execucao-mensal":{
+      format:"currency",
+      labels:monthly.map(([key])=>multiSystemMonthLabel(key)),
+      datasets:[{label:"Empenhado",data:monthly.map(([,value])=>value)}]
+    }
+  };
+  const tables=creditors.length?[{
+    id:"contabil-credores-reais",
+    title:"Empenhado por credor",
+    subtitle:"Dados reais carregados da API de empenhos.",
+    groupLabel:"Credor",
+    columns:[{id:"empenhado",label:"Empenhado",format:"currency"}],
+    rows:creditors.map(([label,value])=>({label,values:[value]})),
+    totalRows:creditors.length
+  }]:[];
+
+  return {
+    view:"contabil-visao-geral",
+    tenant:{id:tenant.id,name:tenant.name},
+    period:{periodo,exercicio},
+    filters:{},
+    kpis:{
+      empenhado,
+      liquidado:null,
+      pago:null,
+      arrecadado:null,
+      credores:creditors.length?Object.keys(summary.groups||{}).length:null
+    },
+    charts,
+    tables,
+    meta:multiSystemRealMeta("contabil",[summary],{
+      periodDataAvailable:hasPeriodData,
+      unavailableMetrics:["liquidado","pago","arrecadado"],
+      note:inProgress
+        ?"Empenhos reais em carga. Liquidação, pagamento e receita permanecem indisponíveis até as respectivas fontes serem autorizadas/carregadas."
+        :"Empenhos reais consolidados. Métricas adicionais dependem das demais fontes contábeis."
+    })
+  };
+}
+
+async function buildProcurementDashboard(env,tenant,url){
+  const processSummary=await getMultiSystemSummary(env,tenant.id,"compras","processos-administrativos");
+  if(!processSummary||Number(processSummary.count)<=0)return buildProcurementSampleDashboard(env,tenant,url);
+  const supplierSummary=await getMultiSystemSummary(env,tenant.id,"compras","fornecedores");
+  const hiring=multiSystemSortedEntries(processSummary.secondaryGroups,12);
+  const situations=multiSystemSortedEntries(processSummary.groups,12);
+
+  const charts={};
+  if(hiring.length){
+    charts["compras-modalidade"]={
+      format:"number",
+      labels:hiring.map(([label])=>label),
+      datasets:[{label:"Processos",data:hiring.map(([,value])=>value)}]
+    };
+  }
+
+  const tables=situations.length?[{
+    id:"compras-situacao-real",
+    title:"Processos por situação",
+    subtitle:"Distribuição dos processos administrativos carregados.",
+    groupLabel:"Situação",
+    columns:[{id:"processos",label:"Processos",format:"number"}],
+    rows:situations.map(([label,value])=>({label,values:[value]})),
+    totalRows:situations.length
+  }]:[];
+
+  return {
+    view:"compras-visao-geral",
+    tenant:{id:tenant.id,name:tenant.name},
+    period:{
+      periodo:url.searchParams.get("periodo")||"ano",
+      exercicio:Number(url.searchParams.get("exercicio")||new Date().getFullYear())
+    },
+    filters:{},
+    kpis:{
+      processos:Number(processSummary.count)||0,
+      estimado:null,
+      homologado:null,
+      economia:null,
+      fornecedores:supplierSummary&&Number(supplierSummary.count)>0?Number(supplierSummary.count):null
+    },
+    charts,
+    tables,
+    meta:multiSystemRealMeta("compras",[processSummary,supplierSummary].filter(Boolean),{
+      unavailableMetrics:["estimado","homologado","economia"],
+      note:"Dados reais dos processos administrativos. Valores financeiros serão habilitados quando a API disponibilizar campos compatíveis."
+    })
+  };
+}
+
 async function buildAccountingSampleDashboard(env,tenant,url) {
   const sample=await loadMultiSystemSample("contabil");
   const periodo=url.searchParams.get("periodo")||"ano";
@@ -7074,8 +7254,8 @@ function dashboardBuilder(view) {
     guias:buildGuidesDashboard,
     indexadores:buildIndexersDashboard,
     territorio:buildTerritoryDashboard,
-    "contabil-visao-geral":buildAccountingSampleDashboard,
-    "compras-visao-geral":buildProcurementSampleDashboard,
+    "contabil-visao-geral":buildAccountingDashboard,
+    "compras-visao-geral":buildProcurementDashboard,
     "folha-visao-geral":buildPayrollSampleDashboard
   };
   return builders[String(view||"")] || null;
