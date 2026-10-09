@@ -9434,8 +9434,8 @@ function errorResponse(request,env,error) {
 
 /* Construtor personalizado: fontes e campos explicitamente autorizados. */
 const CUSTOM_PANEL_SOURCES=Object.freeze({
- "bi:debitos":{label:"Débitos",dimensions:["situacao","ano","bairro","receita"],measures:["lancado","saldo"]},
- "bi:pagamentos":{label:"Pagamentos",dimensions:["ano","receita","pagamento","pagamento:mes","pagamento:dia","pagamento:ano"],measures:["pago"]},
+ "bi:debitos":{label:"Débitos",dimensions:["situacao","ano","bairro","receita"],measures:["lancado","saldo","count"]},
+ "bi:pagamentos":{label:"Pagamentos",dimensions:["ano","receita","pagamento","pagamento:mes","pagamento:dia","pagamento:ano"],measures:["pago","count"]},
  "bi:imoveis":{label:"Imóveis",dimensions:["bairro","zona","situacao"],measures:["count"]},
  "bi:parcelamentos":{label:"Parcelamentos",dimensions:["situacao","ano"],measures:["count"]}
 });
