@@ -18,6 +18,14 @@ Na primeira requisição autenticada aos rascunhos, `ensurePanelDraftSchema` cri
 
 Os arquivos `backend/migrations/20261009_panel_drafts.sql`, `20261009_panel_placement.sql` e `20261009_panel_sort_order.sql` ainda podem ser usados para migração **antecipada**, nesta ordem. **Não executar as instruções `ALTER TABLE` dos dois últimos arquivos depois que a inicialização automática já tiver criado essas colunas.** Não são scripts de reexecução incondicional.
 
+## Filtro de gráficos
+
+O editor aceita **até um filtro por igualdade** por gráfico, no formato `{field, op:"eq", value}`. A escolha do campo é limitada aos identificadores marcados `filterable` no catálogo da fonte autorizada. O valor é texto exato com até 120 caracteres; não são aceitas expressões, operadores livres ou consultas SQL.
+
+Ao salvar ou editar, o Worker valida novamente fonte, campo e operação. A prévia efetua o filtro **antes** de agregar os valores, tanto nos arquivos locais de demonstração quanto nas páginas já cacheadas no R2. O resultado ainda é parcial: até cinco páginas ou 500 registros do cache real.
+
+O endpoint `source-status` só retorna estatísticas das fontes cuja visualização funcional é permitida ao usuário. Indicadores de presença de dados não concedem permissão de consulta.
+
 ## Segurança e limites
 
 Todos os rascunhos usam filtro por `tenant_id`, `system_id` e `owner_id`. A prévia de fontes cacheadas revalida fontes/campos e lê no máximo cinco páginas ou 500 registros do R2. A gravação no D1 persiste a **definição** do gráfico, não cópias dos dados municipais. As amostras `sample:` permanecem em modo demonstrativo.
