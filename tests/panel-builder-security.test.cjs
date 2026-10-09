@@ -46,7 +46,7 @@ const tenant={id:"entity-a"};
 const auth={access:{views:["contabil-empenhos"]}};
 const env={
  AUTH_DB:{prepare:()=>({bind:()=>({all:async()=>({results:dbRows})})})},
- BI_SYNC_RAW:{get:async key=>({json:async()=>({tenantId:"entity-a",system:"contabil",resource:"empenhos",rows:[{ano:"2026",valor:100},{ano:"2026",valor:50}]})})}
+ BI_SYNC_RAW:{get:async key=>({json:async()=>({tenantId:"entity-a",system:"contabil",resource:"empenhos",rows:[{ano:"2026",valor:100,situacao:"PAGO"},{ano:"2026",valor:50,situacao:"ABERTO"}]})})}
 };
 const def={title:"Empenhos por ano",sourceId:"cache:contabil:empenhos",type:"bar",dimension:"ano",measures:[{field:"valor",aggregation:"sum"}],filters:[]};
 (async()=>{
@@ -55,6 +55,15 @@ const def={title:"Empenhos por ano",sourceId:"cache:contabil:empenhos",type:"bar
  const result=await scope.previewCachedPanel(env,tenant,auth,"contabil",def);
  assert.equal(result.scanned,6);
  assert.equal(result.rows[0].values[0],450);
+ const filtered={...def,filters:[{field:"situacao",op:"eq",value:"PAGO"}]};
+ const permitted=scope.validatePanelDraftPayload({definition:filtered});
+ assert.equal(permitted.filters[0].value,"PAGO");
+ await scope.authorizePanelDefinition(env,tenant,auth,"contabil",permitted);
+ const filteredResult=await scope.previewCachedPanel(env,tenant,auth,"contabil",filtered);
+ assert.equal(filteredResult.scanned,6);
+ assert.equal(filteredResult.rows[0].values[0],300,"Filter must apply to cached rows before aggregation");
+ await assert.rejects(()=>scope.authorizePanelDefinition(env,tenant,auth,"contabil",{...filtered,filters:[{field:"cpf",op:"eq",value:"x"}]}),/PANEL_FIELD_NOT_ALLOWED/);
+ assert.throws(()=>scope.validatePanelDraftPayload({definition:{...filtered,filters:[{field:"situacao",op:"contains",value:"PA"}]}}),/INVALID_PANEL_DRAFT/);
  const unauthorized={access:{views:["compras-processos"]}};
  assert.equal((await scope.cachedPanelSources(env,tenant,unauthorized,"contabil")).length,0);
 
