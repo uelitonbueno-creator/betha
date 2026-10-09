@@ -6298,6 +6298,11 @@ async function runMultiSystemBootstrap(env){
   }
 
   const totals=await multiSystemBootstrapTotals(env,tenant.id);
+  const tenantConfigState=await env.AUTH_DB.prepare(
+    "SELECT updated_at FROM bi_tenant_configs WHERE id=?1 LIMIT 1"
+  ).bind(String(tenant.id)).first();
+  const configUpdatedAt=Date.parse(String(tenantConfigState?.updated_at||""))||0;
+
   for(const system of ["contabil","compras","folha"]){
     if((totals[system]||0)>=MULTISYSTEM_BOOTSTRAP_TARGET)continue;
     const sources=MULTISYSTEM_BOOTSTRAP_SOURCES[system]||[];
@@ -6306,14 +6311,21 @@ async function runMultiSystemBootstrap(env){
     ).bind(String(tenant.id),system).all();
     const stateRows=states.results||[];
     const byResource=new Map(stateRows.map(row=>[String(row.resource),row]));
-    const authBlocked=stateRows.some(row=>row.status==="error"&&[401,403].includes(Number(row.http_status)));
-    if(authBlocked)continue;
+    const authFailures=stateRows.filter(row=>row.status==="error"&&[401,403].includes(Number(row.http_status)));
+    const latestAuthFailureAt=authFailures.reduce((latest,row)=>Math.max(latest,Date.parse(String(row.updated_at||""))||0),0);
+    const authMayRetry=authFailures.length>0&&configUpdatedAt>latestAuthFailureAt;
+    if(authFailures.length>0&&!authMayRetry)continue;
+
+    const authRetry=authMayRetry?sources.find(item=>{
+      const state=byResource.get(item.resource);
+      return state&&state.status==="error"&&[401,403].includes(Number(state.http_status));
+    }):null;
     const unattempted=sources.find(item=>!byResource.has(item.resource));
     const retryable=sources.find(item=>{
       const state=byResource.get(item.resource);
       return state&&state.status==="error"&&![401,403,404].includes(Number(state.http_status));
     });
-    const retrySource=unattempted||retryable;
+    const retrySource=authRetry||unattempted||retryable;
     if(!retrySource)continue;
 
     const startedAt=new Date().toISOString();
