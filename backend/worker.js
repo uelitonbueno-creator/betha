@@ -9434,15 +9434,22 @@ function errorResponse(request,env,error) {
 
 /* Construtor personalizado: fontes e campos explicitamente autorizados. */
 const CUSTOM_PANEL_SOURCES=Object.freeze({
- "bi:debitos":{dimensions:["situacao","ano","bairro","receita"],measures:["vlLancado","valorSaldo"]},
- "bi:pagamentos":{dimensions:["ano","receita","dataPagamento"],measures:["valorPago"]},
- "bi:imoveis":{dimensions:["bairro","zona","situacao"],measures:["count"]},
- "bi:parcelamentos":{dimensions:["situacao","ano"],measures:["count"]}
+ "bi:debitos":{label:"Débitos",dimensions:["situacao","ano","bairro","receita"],measures:["lancado","saldo"]},
+ "bi:pagamentos":{label:"Pagamentos",dimensions:["ano","receita","pagamento"],measures:["pago"]},
+ "bi:imoveis":{label:"Imóveis",dimensions:["bairro","zona","situacao"],measures:["count"]},
+ "bi:parcelamentos":{label:"Parcelamentos",dimensions:["situacao","ano"],measures:["count"]}
 });
+let customPanelD1SchemaReady=null;
 async function customPanelDb(env){
  if(!env.AUTH_DB)throw new Error("CUSTOM_PANEL_D1_NOT_CONFIGURED");
- await env.AUTH_DB.prepare("CREATE TABLE IF NOT EXISTS bi_custom_panels (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, system TEXT NOT NULL, name TEXT NOT NULL, config_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)").run();
- await env.AUTH_DB.prepare("CREATE INDEX IF NOT EXISTS idx_bi_custom_panels_scope ON bi_custom_panels(tenant_id,user_id,system)").run();
+ // Inicialização sob demanda apenas uma vez por isolate; nenhuma migração dos dados brutos.
+ if(!customPanelD1SchemaReady){
+  customPanelD1SchemaReady=(async()=>{
+   await env.AUTH_DB.prepare("CREATE TABLE IF NOT EXISTS bi_custom_panels (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL, system TEXT NOT NULL, name TEXT NOT NULL, config_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)").run();
+   await env.AUTH_DB.prepare("CREATE INDEX IF NOT EXISTS idx_bi_custom_panels_scope ON bi_custom_panels(tenant_id,user_id,system)").run();
+  })().catch(error=>{customPanelD1SchemaReady=null;throw error;});
+ }
+ await customPanelD1SchemaReady;
  return env.AUTH_DB;
 }
 function validateCustomPanel(data,auth){
@@ -9464,8 +9471,13 @@ async function handleCustomPanelRequest(request,env,url){
  const tenant=await resolveTenant(env,getTenantId(request,url));
  const auth=await authorizeTenant(request,env,tenant);
  const user=String(auth.userId||"");if(!user)throw new Error("USER_TOKEN_REQUIRED");
- const db=await customPanelDb(env);
- const match=url.pathname.match(/^\/api\/custom-panels\/([a-zA-Z0-9-]+)$/);
+ if(url.pathname==="/api/custom-panels/catalog" && request.method==="GET"){
+  const sources=Object.entries(CUSTOM_PANEL_SOURCES).filter(([id])=>{try{panelReadAuthorized(auth,id);return true;}catch{return false;}})
+   .map(([id,meta])=>({id,system:"tributos",label:meta.label,dimensions:meta.dimensions,measures:meta.measures}));
+  return json(request,env,200,{sources,system:"tributos"});
+ }
+ const db=url.pathname==="/api/custom-panels/preview"?null:await customPanelDb(env);
+ const match=url.pathname.match(/^\/api\/custom-panels\/([a-f0-9-]{36})$/i);
  const id=match?.[1];
  const method=request.method;
  const readConfig=row=>{const c=JSON.parse(row.config_json);return {...c,id:row.id,created_at:row.created_at,updated_at:row.updated_at};};
