@@ -1,0 +1,42 @@
+name: BI Vella - Panel Builder Checks
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/worker.js'
+      - 'panel-builder*.js'
+      - 'panel-placements.js'
+      - 'tests/panel-builder-*.test.cjs'
+      - '.github/workflows/panel-builder-checks.yml'
+  pull_request:
+    paths:
+      - 'backend/worker.js'
+      - 'panel-builder*.js'
+      - 'panel-placements.js'
+      - 'tests/panel-builder-*.test.cjs'
+      - '.github/workflows/panel-builder-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-panel-builder:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check JavaScript syntax
+        run: |
+          node --check backend/worker.js
+          node --check panel-builder-core.js
+          node --check panel-builder-ui.js
+          node --check panel-builder-samples.js
+          node --check panel-placements.js
+      - name: Run panel builder tests
+        run: |
+          node tests/panel-builder-core.test.cjs
+          node tests/panel-builder-security.test.cjs
