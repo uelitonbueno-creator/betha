@@ -27,5 +27,23 @@ async function preview(definition,system){
  const rows=core.aggregate(file.rows,definition,[entry],{tenantId:"sample-only",systemId:system});
  return {rows,scanned:file.rows.length,partial:true,mode:"sample",note:"AMOSTRA LOCAL — resultados demonstrativos, sem dados reais."};
 }
-root.BIPanelSampleBuilder=Object.freeze({catalog,preview});
+async function filterValues(system,field){
+ const source=catalog(system)[0];
+ if(!source||!source.fields.some(f=>f.id===field&&f.filterable))throw new Error("Campo de filtro não autorizado.");
+ const response=await fetch("data/samples/"+source.file,{credentials:"same-origin"});
+ if(!response.ok)throw new Error("Amostra não encontrada.");
+ const file=await response.json();
+ if(file.mode!=="sample"||file.system!==system||!Array.isArray(file.rows)||file.rows.length>500)throw new Error("Amostra inválida.");
+ const values=new Set();
+ for(const row of file.rows){
+   if(!row||typeof row!=="object"||Array.isArray(row))continue;
+   const raw=row[field];if(raw==null||typeof raw==="object")continue;
+   const value=String(raw).trim();
+   if(value&&value.length<=120)values.add(value);
+   if(values.size>=40)break;
+ }
+ return {sourceId:source.id,field,values:[...values].sort((a,b)=>a.localeCompare(b,"pt-BR")),mode:"sample",partial:true};
+}
+
+root.BIPanelSampleBuilder=Object.freeze({catalog,preview,filterValues});
 })(window);
