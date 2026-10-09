@@ -29,13 +29,34 @@ async function reload(c){
  try{
   const data=await getJson(endpoint("/api/panel-drafts",c),{headers:{"X-Tenant-Id":c.tenant}});
   if(gen!==generation)return;
-  const attached=(data.items||[]).filter(x=>x.viewId===c.view).slice(0,12);
+  const attached=(data.items||[]).filter(x=>x.viewId===c.view).sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0)).slice(0,12);
   if(!attached.length)return;
   area.hidden=false;message.textContent="Gráficos personalizados · prévias parciais (até 500 registros por fonte)";
-  for(const item of attached){
+  for(const [position,item] of attached.entries()){
    if(gen!==generation)return;
    const card=node("article");card.className="bi-personal-chart-card";
    const heading=node("h3",item.title);card.append(heading);
+   const controls=node("div");controls.className="bi-personal-chart-actions";
+   const edit=node("button","Editar");edit.type="button";edit.onclick=()=>window.dispatchEvent(new CustomEvent("bi-open-panel-draft",{detail:{id:item.id}}));controls.append(edit);
+   async function move(offset){
+     if(position+offset<0||position+offset>=attached.length)return;
+     const ordered=attached.slice();
+     [ordered[position],ordered[position+offset]]=[ordered[position+offset],ordered[position]];
+     try{
+       for(let n=0;n<ordered.length;n++){
+         const target=ordered[n];
+         await getJson(endpoint("/api/panel-drafts/"+target.id,c),{
+           method:"PUT",headers:{"X-Tenant-Id":c.tenant,"Content-Type":"application/json"},
+           body:JSON.stringify({definition:target.definition,viewId:c.view,sortOrder:n+1})
+         });
+       }
+       window.dispatchEvent(new Event("bi-panel-drafts-changed"));
+     }catch(err){status.textContent="Erro ao alterar ordem: "+err.message;window.dispatchEvent(new Event("bi-panel-drafts-changed"));}
+   }
+   for(const [label,delta] of [["↑",-1],["↓",1]]){
+     const button=node("button",label);button.type="button";button.disabled=position+delta<0||position+delta>=attached.length;button.onclick=()=>move(delta);controls.append(button);
+   }
+   card.append(controls);
    const status=node("p","Carregando prévia autorizada…");card.append(status);items.append(card);
    try{
     const data=await getJson(endpoint("/api/panel-builder/preview",c),{
