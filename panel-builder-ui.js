@@ -48,7 +48,7 @@ actions.append(build,preview,download,placement,save,drafts,load,remove);form.ap
 let catalog=[],context=null,current=null,selectedDraftId="",selectedSortOrder=0,previewChart=null,previewRequest=0;
 function clearPreview(){previewRequest++;if(previewChart){previewChart.destroy();previewChart=null;}previewOutput.replaceChildren();}
 function remote(){
-  const tenant=new URLSearchParams(location.search).get("tenant")||new URLSearchParams(location.search).get("entidadeId")||"";
+  const tenant=String(window.BIVellaSearchContext?.getState?.()?.tenantId||context?.tenantId||new URLSearchParams(location.search).get("tenant")||new URLSearchParams(location.search).get("entidadeId")||"");
   const base=String(window.BI_CONFIG?.BACKEND_URL||"").replace(/\/$/,"");
   if(!tenant||!base)throw new Error("Contexto de entidade ou backend indisponível.");
   return {endpoint:base+"/api/panel-drafts?system="+encodeURIComponent(context.currentSystemId),tenant};
