@@ -21,7 +21,8 @@ const validateCode = sliceBetween(worker, "function validateCustomPanel(", "asyn
 const sandbox = {
   panelReadAuthorized(auth, source) {
     if (auth.denied?.includes(source)) throw Error("DATA_RESOURCE_PERMISSION_DENIED");
-  }
+  },
+  permissionViewsForAccess(access){return access.views||[];}
 };
 vm.createContext(sandbox);
 vm.runInContext(catalogCode + validateCode + "\nthis.validatePanel=validateCustomPanel;this.catalog=CUSTOM_PANEL_SOURCES;", sandbox);
@@ -218,7 +219,7 @@ test("análise R2 respeita o tenant, agrega páginas e reconhece fonte incomplet
     })}:null;
   }}};
   vm.createContext(runtime);
-  vm.runInContext(engineCode+"\\nthis.multiQuery=customPanelMultiQueryBatch;",runtime);
+  vm.runInContext(engineCode+"\nthis.multiQuery=customPanelMultiQueryBatch;",runtime);
   const cfg={...defaults,system:"contabil",source:"contabil:empenhos",dimension:"situacao",measure:"valorEmpenhado",aggregation:"sum"};
   const result=await runtime.multiQuery({},env,{id:"municipio-a"},cfg,{},false);
   assert.equal(result.httpStatus,200);
