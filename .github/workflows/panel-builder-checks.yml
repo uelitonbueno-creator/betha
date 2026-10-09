@@ -45,6 +45,7 @@ jobs:
       - name: Run panel builder tests
         run: |
           node tests/panel-builder-core.test.cjs
+          node tests/panel-builder-filters.test.cjs
           node tests/panel-builder-security.test.cjs
           node tests/panel-builder-d1.test.cjs
           node tests/panel-builder-schema.test.cjs
