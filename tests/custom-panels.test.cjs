@@ -261,3 +261,13 @@ test("cursor R2 é vinculado à fonte e à versão da carga", async () => {
  version="2026-10-09T17:00:00Z";
  await assert.rejects(runtime.multiQuery({},env,{id:"municipio-a"},cfg,{cursor:first.body.cursor},false),/CUSTOM_PANEL_SNAPSHOT_CHANGED/);
 });
+
+test("edição de painel verifica concorrência e mantém sistema original", () => {
+ assert.ok(worker.includes('if(existing.system!==panel.system)'));
+ assert.ok(worker.includes('body.updated_at!==existing.updated_at'));
+ assert.ok(worker.includes('AND updated_at=?7'));
+ assert.ok(worker.includes('CUSTOM_PANEL_EDIT_CONFLICT'));
+ assert.ok(builder.includes('updated_at:state.updatedAt'));
+ assert.ok(builder.includes('state.updatedAt=result.panel.updated_at'));
+ assert.ok(builder.includes('/api/custom-panels?system='));
+});
