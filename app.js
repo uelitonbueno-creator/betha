@@ -2213,7 +2213,7 @@
     const hasSeries=Boolean(data&&Array.isArray(data.labels)&&data.labels.length&&Array.isArray(data.datasets)&&data.datasets.some(ds=>Array.isArray(ds.data)&&ds.data.length));
     if(payload?.meta?.refreshError&&!hasSeries){
       title.textContent="Resumo não atualizado";
-      detail.textContent="A API falhou ("+payload.meta.refreshError+"). O cache disponível não contém este gráfico.";
+      detail.textContent=friendlySourceErrorDetail(payload.meta.refreshError);
     } else if(state.kind==="error"){
       title.textContent="Fonte indisponível";
       detail.textContent=state.detail;
