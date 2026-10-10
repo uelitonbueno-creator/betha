@@ -55,10 +55,17 @@ const remove=make("button",{type:"button"},"Excluir rascunho");
 actions.append(build,preview,download,placement,save,drafts,load,remove);form.append(actions,status,output,previewOutput);panel.append(form);dialog.append(panel);document.body.append(trigger,dialog);
 let catalog=[],context=null,current=null,selectedDraftId="",selectedSortOrder=0,previewChart=null,previewRequest=0,suggestionsRequest=0;
 function clearPreview(){previewRequest++;if(previewChart){previewChart.destroy();previewChart=null;}previewOutput.replaceChildren();}
+function sameContext(){
+  const active=window.BIVellaSearchContext?.getState?.();
+  return Boolean(context&&active&&context.tenantId&&active.tenantId&&
+    String(context.tenantId)===String(active.tenantId)&&
+    String(context.currentSystemId)===String(active.currentSystemId));
+}
 function remote(){
-  const tenant=String(window.BIVellaSearchContext?.getState?.()?.tenantId||context?.tenantId||new URLSearchParams(location.search).get("tenant")||new URLSearchParams(location.search).get("entidadeId")||"");
+  if(!sameContext())throw new Error("A entidade ou sistema mudou. Reabra o construtor.");
+  const tenant=String(context.tenantId);
   const base=String(window.BI_CONFIG?.BACKEND_URL||"").replace(/\/$/,"");
-  if(!tenant||!base)throw new Error("Contexto de entidade ou backend indisponível.");
+  if(!base)throw new Error("Backend indisponível.");
   return {endpoint:base+"/api/panel-drafts?system="+encodeURIComponent(context.currentSystemId),tenant};
 }
 async function requestDraft(method,id,payload){
@@ -76,7 +83,12 @@ async function requestBuilder(method,action,payload){
   if(!response.ok)throw new Error(body.error||"Serviço de prévia indisponível.");
   return body;
 }
-async function refreshDrafts(){try{const result=await requestDraft("GET");options(drafts,[["","Rascunhos salvos"],...(result.items||[]).map(x=>[x.id,x.title])]);drafts._items=result.items||[];}catch(err){status.textContent="Rascunhos remotos: "+err.message;}}
+async function refreshDrafts(){
+ options(drafts,[["","Rascunhos salvos"]]);drafts._items=[];
+ try{const result=await requestDraft("GET");if(!sameContext())return;
+ options(drafts,[["","Rascunhos salvos"],...(result.items||[]).map(x=>[x.id,x.title])]);drafts._items=result.items||[];
+ }catch(err){status.textContent="Rascunhos remotos: "+err.message;}
+}
 
 function options(element,values){element.replaceChildren(...values.map(([v,l])=>make("option",{value:v},l)));}
 async function updateFilterSuggestions(){
@@ -93,7 +105,7 @@ async function updateFilterSuggestions(){
      :selected.mode==="cached-real"
        ?await requestBuilder("POST","filter-values",{sourceId:selected.id,field})
        :null;
-   if(requestId!==suggestionsRequest||source.value!==selected.id||filterField.value!==field||dialog.hidden)return;
+   if(requestId!==suggestionsRequest||!sameContext()||source.value!==selected.id||filterField.value!==field||dialog.hidden)return;
    const values=Array.isArray(result?.values)?result.values.slice(0,40):[];
    filterSuggestions.replaceChildren(...values.map(value=>make("option",{value:String(value)})));
    filterHint.textContent=values.length
@@ -116,6 +128,7 @@ if(!usable)status.textContent="Esta fonte ainda não possui dimensões disponív
 }
 async function open(){
 context=window.BIVellaSearchContext.getState();
+if(!context?.tenantId){status.textContent="Selecione uma entidade antes de criar um painel.";return;}
 options(placement,[["","Não adicionar ao painel"],...(context.allowedViews||[]).map(v=>[v,v])]);
 catalog=[];sourceStatus.textContent="";
 if(window.BIPanelSampleBuilder?.catalog(context.currentSystemId).length){
@@ -163,7 +176,7 @@ clearPreview();const generation=previewRequest,definition=JSON.parse(JSON.string
 preview.disabled=true;
 try{
 const result=definition.sourceId.startsWith("sample:")?await window.BIPanelSampleBuilder.preview(definition,context.currentSystemId):await requestBuilder("POST","preview",{definition});
-if(generation!==previewRequest||dialog.hidden)return;
+if(generation!==previewRequest||!sameContext()||dialog.hidden)return;
 const rows=Array.isArray(result.rows)?result.rows.slice(0,40):[];
 previewOutput.append(make("strong",{},"Prévia parcial — "+result.scanned+" registros examinados"));
 if(!rows.length){previewOutput.append(make("p",{},"Nenhum registro disponível para esta seleção."));return;}
@@ -199,7 +212,7 @@ table.append(tbody);previewOutput.append(table,make("p",{},"Prévia parcial limi
 }catch(err){if(generation===previewRequest)previewOutput.textContent="Prévia indisponível: "+err.message;}
 finally{if(generation===previewRequest)preview.disabled=false;}
 });
-save.addEventListener("click",async()=>{if(!current)return;save.disabled=true;try{const result=await requestDraft(selectedDraftId?"PUT":"POST",selectedDraftId||"",{definition:current,viewId:placement.value,sortOrder:selectedSortOrder});selectedDraftId=result.id||selectedDraftId;status.textContent="Rascunho salvo no D1.";window.dispatchEvent(new Event("bi-panel-drafts-changed"));await refreshDrafts();drafts.value=selectedDraftId;}catch(err){status.textContent="Não foi possível salvar: "+err.message;}finally{save.disabled=false;}});
+save.addEventListener("click",async()=>{if(!current)return;save.disabled=true;try{const result=await requestDraft(selectedDraftId?"PUT":"POST",selectedDraftId||"",{definition:current,viewId:placement.value,sortOrder:selectedSortOrder});if(!sameContext())return;selectedDraftId=result.id||selectedDraftId;status.textContent="Rascunho salvo no D1.";window.dispatchEvent(new Event("bi-panel-drafts-changed"));await refreshDrafts();drafts.value=selectedDraftId;}catch(err){status.textContent="Não foi possível salvar: "+err.message;}finally{save.disabled=false;}});
 load.addEventListener("click",()=>{const item=(drafts._items||[]).find(x=>x.id===drafts.value);if(!item)return;const d=item.definition;if(!catalog.some(x=>x.id===d.sourceId)){status.textContent="Fonte não disponível neste sistema.";return;}title.value=d.title;source.value=d.sourceId;fillFields();type.value=d.type;dimension.value=d.dimension;measure.value=d.measures?.[0]?.field||"*";agg.value=d.measures?.[0]?.aggregation||"count";filterField.value=d.filters?.[0]?.field||"";filterValue.value=d.filters?.[0]?.value||"";filterValue.disabled=!filterField.value;updateFilterSuggestions();selectedDraftId=item.id;selectedSortOrder=Number(item.sortOrder)||0;placement.value=item.viewId||"";current=null;save.disabled=true;output.textContent="";status.textContent="Rascunho carregado. Valide antes de salvar alterações.";});
 window.addEventListener("bi-open-panel-draft",async(event)=>{
   const id=String(event.detail?.id||"");
