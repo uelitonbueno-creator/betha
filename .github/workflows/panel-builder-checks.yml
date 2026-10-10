@@ -8,6 +8,7 @@ on:
       - 'panel-builder*.js'
       - 'panel-placements.js'
       - 'tests/panel-builder-*.test.cjs'
+      - 'tests/panel-placements-queue.test.cjs'
       - 'tests/panel-placements-cancellation.test.cjs'
       - 'tests/panel-builder-migrations.test.py'
       - 'backend/migrations/20261009_panel_*.sql'
@@ -18,6 +19,7 @@ on:
       - 'panel-builder*.js'
       - 'panel-placements.js'
       - 'tests/panel-builder-*.test.cjs'
+      - 'tests/panel-placements-queue.test.cjs'
       - 'tests/panel-placements-cancellation.test.cjs'
       - 'tests/panel-builder-migrations.test.py'
       - 'backend/migrations/20261009_panel_*.sql'
@@ -52,6 +54,7 @@ jobs:
           node tests/panel-builder-filters.test.cjs
           node tests/panel-builder-security.test.cjs
           node tests/panel-builder-editor-context.test.cjs
+          node tests/panel-placements-queue.test.cjs
           node tests/panel-builder-d1.test.cjs
           node tests/panel-builder-schema.test.cjs
       - name: Validate D1 migration chain
