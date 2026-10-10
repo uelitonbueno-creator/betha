@@ -106,7 +106,7 @@ test("load diagnostics require both tenant authorization and BI admin rights",()
   const b=worker.indexOf("if(url.pathname==='/api/admin/sync'",a);
   assert.ok(a>0&&b>a);
   const scope=worker.slice(a,b);
-  assert.match(scope,/resolveTenant\(env,getTenantId\(request,url\)\)/);
+  assert.match(scope,/resolveTenant\(env,url\.searchParams\.get\('entity'\)\|\|getTenantId\(request,url\)\)/);
   assert.match(scope,/authorizeTenant\(request,env,tenant\)/);
   assert.match(scope,/requireTenantConfigAdmin\(auth\)/);
   assert.match(scope,/WHERE tenant_id=\?1/);

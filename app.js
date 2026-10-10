@@ -6219,6 +6219,70 @@
       if(job?.state==='running'&&currentView==='configuracoes-admin')entitySyncTimer=setTimeout(()=>entitySyncAction(),15000);
     }catch(error){status.textContent='Carga: '+error.message;start.disabled=false;}
   }
+  const loadStateTranslations=Object.freeze({
+    complete:"Concluída",running:"Em andamento",error:"Erro",
+    "discovering-fields":"Descobrindo campos","schema-limited":"Campos indisponíveis"
+  });
+  async function refreshMultiSystemLoads(){
+    const form=document.getElementById('entitySettingsForm');
+    const selected=form.elements.id.value.trim();
+    const message=document.getElementById('multiSystemLoadMessage');
+    const body=document.getElementById('multiSystemLoadRows');
+    const button=document.getElementById('refreshMultiSystemStatusButton');
+    body.replaceChildren();
+    if(!entitySettingsRecords.some(record=>record.id===selected)){
+      message.textContent='Selecione uma prefeitura salva para consultar as cargas.';
+      return;
+    }
+    button.disabled=true;
+    message.textContent='Consultando as cargas sem iniciar novas requisições Betha…';
+    try{
+      const result=await api('/api/admin/multisystem-loads?entity='+encodeURIComponent(selected));
+      if(form.elements.id.value.trim()!==selected)return;
+      const sources=Array.isArray(result.sources)?result.sources:[];
+      if(!sources.length){
+        message.textContent='Ainda não existem checkpoints registrados para esta entidade.';
+        return;
+      }
+      const names={contabil:'Contabilidade',compras:'Compras',folha:'Folha'};
+      const formatDate=value=>{
+        const date=new Date(value);
+        return value&&!Number.isNaN(date.getTime())?date.toLocaleString('pt-BR'):'—';
+      };
+      for(const source of sources){
+        const row=document.createElement('tr');
+        const http=Number(source.httpStatus)||0;
+        const detail=http===401?'401 — credencial ou autorização inválida':
+          http===403?'403 — acesso não permitido':
+          http===404?'404 — recurso não encontrado':
+          source.problem?String(source.problem):'';
+        const values=[
+          names[source.system]||String(source.system||'—'),
+          String(source.resource||'—'),
+          (loadStateTranslations[source.status]||String(source.status||'—'))+(detail?' · '+detail:''),
+          Number(source.records||0).toLocaleString('pt-BR'),
+          Number(source.pages||0).toLocaleString('pt-BR'),
+          formatDate(source.updatedAt)
+        ];
+        for(const value of values){
+          const cell=document.createElement('td');
+          cell.textContent=value;
+          row.append(cell);
+        }
+        body.append(row);
+      }
+      const failed=sources.filter(item=>item.status==='error').length;
+      message.textContent=sources.length+' fonte(s) verificadas · '+failed+' com erro. Consulta somente leitura.';
+    }catch(error){
+      if(form.elements.id.value.trim()!==selected)return;
+      message.textContent=error.status===404
+        ?'Diagnóstico ainda indisponível no Worker: publique a versão atualizada do backend.'
+        :'Não foi possível consultar as cargas: '+error.message;
+    }finally{
+      button.disabled=false;
+    }
+  }
+  document.getElementById('refreshMultiSystemStatusButton').addEventListener('click',refreshMultiSystemLoads);
   document.getElementById('initialLoadButton').addEventListener('click',()=>entitySyncAction('POST'));
   document.getElementById('saveSyncScheduleButton').addEventListener('click',()=>entitySyncAction('PUT'));
   document.getElementById('refreshSyncStatusButton').addEventListener('click',()=>entitySyncAction());
@@ -6237,8 +6301,14 @@
     }
     document.getElementById("entitySettingsMessage").textContent="";
     clearTimeout(entitySyncTimer);
-    if(record)entitySyncAction();
-    else document.getElementById("entitySyncStatus").textContent="Salve ou selecione uma prefeitura antes de iniciar a carga.";
+    if(record){
+      entitySyncAction();
+      refreshMultiSystemLoads();
+    }else{
+      document.getElementById("entitySyncStatus").textContent="Salve ou selecione uma prefeitura antes de iniciar a carga.";
+      document.getElementById("multiSystemLoadMessage").textContent="Selecione uma prefeitura salva para consultar as cargas.";
+      document.getElementById("multiSystemLoadRows").replaceChildren();
+    }
   }
   async function loadEntitySettings() {
     const list=document.getElementById("entitySettingsList");
