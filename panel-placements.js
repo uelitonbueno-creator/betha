@@ -10,7 +10,11 @@ const title=document.createElement("h2");title.textContent="Meus gráficos perso
 const items=document.createElement("div");items.className="bi-personal-chart-grid";
 const message=document.createElement("p");message.className="bi-personal-note";
 area.append(title,message,items);host.after(area);
-let charts=[],lastKey="",generation=0;
+let charts=[],lastKey="",generation=0,activeController=null;
+function cancelPending(){
+ if(activeController)activeController.abort();
+ activeController=null;
+}
 function clear(){for(const chart of charts)chart.destroy();charts=[];items.replaceChildren();}
 function node(tag,text){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;}
 function context(){
@@ -25,9 +29,11 @@ function context(){
 function endpoint(path,c){return String(window.BI_CONFIG.BACKEND_URL||"").replace(/\/$/,"")+path+"?system="+encodeURIComponent(c.system);}
 async function getJson(url,options){const response=await fetch(url,{credentials:"include",...options});const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.error||"Dados indisponíveis");return body;}
 async function reload(c){
- const gen=++generation;clear();area.hidden=true;
+ const gen=++generation;cancelPending();
+ const controller=new AbortController();activeController=controller;
+ clear();area.hidden=true;
  try{
-  const data=await getJson(endpoint("/api/panel-drafts",c),{headers:{"X-Tenant-Id":c.tenant}});
+  const data=await getJson(endpoint("/api/panel-drafts",c),{signal:controller.signal,headers:{"X-Tenant-Id":c.tenant}});
   if(gen!==generation)return;
   const allAttached=(data.items||[]).filter(x=>x.viewId===c.view).sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0));
   const attached=allAttached.slice(0,12);
@@ -64,7 +70,7 @@ async function reload(c){
    const status=node("p","Carregando prévia autorizada…");card.append(status);items.append(card);
    try{
     const data=await getJson(endpoint("/api/panel-builder/preview",c),{
-      method:"POST",headers:{"X-Tenant-Id":c.tenant,"Content-Type":"application/json"},
+      signal:controller.signal,method:"POST",headers:{"X-Tenant-Id":c.tenant,"Content-Type":"application/json"},
       body:JSON.stringify({definition:item.definition})
     });
     if(gen!==generation)return;
@@ -101,7 +107,7 @@ function refresh(){
  const c=context(),key=c?[c.tenant,c.system,c.view].join("|"):"";
  if(key===lastKey)return;
  lastKey=key;
- if(!c){generation++;clear();area.hidden=true;return;}
+ if(!c){generation++;cancelPending();clear();area.hidden=true;return;}
  reload(c);
 }
 const observer=new MutationObserver(()=>refresh());
