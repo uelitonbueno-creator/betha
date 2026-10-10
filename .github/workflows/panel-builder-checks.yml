@@ -4,6 +4,8 @@ on:
     branches: [main]
     paths:
       - 'backend/worker.js'
+      - 'backend/multisystem-recovery.mjs'
+      - 'tests/multisystem-recovery.test.cjs'
       - 'app.js'
       - 'panel-builder*.js'
       - 'panel-placements.js'
@@ -16,6 +18,8 @@ on:
   pull_request:
     paths:
       - 'backend/worker.js'
+      - 'backend/multisystem-recovery.mjs'
+      - 'tests/multisystem-recovery.test.cjs'
       - 'panel-builder*.js'
       - 'panel-placements.js'
       - 'tests/panel-builder-*.test.cjs'
@@ -41,6 +45,7 @@ jobs:
       - name: Check JavaScript syntax
         run: |
           node --check backend/worker.js
+          node --check backend/multisystem-recovery.mjs
           node --check app.js
           node --check panel-builder-core.js
           node --check panel-builder-ui.js
@@ -48,6 +53,7 @@ jobs:
           node --check panel-placements.js
       - name: Run panel builder tests
         run: |
+          node --test tests/multisystem-recovery.test.cjs
           node tests/panel-builder-core.test.cjs
           node tests/panel-builder-kpi.test.cjs
           node tests/panel-placements-cancellation.test.cjs

@@ -8,6 +8,7 @@
  * - Todo acesso a dados valida se o usuário possui vínculo com o database+entity
  *   do tenant solicitado.
  */
+import { reconcileArchivedPages } from "./multisystem-recovery.mjs";
 const BI_BASE_DEFAULT = "https://tributos.suite.betha.cloud";
 const AUTH_BASE = "https://plataforma-autorizacoes.betha.cloud";
 const PAGE_MAPPING_BASE = "https://autorizacoes.suite.betha.cloud/dados/v1";
@@ -6608,10 +6609,8 @@ async function advanceMultiSystem(env,tenant,system,configUpdatedAt){
       const profile=await discoverMultiSystemFields(env,tenant,source,previous);
       const discoveryFinished=profile.discoveryDone===true;
       const hasUsefulFields=profile.selected.some(field=>field!=="id");
-      const shouldRestart=discoveryFinished&&hasUsefulFields&&Math.max(0,Number(previous?.loaded)||0)>0;
-
-      if(shouldRestart)await resetMultiSystemSummary(env,tenant.id,system,source.resource);
-
+      // Field discovery must not discard pages already stored in R2. Newly
+      // discovered fields are used for subsequent pages; old rows remain intact.
       await env.AUTH_DB.prepare(
         "INSERT INTO bi_multisystem_loads (tenant_id,system,resource,status,loaded,pages,http_status,error,object_key,fields_json,updated_at) VALUES (?1,?2,?3,?4,?5,?6,200,NULL,?7,?8,?9) ON CONFLICT(tenant_id,system,resource) DO UPDATE SET status=excluded.status,loaded=excluded.loaded,pages=excluded.pages,http_status=excluded.http_status,error=NULL,object_key=excluded.object_key,fields_json=excluded.fields_json,updated_at=excluded.updated_at"
       ).bind(
@@ -6619,9 +6618,9 @@ async function advanceMultiSystem(env,tenant,system,configUpdatedAt){
         system,
         source.resource,
         discoveryFinished?(hasUsefulFields?"running":"schema-limited"):"discovering-fields",
-        shouldRestart?0:Math.max(0,Number(previous?.loaded)||0),
-        shouldRestart?0:Math.max(0,Number(previous?.pages)||0),
-        shouldRestart?multiSystemResourcePrefix(tenant.id,system,source.resource):(previous?.object_key||multiSystemResourcePrefix(tenant.id,system,source.resource)),
+        Math.max(0,Number(previous?.loaded)||0),
+        Math.max(0,Number(previous?.pages)||0),
+        previous?.object_key||multiSystemResourcePrefix(tenant.id,system,source.resource),
         serializeMultiSystemFieldProfile(profile),
         new Date().toISOString()
       ).run();
@@ -6645,24 +6644,35 @@ async function advanceMultiSystem(env,tenant,system,configUpdatedAt){
 
   if(previous?.status==="schema-limited")return;
 
-  // If aggregation was introduced after a source had already advanced, its
-  // summary can start in the middle of the dataset. Rewind that source once so
-  // count/value/group totals cover every page from offset zero.
+  // Restore missing summary pages from the authenticated tenant's R2 archive,
+  // in bounded batches. Never rewind loaded/pages or overwrite archived data.
   if(Math.max(0,Number(previous?.loaded)||0)>0){
-    const summaryState=await getMultiSystemSummary(env,tenant.id,system,source.resource);
-    const summarized=Number(summaryState?.count)||0;
-    const loadedState=Math.max(0,Number(previous.loaded)||0);
-    if(!summaryState || summarized!==loadedState){
-      await resetMultiSystemSummary(env,tenant.id,system,source.resource);
+    try{
+      const summary=await getMultiSystemSummary(env,tenant.id,system,source.resource);
+      const recovery=await reconcileArchivedPages({
+        loaded:Math.max(0,Number(previous.loaded)||0),
+        pages:Math.max(0,Number(previous.pages)||0),
+        summary,
+        batchSize:2,
+        readPage:async page=>{
+          const object=await env.BI_SYNC_RAW.get(multiSystemPageObjectKey(tenant.id,system,source.resource,page));
+          if(!object)return null;
+          let saved;
+          try{saved=JSON.parse(await object.text());}catch{return null;}
+          if(!saved||saved.page!==page||
+             String(saved.tenantId)!==String(tenant.id)||
+             saved.system!==system||saved.resource!==source.resource)return null;
+          return saved.rows;
+        },
+        resetSummary:()=>resetMultiSystemSummary(env,tenant.id,system,source.resource),
+        applyPage:(page,rows)=>updateMultiSystemSummary(env,tenant,system,source,page,rows)
+      });
+      if(!recovery.complete)return;
+    }catch(error){
+      const code=String(error?.message||"MULTISYSTEM_SUMMARY_RECOVERY_FAILED").slice(0,240);
       await env.AUTH_DB.prepare(
-        "UPDATE bi_multisystem_loads SET status='running',loaded=0,pages=0,http_status=200,error=NULL,object_key=?1,updated_at=?2 WHERE tenant_id=?3 AND system=?4 AND resource=?5"
-      ).bind(
-        multiSystemResourcePrefix(tenant.id,system,source.resource),
-        new Date().toISOString(),
-        String(tenant.id),
-        system,
-        source.resource
-      ).run();
+        "UPDATE bi_multisystem_loads SET status='error',http_status=NULL,error=?1,updated_at=?2 WHERE tenant_id=?3 AND system=?4 AND resource=?5"
+      ).bind(code,new Date().toISOString(),String(tenant.id),system,source.resource).run();
       return;
     }
   }
@@ -10980,6 +10990,29 @@ export default {
       } catch(error) {
         return errorResponse(request,env,error);
       }
+    }
+
+    if(url.pathname==='/api/admin/multisystem-loads'&&request.method==='GET'){
+      try{
+        const tenant=await resolveTenant(env,getTenantId(request,url));
+        const auth=await authorizeTenant(request,env,tenant);
+        requireTenantConfigAdmin(auth);
+        if(!env.AUTH_DB)return json(request,env,503,{error:"PANEL_D1_NOT_CONFIGURED"});
+        await ensureMultiSystemLoadSchema(env);
+        const result=await env.AUTH_DB.prepare(
+          "SELECT system,resource,status,loaded,pages,http_status,error,fields_json,updated_at FROM bi_multisystem_loads WHERE tenant_id=?1 ORDER BY system,resource LIMIT 50"
+        ).bind(String(tenant.id)).all();
+        const sources=(result.results||[]).map(row=>({
+          system:row.system,resource:row.resource,status:row.status,
+          records:Number(row.loaded)||0,pages:Number(row.pages)||0,
+          httpStatus:row.http_status,problem:row.error||null,
+          fieldsDiscovered:parseMultiSystemFieldProfile(row.fields_json).selected.length,
+          updatedAt:row.updated_at
+        }));
+        const response=json(request,env,200,{tenant:{id:tenant.id,name:tenant.name},sources});
+        response.headers.set("Cache-Control","no-store");
+        return response;
+      }catch(error){return errorResponse(request,env,error);}
     }
 
     if(url.pathname==='/api/admin/sync'&&['GET','POST','PUT'].includes(request.method)){
