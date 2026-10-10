@@ -71,6 +71,16 @@ async function reload(c){
     status.textContent="Prévia parcial: "+data.scanned+" registros examinados";
     const rows=(data.rows||[]).slice(0,40),def=item.definition;
     if(!rows.length){card.append(node("p","Nenhum dado na prévia."));continue;}
+    if(def.type==="kpi"){
+      const group=node("div");group.className="bi-personal-kpi-grid";group.setAttribute("role","group");group.setAttribute("aria-label","Indicadores da prévia parcial");
+      for(const [i,metric] of (def.measures||[]).entries()){
+        const value=rows[0]?.values?.[i],indicator=node("div");indicator.className="bi-personal-kpi";
+        const label=node("span",metric.aggregation+"("+metric.field+")");label.className="bi-personal-kpi-label";
+        const amount=node("strong",typeof value==="number"&&Number.isFinite(value)?value.toLocaleString("pt-BR",{maximumFractionDigits:2}):"—");
+        amount.className="bi-personal-kpi-value";indicator.append(label,amount);group.append(indicator);
+      }
+      card.append(group);continue;
+    }
     if(def.type==="table"||typeof window.Chart!=="function"){
       const table=node("table"),tbody=node("tbody");
       for(const r of rows){const tr=node("tr");tr.append(node("th",r.dimension));for(const v of r.values||[])tr.append(node("td",v==null?"—":String(v)));tbody.append(tr);}
