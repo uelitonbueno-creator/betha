@@ -385,6 +385,19 @@
                 <label>Atualização automática<select id="entitySyncInterval"><option value="0">Somente manual</option><option value="15">A cada 15 minutos</option><option value="30">A cada 30 minutos</option><option value="60" selected>A cada hora</option><option value="180">A cada 3 horas</option><option value="360">A cada 6 horas</option><option value="720">A cada 12 horas</option><option value="1440">Diariamente</option></select></label>
                 <div class="entity-settings-actions"><button id="initialLoadButton" type="button" class="btn-primary-betha">CARGA INICIAL / ATUALIZAR TODOS</button><button id="saveSyncScheduleButton" type="button" class="btn-secondary-betha">SALVAR FREQUÊNCIA</button><button id="refreshSyncStatusButton" type="button" class="btn-secondary-betha">VERIFICAR CARGA</button></div>
                 <p id="entitySyncStatus" role="status" aria-live="polite">Selecione uma prefeitura salva para consultar a carga.</p>
+                <div class="bi-multisystem-loads">
+                  <div class="bi-multisystem-loads-header">
+                    <div><h4>Cargas reais por sistema</h4><p>Contabilidade, Compras e Folha: checkpoints persistidos, sem iniciar uma nova carga.</p></div>
+                    <button id="refreshMultiSystemStatusButton" class="btn-secondary-betha" type="button">VERIFICAR SISTEMAS</button>
+                  </div>
+                  <p id="multiSystemLoadMessage" role="status" aria-live="polite">Selecione uma prefeitura para consultar o progresso por fonte.</p>
+                  <div class="bi-multisystem-table-scroll">
+                    <table aria-label="Situação das cargas por fonte">
+                      <thead><tr><th>Sistema</th><th>Fonte</th><th>Situação</th><th>Registros</th><th>Páginas</th><th>Última atualização</th></tr></thead>
+                      <tbody id="multiSystemLoadRows"></tbody>
+                    </table>
+                  </div>
+                </div>
               </section>
             </form>
           </section>

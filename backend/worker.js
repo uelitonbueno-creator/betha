@@ -10994,7 +10994,7 @@ export default {
 
     if(url.pathname==='/api/admin/multisystem-loads'&&request.method==='GET'){
       try{
-        const tenant=await resolveTenant(env,getTenantId(request,url));
+        const tenant=await resolveTenant(env,url.searchParams.get('entity')||getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
         requireTenantConfigAdmin(auth);
         if(!env.AUTH_DB)return json(request,env,503,{error:"PANEL_D1_NOT_CONFIGURED"});

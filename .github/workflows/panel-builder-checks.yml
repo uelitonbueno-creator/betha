@@ -6,6 +6,7 @@ on:
       - 'backend/worker.js'
       - 'backend/multisystem-recovery.mjs'
       - 'tests/multisystem-recovery.test.cjs'
+      - 'tests/multisystem-status-ui.test.cjs'
       - 'app.js'
       - 'panel-builder*.js'
       - 'panel-placements.js'
@@ -20,6 +21,7 @@ on:
       - 'backend/worker.js'
       - 'backend/multisystem-recovery.mjs'
       - 'tests/multisystem-recovery.test.cjs'
+      - 'tests/multisystem-status-ui.test.cjs'
       - 'panel-builder*.js'
       - 'panel-placements.js'
       - 'tests/panel-builder-*.test.cjs'
@@ -54,6 +56,7 @@ jobs:
       - name: Run panel builder tests
         run: |
           node --test tests/multisystem-recovery.test.cjs
+          node --test tests/multisystem-status-ui.test.cjs
           node tests/panel-builder-core.test.cjs
           node tests/panel-builder-kpi.test.cjs
           node tests/panel-placements-cancellation.test.cjs

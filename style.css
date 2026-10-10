@@ -7919,3 +7919,14 @@ bth-app{--menu-bg-color:var(--vella-sidebar)}
   max-width:100%;
   max-height:100%;
 }
+
+/* Tenant-scoped multi-system load diagnostics in the BI admin page. */
+.bi-multisystem-loads{margin-top:18px;border-top:1px solid #dce8e1;padding-top:18px;min-width:0}
+.bi-multisystem-loads-header{display:flex;gap:12px;justify-content:space-between;align-items:center;flex-wrap:wrap}
+.bi-multisystem-loads h4{font-size:15px;margin:0 0 4px}
+.bi-multisystem-loads-header p{margin:0}
+.bi-multisystem-table-scroll{max-width:100%;overflow-x:auto;margin-top:10px}
+.bi-multisystem-loads table{width:100%;min-width:710px;border-collapse:collapse;font-size:12px}
+.bi-multisystem-loads th,.bi-multisystem-loads td{border-bottom:1px solid #e3ebe7;padding:10px;text-align:left;vertical-align:top}
+.bi-multisystem-loads th{font-weight:700;color:#324a3c;background:#f4f8f6}
+.bi-multisystem-loads td:nth-child(3){max-width:270px;overflow-wrap:anywhere}
