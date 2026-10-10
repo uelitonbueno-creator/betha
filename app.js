@@ -405,6 +405,7 @@
     const url = new URL(location.href);
     url.searchParams.set("view", view);
     history.replaceState({}, "", url);
+    window.dispatchEvent(new Event("bi-vella-context-changed"));
 
     if (view === "usuarios-admin") {
       renderUsersAdmin();
@@ -6845,6 +6846,7 @@
     // Atualiza a URL sem navegar/recarregar. Isso preserva a sessão do login
     // mesmo em navegadores embutidos que descartam storage entre navegações.
     history.replaceState({}, "", url);
+    window.dispatchEvent(new Event("bi-vella-context-changed"));
 
     if (tenantGate) tenantGate.hidden = true;
     bethaApp.style.display = "";
