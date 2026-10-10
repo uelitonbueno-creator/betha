@@ -49,19 +49,25 @@ async function reload(c){
   const attached=allAttached.slice(0,12);
   if(!attached.length)return;
   area.hidden=false;message.textContent="Gráficos personalizados · prévias parciais (até 500 registros por fonte)";
-  const previews=[];
+  const previews=[],reorderButtons=[];
+  let reorderPending=false;
+  function samePlacementContext(){
+    const live=context();
+    return gen===generation&&Boolean(live&&live.tenant===c.tenant&&live.system===c.system&&live.view===c.view);
+  }
+  function setReorderBusy(busy){
+    reorderPending=busy;
+    for(const button of reorderButtons)button.disabled=busy||button.dataset.edge==="true";
+  }
   for(const [position,item] of attached.entries()){
    if(gen!==generation)return;
    const card=node("article");card.className="bi-personal-chart-card";
    const heading=node("h3",item.title);card.append(heading);
    const controls=node("div");controls.className="bi-personal-chart-actions";
    const edit=node("button","Editar");edit.type="button";edit.onclick=()=>window.dispatchEvent(new CustomEvent("bi-open-panel-draft",{detail:{id:item.id}}));controls.append(edit);
-   let moving=false;
    async function move(offset){
-     if(moving||position+offset<0||position+offset>=attached.length)return;
-     const live=context();
-     if(!live||live.tenant!==c.tenant||live.system!==c.system||live.view!==c.view)return;
-     moving=true;
+     if(reorderPending||position+offset<0||position+offset>=attached.length||!samePlacementContext())return;
+     setReorderBusy(true);
      const ordered=allAttached.slice();
      [ordered[position],ordered[position+offset]]=[ordered[position+offset],ordered[position]];
      try{
@@ -69,16 +75,18 @@ async function reload(c){
          method:"POST",headers:{"X-Tenant-Id":c.tenant,"Content-Type":"application/json"},
          body:JSON.stringify({viewId:c.view,ids:ordered.map(x=>x.id)})
        });
-       window.dispatchEvent(new Event("bi-panel-drafts-changed"));
+       if(samePlacementContext())window.dispatchEvent(new Event("bi-panel-drafts-changed"));
      }catch(err){
-       const msg=card.querySelector(".bi-personal-chart-error")||node("p");
-       msg.className="bi-personal-chart-error";
-       msg.textContent="Não foi possível alterar a ordem: "+err.message;
-       card.append(msg);
-     }finally{moving=false;}
+       if(samePlacementContext()){
+         const msg=card.querySelector(".bi-personal-chart-error")||node("p");
+         msg.className="bi-personal-chart-error";
+         msg.textContent="Não foi possível alterar a ordem: "+err.message;
+         card.append(msg);
+       }
+     }finally{setReorderBusy(false);}
    }
    for(const [label,delta] of [["↑",-1],["↓",1]]){
-     const button=node("button",label);button.type="button";button.disabled=position+delta<0||position+delta>=attached.length;button.onclick=()=>move(delta);controls.append(button);
+     const button=node("button",label);button.type="button";button.dataset.edge=String(position+delta<0||position+delta>=attached.length);button.disabled=button.dataset.edge==="true";button.onclick=()=>move(delta);controls.append(button);reorderButtons.push(button);
    }
    card.append(controls);
    const status=node("p","Carregando prévia autorizada…");card.append(status);items.append(card);
