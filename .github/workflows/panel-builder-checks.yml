@@ -8,6 +8,7 @@ on:
       - 'panel-builder*.js'
       - 'panel-placements.js'
       - 'tests/panel-builder-*.test.cjs'
+      - 'tests/panel-placements-cancellation.test.cjs'
       - 'tests/panel-builder-migrations.test.py'
       - 'backend/migrations/20261009_panel_*.sql'
       - '.github/workflows/panel-builder-checks.yml'
@@ -17,6 +18,7 @@ on:
       - 'panel-builder*.js'
       - 'panel-placements.js'
       - 'tests/panel-builder-*.test.cjs'
+      - 'tests/panel-placements-cancellation.test.cjs'
       - 'tests/panel-builder-migrations.test.py'
       - 'backend/migrations/20261009_panel_*.sql'
       - '.github/workflows/panel-builder-checks.yml'
@@ -46,6 +48,7 @@ jobs:
         run: |
           node tests/panel-builder-core.test.cjs
           node tests/panel-builder-kpi.test.cjs
+          node tests/panel-placements-cancellation.test.cjs
           node tests/panel-builder-filters.test.cjs
           node tests/panel-builder-security.test.cjs
           node tests/panel-builder-editor-context.test.cjs
