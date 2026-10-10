@@ -56,8 +56,12 @@ async function reload(c){
    const heading=node("h3",item.title);card.append(heading);
    const controls=node("div");controls.className="bi-personal-chart-actions";
    const edit=node("button","Editar");edit.type="button";edit.onclick=()=>window.dispatchEvent(new CustomEvent("bi-open-panel-draft",{detail:{id:item.id}}));controls.append(edit);
+   let moving=false;
    async function move(offset){
-     if(position+offset<0||position+offset>=attached.length)return;
+     if(moving||position+offset<0||position+offset>=attached.length)return;
+     const live=context();
+     if(!live||live.tenant!==c.tenant||live.system!==c.system||live.view!==c.view)return;
+     moving=true;
      const ordered=allAttached.slice();
      [ordered[position],ordered[position+offset]]=[ordered[position+offset],ordered[position]];
      try{
@@ -71,7 +75,7 @@ async function reload(c){
        msg.className="bi-personal-chart-error";
        msg.textContent="Não foi possível alterar a ordem: "+err.message;
        card.append(msg);
-     }
+     }finally{moving=false;}
    }
    for(const [label,delta] of [["↑",-1],["↓",1]]){
      const button=node("button",label);button.type="button";button.disabled=position+delta<0||position+delta>=attached.length;button.onclick=()=>move(delta);controls.append(button);
@@ -127,6 +131,7 @@ function refresh(){
 const observer=new MutationObserver(()=>refresh());
 observer.observe(document.getElementById("dashboardView")||document.body,{attributes:true,attributeFilter:["hidden"]});
 window.addEventListener("popstate",refresh);
+window.addEventListener("bi-vella-context-changed",refresh);
 document.addEventListener("click",()=>queueMicrotask(refresh));
 window.addEventListener("bi-panel-drafts-changed",()=>{lastKey="";refresh();});
 refresh();
