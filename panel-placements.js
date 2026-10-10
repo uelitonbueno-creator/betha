@@ -17,6 +17,16 @@ function cancelPending(){
 }
 function clear(){for(const chart of charts)chart.destroy();charts=[];items.replaceChildren();}
 function node(tag,text){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;}
+async function drainPreviewQueue(entries,limit,render,active){
+ let cursor=0;
+ const workers=Array.from({length:Math.min(limit,entries.length)},async()=>{
+  while(active()&&cursor<entries.length){
+   const entry=entries[cursor++];
+   await render(entry);
+  }
+ });
+ await Promise.all(workers);
+}
 function context(){
  const state=window.BIVellaSearchContext?.getState?.();
  if(!state)return null;
@@ -39,6 +49,7 @@ async function reload(c){
   const attached=allAttached.slice(0,12);
   if(!attached.length)return;
   area.hidden=false;message.textContent="Gráficos personalizados · prévias parciais (até 500 registros por fonte)";
+  const previews=[];
   for(const [position,item] of attached.entries()){
    if(gen!==generation)return;
    const card=node("article");card.className="bi-personal-chart-card";
@@ -60,7 +71,6 @@ async function reload(c){
        msg.className="bi-personal-chart-error";
        msg.textContent="Não foi possível alterar a ordem: "+err.message;
        card.append(msg);
-       window.dispatchEvent(new Event("bi-panel-drafts-changed"));
      }
    }
    for(const [label,delta] of [["↑",-1],["↓",1]]){
@@ -68,6 +78,9 @@ async function reload(c){
    }
    card.append(controls);
    const status=node("p","Carregando prévia autorizada…");card.append(status);items.append(card);
+   previews.push({item,card,status});
+  }
+  async function renderPreview({item,card,status}){
    try{
     const data=await getJson(endpoint("/api/panel-builder/preview",c),{
       signal:controller.signal,method:"POST",headers:{"X-Tenant-Id":c.tenant,"Content-Type":"application/json"},
@@ -76,7 +89,7 @@ async function reload(c){
     if(gen!==generation)return;
     status.textContent="Prévia parcial: "+data.scanned+" registros examinados";
     const rows=(data.rows||[]).slice(0,40),def=item.definition;
-    if(!rows.length){card.append(node("p","Nenhum dado na prévia."));continue;}
+    if(!rows.length){card.append(node("p","Nenhum dado na prévia."));return;}
     if(def.type==="kpi"){
       const group=node("div");group.className="bi-personal-kpi-grid";group.setAttribute("role","group");group.setAttribute("aria-label","Indicadores da prévia parcial");
       for(const [i,metric] of (def.measures||[]).entries()){
@@ -85,12 +98,12 @@ async function reload(c){
         const amount=node("strong",typeof value==="number"&&Number.isFinite(value)?value.toLocaleString("pt-BR",{maximumFractionDigits:2}):"—");
         amount.className="bi-personal-kpi-value";indicator.append(label,amount);group.append(indicator);
       }
-      card.append(group);continue;
+      card.append(group);return;
     }
     if(def.type==="table"||typeof window.Chart!=="function"){
       const table=node("table"),tbody=node("tbody");
       for(const r of rows){const tr=node("tr");tr.append(node("th",r.dimension));for(const v of r.values||[])tr.append(node("td",v==null?"—":String(v)));tbody.append(tr);}
-      table.append(tbody);card.append(table);continue;
+      table.append(tbody);card.append(table);return;
     }
     const frame=node("div");frame.className="bi-personal-chart-frame";const canvas=node("canvas");frame.append(canvas);card.append(frame);
     const type=def.type==="line"?"line":def.type==="doughnut"?"doughnut":"bar";
@@ -101,6 +114,7 @@ async function reload(c){
     charts.push(chart);
    }catch(e){if(gen===generation)status.textContent="Prévia indisponível: "+e.message;}
   }
+  await drainPreviewQueue(previews,3,renderPreview,()=>gen===generation&&!controller.signal.aborted);
  }catch(e){if(gen===generation){area.hidden=true;console.warn("BI Vella: gráficos personalizados indisponíveis",e.message);}}
 }
 function refresh(){
