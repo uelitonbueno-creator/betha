@@ -10275,7 +10275,7 @@ async function previewCachedPanel(env,tenant,auth,system,definition){
    if(scanned>=500)break;
    scanned++;
    if(definition.filters.some(filter=>String(multiSystemSimpleValue(row?.[filter.field])??"")!==filter.value))continue;
-   const raw=multiSystemSimpleValue(row?.[definition.dimension]);
+   const raw=definition.type==="kpi"?"Total":multiSystemSimpleValue(row?.[definition.dimension]);
    const label=String(raw??"Não informado").slice(0,100);
    if(!groups.has(label)){if(groups.size>=100)continue;groups.set(label,{dimension:label,n:0,sum:0,min:Infinity,max:-Infinity});}
    const bucket=groups.get(label);
@@ -10377,7 +10377,7 @@ async function handlePanelPreview(request,env,url){
     for(const row of rows){
       if(!row||typeof row!=="object")continue;
       if(d.filters.some(filter=>String(row[filter.field]??"")!==filter.value))continue;
-      const dim=row[d.dimension],label=dim==null?"Não informado":String(dim).slice(0,160);
+      const dim=d.type==="kpi"?"Total":row[d.dimension],label=dim==null?"Não informado":String(dim).slice(0,160);
       if(!buckets.has(label)){if(buckets.size>=200)break;buckets.set(label,{dimension:label,values:d.measures.map(()=>({n:0,total:0,min:Infinity,max:-Infinity}))});}
       const entry=buckets.get(label);
       d.measures.forEach((m,i)=>{
