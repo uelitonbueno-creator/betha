@@ -180,7 +180,17 @@ if(generation!==previewRequest||!sameContext()||dialog.hidden)return;
 const rows=Array.isArray(result.rows)?result.rows.slice(0,40):[];
 previewOutput.append(make("strong",{},"Prévia parcial — "+result.scanned+" registros examinados"));
 if(!rows.length){previewOutput.append(make("p",{},"Nenhum registro disponível para esta seleção."));return;}
-if(definition.type!=="table"){
+if(definition.type==="kpi"){
+ const group=make("div",{className:"bi-builder-kpi-preview",role:"group","aria-label":"Indicadores da prévia parcial"});
+ definition.measures.forEach((metric,i)=>{
+  const value=rows[0]?.values?.[i],label=metric.aggregation+"("+metric.field+")";
+  const item=make("div",{className:"bi-personal-kpi"});
+  item.append(make("span",{className:"bi-personal-kpi-label"},label));
+  item.append(make("strong",{className:"bi-personal-kpi-value"},typeof value==="number"&&Number.isFinite(value)?value.toLocaleString("pt-BR",{maximumFractionDigits:2}):"—"));
+  group.append(item);
+ });
+ previewOutput.append(group);
+}else if(definition.type!=="table"){
  if(typeof window.Chart!=="function")previewOutput.append(make("p",{},"Chart.js indisponível; exibindo tabela."));
  else{
   const wrapper=make("div",{className:"bi-builder-chart-container"});
