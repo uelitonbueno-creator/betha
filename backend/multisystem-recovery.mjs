@@ -37,7 +37,7 @@ export async function reconcileArchivedPages({
   let accumulated = resume ? count : 0;
   if (!resume) await resetSummary();
 
-  const limit = Math.max(1, Math.min(3, Number.isSafeInteger(batchSize) ? batchSize : 2));
+  const limit = Math.max(1, Math.min(8, Number.isSafeInteger(batchSize) ? batchSize : 2));
   const stop = Math.min(pages, first + limit);
   for (let page = first; page < stop; page++) {
     const rows = await readPage(page);
