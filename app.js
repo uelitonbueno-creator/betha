@@ -2205,6 +2205,14 @@
     return raw;
   }
 
+  function hasRecentLoadActivity(payload) {
+    const activity=payload?.loading?.hasMore===true||payload?.meta?.batchPaused===true;
+    if(!activity) return false;
+    const updatedAt=Date.parse(payload?.meta?.updatedAt||payload?.meta?.generatedAt||"");
+    const age=Date.now()-updatedAt;
+    return Number.isFinite(updatedAt)&&age>=0&&age<=5*60*1000;
+  }
+
   function chartSourceState(source,payload) {
     const audits=payload?.meta?.sourceAudit||{};
     const warnings=Array.isArray(payload?.meta?.warnings)?payload.meta.warnings:[];
@@ -2219,9 +2227,14 @@
     }
     const loaded=matched.reduce((n,x)=>n+(Number(x.audit?.loaded)||0),0);
     const complete=matched.every(x=>x.audit?.complete===true);
-    if(loaded===0 && complete) return {kind:"empty",detail:"A fonte respondeu com carga completa e nenhum registro para o período/filtros."};
-    if(loaded===0) return {kind:"partial",detail:"A fonte não retornou registros e a carga não foi concluída."};
-    return {kind:"loaded",detail:loaded.toLocaleString("pt-BR")+" registro(s) carregado(s)."};
+    if(loaded===0 && complete) return {kind:"empty",loaded,complete:true,detail:"A fonte respondeu com carga completa e nenhum registro para o período/filtros."};
+    if(!complete) {
+      const detail=loaded>0
+        ? loaded.toLocaleString("pt-BR")+" registro(s) disponíveis; a carga da fonte ainda não foi concluída."
+        : "A fonte não retornou registros e a carga não foi concluída.";
+      return {kind:"partial",loaded,complete:false,detail};
+    }
+    return {kind:"loaded",loaded,complete:true,detail:loaded.toLocaleString("pt-BR")+" registro(s) carregado(s)."};
   }
 
   function renderChartEmptyState(chartDef,payload) {
@@ -2246,20 +2259,19 @@
         : "Fonte indisponível";
       detail.textContent=state.detail;
     } else if(state.kind==="partial"){
-      title.textContent="Carga parcial";
-      detail.textContent=state.detail;
-    } else if(state.kind==="unavailable"){
-      const audits=Object.values(payload?.meta?.sourceAudit||{});
-      const stillLoading=payload?.loading?.hasMore===true ||
-        payload?.meta?.batchPaused===true ||
-        audits.some(a=>a&&a.complete!==true&&!a.error);
-      if(stillLoading){
+      if(state.loaded===0&&hasRecentLoadActivity(payload)){
         title.textContent="Carga em andamento";
-        detail.textContent="Esta fonte ainda está sendo processada. O gráfico será preenchido automaticamente conforme a carga avançar.";
-      }else{
-        title.textContent="Fonte ainda não disponível";
-        detail.textContent="A carga atual ainda não trouxe esta fonte para o painel.";
+        detail.textContent="Esta fonte está avançando e será atualizada automaticamente.";
+      } else if(state.loaded===0){
+        title.textContent="Carga interrompida";
+        detail.textContent="A fonte continua incompleta e não apresentou atividade recente. Confira o monitoramento de cargas.";
+      } else {
+        title.textContent="Carga parcial";
+        detail.textContent=state.detail;
       }
+    } else if(state.kind==="unavailable"){
+      title.textContent="Fonte indisponível";
+      detail.textContent=state.detail;
     } else {
       title.textContent="Sem registros para o filtro atual";
       detail.textContent=state.kind==="loaded"
@@ -2268,7 +2280,6 @@
     }
     empty.hidden=false;
   }
-
   function summaryCellDisplay(value,format="number") {
     if(value===null||value===undefined||value==="") return "—";
     const numeric=Number(value);
