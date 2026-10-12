@@ -45,6 +45,22 @@ test("backfills archived pages in bounded ticks, resuming after last committed p
   assert.equal(data.resets(),1);
 });
 
+test("processes up to eight archived pages per safe recovery tick",async()=>{
+  const {reconcileArchivedPages}=await helper();
+  const data=scenario(Array.from({length:9},()=>[{}]));
+  const first=await reconcileArchivedPages({
+    loaded:9,pages:9,summary:data.summary(),...data.adapters,batchSize:8
+  });
+  assert.deepEqual(first,{complete:false,replayed:8});
+  assert.equal(data.summary().count,8);
+  const second=await reconcileArchivedPages({
+    loaded:9,pages:9,summary:data.summary(),...data.adapters,batchSize:8
+  });
+  assert.deepEqual(second,{complete:true,replayed:1});
+  assert.deepEqual(data.reads,[0,1,2,3,4,5,6,7,8]);
+  assert.equal(data.resets(),1);
+});
+
 test("an interrupted backfill resumes without resetting the partial total",async()=>{
   const {reconcileArchivedPages}=await helper();
   const data=scenario([null,Array(100).fill({}),Array(100).fill({})],{count:100,lastPage:0});
