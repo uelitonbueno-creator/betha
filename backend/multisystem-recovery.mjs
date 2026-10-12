@@ -1,6 +1,18 @@
 /* BI Vella: recovery of cached multi-system page summaries without resetting load cursors.
  * Pure orchestration, with D1/R2 operations supplied by the Worker.
  */
+export function orderedEnabledTenantIds(registry, preferredId = "") {
+  const ids = Object.entries(registry && typeof registry === "object" ? registry : {})
+    .filter(([, config]) => config && config.enabled !== false && String(config.userAccess || "").trim())
+    .map(([id]) => String(id));
+  ids.sort((a, b) => {
+    if (a === preferredId) return -1;
+    if (b === preferredId) return 1;
+    return a.localeCompare(b);
+  });
+  return ids;
+}
+
 export async function reconcileArchivedPages({
   loaded, pages, summary, readPage, resetSummary, applyPage, batchSize = 2
 }) {
