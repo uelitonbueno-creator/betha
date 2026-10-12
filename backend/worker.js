@@ -8,7 +8,7 @@
  * - Todo acesso a dados valida se o usuário possui vínculo com o database+entity
  *   do tenant solicitado.
  */
-import { reconcileArchivedPages } from "./multisystem-recovery.mjs";
+import { orderedEnabledTenantIds, reconcileArchivedPages } from "./multisystem-recovery.mjs";
 const BI_BASE_DEFAULT = "https://tributos.suite.betha.cloud";
 const AUTH_BASE = "https://plataforma-autorizacoes.betha.cloud";
 const PAGE_MAPPING_BASE = "https://autorizacoes.suite.betha.cloud/dados/v1";
@@ -6713,22 +6713,29 @@ async function runMultiSystemBootstrap(env){
   if(!env.AUTH_DB||!env.BI_SYNC_RAW)return;
   await ensureMultiSystemLoadSchema(env);
 
-  let tenant;
+  let registry;
   try{
-    tenant=await resolveTenant(env,MULTISYSTEM_BOOTSTRAP_TENANT);
+    registry=await tenantRegistry(env);
   }catch(error){
-    console.warn("Multi-system bootstrap tenant unavailable",error?.message||error);
+    console.warn("Multi-system tenant registry unavailable",error?.message||error);
     return;
   }
 
-  const tenantConfigState=await env.AUTH_DB.prepare(
-    "SELECT updated_at FROM bi_tenant_configs WHERE id=?1 LIMIT 1"
-  ).bind(String(tenant.id)).first();
-  const configUpdatedAt=Date.parse(String(tenantConfigState?.updated_at||""))||0;
-
-  await Promise.allSettled(
-    ["contabil","compras","folha"].map(system=>advanceMultiSystem(env,tenant,system,configUpdatedAt))
-  );
+  const tenantIds=orderedEnabledTenantIds(registry,MULTISYSTEM_BOOTSTRAP_TENANT);
+  await Promise.allSettled(tenantIds.map(async tenantId=>{
+    try{
+      const tenant=await resolveTenant(env,tenantId);
+      const tenantConfigState=await env.AUTH_DB.prepare(
+        "SELECT updated_at FROM bi_tenant_configs WHERE id=?1 LIMIT 1"
+      ).bind(String(tenant.id)).first();
+      const configUpdatedAt=Date.parse(String(tenantConfigState?.updated_at||""))||0;
+      await Promise.allSettled(
+        ["contabil","compras","folha"].map(system=>advanceMultiSystem(env,tenant,system,configUpdatedAt))
+      );
+    }catch(error){
+      console.warn("Multi-system tenant bootstrap failed",tenantId,error?.message||error);
+    }
+  }));
 }
 
 const MULTISYSTEM_SAMPLE_FILES=Object.freeze({

@@ -113,3 +113,30 @@ test("load diagnostics require both tenant authorization and BI admin rights",()
   assert.match(scope,/Cache-Control","no-store"/);
   assert.doesNotMatch(scope,/accessToken|userAccess|objectKey/);
 });
+
+test("tenant bootstrap includes enabled tenants and prioritizes Paula Freitas",async()=>{
+  const {orderedEnabledTenantIds}=await helper();
+  const registry={
+    agudosdosul:{enabled:true,userAccess:"configured"},
+    paulafreitas:{enabled:true,userAccess:"configured"},
+    disabled:{enabled:false,userAccess:"configured"},
+    missingAccess:{enabled:true,userAccess:""}
+  };
+  assert.deepEqual(
+    orderedEnabledTenantIds(registry,"paulafreitas"),
+    ["paulafreitas","agudosdosul"]
+  );
+});
+
+test("bootstrap enumerates tenants and isolates each tenant's failures",()=>{
+  const worker=fs.readFileSync(path.join(__dirname,"../backend/worker.js"),"utf8");
+  const a=worker.indexOf("async function runMultiSystemBootstrap(env){");
+  const b=worker.indexOf("const MULTISYSTEM_SAMPLE_FILES",a);
+  assert.ok(a>0&&b>a);
+  const body=worker.slice(a,b);
+  assert.match(body,/tenantRegistry\(env\)/);
+  assert.match(body,/orderedEnabledTenantIds\(registry,MULTISYSTEM_BOOTSTRAP_TENANT\)/);
+  assert.match(body,/Promise\.allSettled\(tenantIds\.map/);
+  assert.match(body,/Multi-system tenant bootstrap failed/);
+});
+
