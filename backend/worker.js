@@ -6653,7 +6653,7 @@ async function advanceMultiSystem(env,tenant,system,configUpdatedAt){
         loaded:Math.max(0,Number(previous.loaded)||0),
         pages:Math.max(0,Number(previous.pages)||0),
         summary,
-        batchSize:2,
+        batchSize:8,
         readPage:async page=>{
           const object=await env.BI_SYNC_RAW.get(multiSystemPageObjectKey(tenant.id,system,source.resource,page));
           if(!object)return null;
