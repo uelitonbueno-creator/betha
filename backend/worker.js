@@ -6526,18 +6526,36 @@ async function loadMultiSystemIncrementalResource(env,tenant,system,source,state
   let pageObjectKey=null;
   if(rows.length){
     pageObjectKey=multiSystemPageObjectKey(tenant.id,system,source.resource,pages);
-    await env.BI_SYNC_RAW.put(pageObjectKey,JSON.stringify({
-      tenantId:tenant.id,
-      system,
-      resource:source.resource,
-      source:"betha-api",
-      fields,
-      offset:loaded,
-      page:pages,
-      loaded:rows.length,
-      loadedAt:new Date().toISOString(),
-      rows
-    }),{httpMetadata:{contentType:"application/json"}});
+    // A crash after the R2 write but before the D1 checkpoint must never
+    // silently replace an archived page on the next attempt.
+    const archived=await env.BI_SYNC_RAW.get(pageObjectKey);
+    if(archived){
+      let saved;
+      try{saved=JSON.parse(await archived.text());}catch{
+        throw new Error("MULTISYSTEM_R2_PAGE_INVALID");
+      }
+      if(String(saved?.tenantId)!==String(tenant.id)||
+         saved.system!==system||saved.resource!==source.resource||
+         saved.page!==pages||saved.offset!==loaded||
+         !Array.isArray(saved.rows)||
+         JSON.stringify(saved.rows)!==JSON.stringify(rows)){
+        throw new Error("MULTISYSTEM_R2_PAGE_CONFLICT");
+      }
+      // Identical page already archived: reuse it without an R2 write.
+    }else{
+      await env.BI_SYNC_RAW.put(pageObjectKey,JSON.stringify({
+        tenantId:tenant.id,
+        system,
+        resource:source.resource,
+        source:"betha-api",
+        fields,
+        offset:loaded,
+        page:pages,
+        loaded:rows.length,
+        loadedAt:new Date().toISOString(),
+        rows
+      }),{httpMetadata:{contentType:"application/json"}});
+    }
   }
 
   const nextLoaded=loaded+rows.length;
