@@ -6186,7 +6186,7 @@ async function buildDetailPage(env,tenant,resource,url,options={}) {
 
 const MULTISYSTEM_BOOTSTRAP_TENANT="paulafreitas";
 const MULTISYSTEM_PAGE_SIZE=100;
-const MULTISYSTEM_MAX_PAGES_PER_RESOURCE=5000;
+// No arbitrary page ceiling: progress is bounded by API pagination and durable checkpoints.
 const MULTISYSTEM_FIELD_DISCOVERY_VERSION=1;
 const MULTISYSTEM_FIELD_PROBES_PER_TICK=4;
 
@@ -6515,7 +6515,7 @@ async function discoverMultiSystemFields(env,tenant,source,state){
 async function loadMultiSystemIncrementalResource(env,tenant,system,source,state,profile){
   const loaded=Math.max(0,Number(state?.loaded)||0);
   const pages=Math.max(0,Number(state?.pages)||0);
-  if(pages>=MULTISYSTEM_MAX_PAGES_PER_RESOURCE)throw new Error("MULTISYSTEM_PAGE_LIMIT");
+  if(!Number.isSafeInteger(loaded)||!Number.isSafeInteger(pages))throw new Error("MULTISYSTEM_CHECKPOINT_INVALID");
 
   const fields=(profile?.selected||["id"]).filter(Boolean);
   const result=await multiSystemGetPage(env,tenant,source,loaded,MULTISYSTEM_PAGE_SIZE,fields);
