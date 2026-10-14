@@ -6562,7 +6562,7 @@ function multiSystemStateNeedsWork(source,state,configUpdatedAt){
   if(state.status==="error"){
     const httpStatus=Number(state.http_status)||0;
     const failedAt=Date.parse(String(state.updated_at||""))||0;
-    if([401,403].includes(httpStatus))return configUpdatedAt>failedAt;
+    if([401,403].includes(httpStatus))return configUpdatedAt>failedAt||(failedAt>0&&Date.now()-failedAt>=60*60*1000);
     if(httpStatus===404)return false;
     return Date.now()-failedAt>=5*60*1000;
   }
