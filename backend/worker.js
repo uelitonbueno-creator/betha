@@ -6618,8 +6618,14 @@ async function advanceMultiSystem(env,tenant,system,configUpdatedAt){
     return configUpdatedAt>failedAt;
   });
 
-  const source=staleAuthRetry||
-    sources.find(item=>multiSystemStateNeedsWork(item,byResource.get(item.resource),configUpdatedAt));
+  // Fair scheduling: prefer never-started resources, then the oldest eligible
+  // checkpoint. A long-running resource must not starve other sources.
+  const eligible=sources.filter(item=>multiSystemStateNeedsWork(item,byResource.get(item.resource),configUpdatedAt));
+  const source=staleAuthRetry||eligible.sort((a,b)=>{
+    const left=Date.parse(String(byResource.get(a.resource)?.updated_at||""))||0;
+    const right=Date.parse(String(byResource.get(b.resource)?.updated_at||""))||0;
+    return left-right;
+  })[0];
   if(!source)return;
 
   let previous=byResource.get(source.resource)||null;
