@@ -6518,31 +6518,36 @@ async function loadMultiSystemIncrementalResource(env,tenant,system,source,state
   if(!Number.isSafeInteger(loaded)||!Number.isSafeInteger(pages))throw new Error("MULTISYSTEM_CHECKPOINT_INVALID");
 
   const fields=(profile?.selected||["id"]).filter(Boolean);
-  const result=await multiSystemGetPage(env,tenant,source,loaded,MULTISYSTEM_PAGE_SIZE,fields);
-  const rows=result.rows||[];
-  const meta=payloadPageMeta(result.body,loaded,MULTISYSTEM_PAGE_SIZE,rows.length);
-  const complete=meta.hasNext===false||rows.length===0||rows.length<MULTISYSTEM_PAGE_SIZE;
-
-  let pageObjectKey=null;
-  if(rows.length){
-    pageObjectKey=multiSystemPageObjectKey(tenant.id,system,source.resource,pages);
-    // A crash after the R2 write but before the D1 checkpoint must never
-    // silently replace an archived page on the next attempt.
-    const archived=await env.BI_SYNC_RAW.get(pageObjectKey);
-    if(archived){
-      let saved;
-      try{saved=JSON.parse(await archived.text());}catch{
-        throw new Error("MULTISYSTEM_R2_PAGE_INVALID");
-      }
-      if(String(saved?.tenantId)!==String(tenant.id)||
-         saved.system!==system||saved.resource!==source.resource||
-         saved.page!==pages||saved.offset!==loaded||
-         !Array.isArray(saved.rows)||
-         JSON.stringify(saved.rows)!==JSON.stringify(rows)){
-        throw new Error("MULTISYSTEM_R2_PAGE_CONFLICT");
-      }
-      // Identical page already archived: reuse it without an R2 write.
-    }else{
+  const pageObjectKey=multiSystemPageObjectKey(tenant.id,system,source.resource,pages);
+  // Recover a previously archived page before querying Betha. This closes the
+  // R2-write/D1-checkpoint crash window without overwriting immutable pages.
+  const archived=await env.BI_SYNC_RAW.get(pageObjectKey);
+  let rows,complete,httpStatus;
+  if(archived){
+    let saved;
+    try{saved=JSON.parse(await archived.text());}catch{
+      throw new Error("MULTISYSTEM_R2_PAGE_INVALID");
+    }
+    if(String(saved?.tenantId)!==String(tenant.id)||
+       saved.system!==system||saved.resource!==source.resource||
+       saved.page!==pages||saved.offset!==loaded||
+       !Array.isArray(saved.rows)||saved.rows.length===0||
+       saved.rows.length>MULTISYSTEM_PAGE_SIZE||
+       Number(saved.loaded)!==saved.rows.length){
+      throw new Error("MULTISYSTEM_R2_PAGE_CONFLICT");
+    }
+    rows=saved.rows;
+    // A full archived page is not proof of the end of pagination. The next
+    // invocation will query Betha at the advanced checkpoint.
+    complete=rows.length<MULTISYSTEM_PAGE_SIZE;
+    httpStatus=200;
+  }else{
+    const result=await multiSystemGetPage(env,tenant,source,loaded,MULTISYSTEM_PAGE_SIZE,fields);
+    rows=result.rows||[];
+    const meta=payloadPageMeta(result.body,loaded,MULTISYSTEM_PAGE_SIZE,rows.length);
+    complete=meta.hasNext===false||rows.length===0||rows.length<MULTISYSTEM_PAGE_SIZE;
+    httpStatus=result.status;
+    if(rows.length){
       await env.BI_SYNC_RAW.put(pageObjectKey,JSON.stringify({
         tenantId:tenant.id,
         system,
@@ -6564,7 +6569,7 @@ async function loadMultiSystemIncrementalResource(env,tenant,system,source,state
   return {
     loaded:nextLoaded,
     pages:nextPages,
-    httpStatus:result.status,
+    httpStatus,
     complete,
     objectKey:complete
       ? multiSystemResourcePrefix(tenant.id,system,source.resource)
