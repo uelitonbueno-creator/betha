@@ -6242,19 +6242,19 @@ const MULTISYSTEM_BOOTSTRAP_SOURCES=Object.freeze({
     {
       resource:"matriculas",
       base:"https://folha.suite.betha.cloud",
-      path:"/dados/v1/matriculas",
+      path:"/dados/v2/matriculas",
       fieldCandidates:["numero","matricula","pessoa","nome","cargo","vinculo","lotacao","situacao","dataAdmissao"]
     },
     {
       resource:"funcionarios-cargos",
       base:"https://folha.suite.betha.cloud",
-      path:"/dados/v1/funcionarios-cargos",
+      path:"/dados/v2/funcionarios-cargos",
       fieldCandidates:["funcionario","pessoa","cargo","lotacao","dataInicio","dataFim","situacao"]
     },
     {
       resource:"remuneracoes",
       base:"https://folha.suite.betha.cloud",
-      path:"/dados/v1/remuneracoes",
+      path:"/dados/v2/remuneracoes",
       fieldCandidates:["competencia","matricula","valor","valorBruto","valorLiquido","descontos","encargos","evento"]
     }
   ]
