@@ -156,3 +156,21 @@ test("bootstrap enumerates tenants and isolates each tenant's failures",()=>{
   assert.match(body,/Multi-system tenant bootstrap failed/);
 });
 
+
+
+test("Betha v1 fields selector remains active while Folha v2 omits it",()=>{
+  const worker=fs.readFileSync(path.join(__dirname,"../backend/worker.js"),"utf8");
+  const start=worker.indexOf("const requested=[...new Set((fields||[])");
+  const end=worker.indexOf("const target=String(source.base)",start);
+  assert.ok(start>0&&end>start);
+  const selector=worker.slice(start,end);
+  assert.match(selector,/if\(requested\.length&&!String\(source\.path\|\|""\)\.startsWith\("\/dados\/v2\/"\)\)query\.set\("fields",requested\.join\(","\)\);/);
+  assert.doesNotMatch(selector,/\/\/[^\n]*\\n[^\n]*query\.set/);
+  const build=new Function("fields","source","query",selector);
+  const v1=new URLSearchParams();
+  build(["id","nome"],{path:"/dados/v1/contribuintes"},v1);
+  assert.equal(v1.get("fields"),"id,nome");
+  const v2=new URLSearchParams();
+  build(["id","nome"],{path:"/dados/v2/remuneracoes"},v2);
+  assert.equal(v2.has("fields"),false);
+});
