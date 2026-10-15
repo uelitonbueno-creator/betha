@@ -6449,7 +6449,9 @@ function mergeMultiSystemFields(profile,rows){
 async function multiSystemGetPage(env,tenant,source,offset,limit,fields=[]){
   const query=new URLSearchParams({limit:String(limit),offset:String(offset)});
   const requested=[...new Set((fields||[]).map(String).filter(Boolean))];
-  // Folha v2 OpenAPI lists offset/limit/filter/sort but no fields parameter.\n  // Do not send an undocumented fields selector to these endpoints.\n  if(requested.length&&!String(source.path||"").startsWith("/dados/v2/"))query.set("fields",requested.join(","));
+  // Folha v2 does not document the fields query parameter.
+  // Preserve fields selection for v1 endpoints only.
+  if(requested.length&&!String(source.path||"").startsWith("/dados/v2/"))query.set("fields",requested.join(","));
   const target=String(source.base).replace(/\/$/,"")+source.path+"?"+query.toString();
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),30000);
