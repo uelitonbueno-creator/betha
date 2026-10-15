@@ -6243,19 +6243,19 @@ const MULTISYSTEM_BOOTSTRAP_SOURCES=Object.freeze({
       resource:"matriculas",
       base:"https://folha.suite.betha.cloud",
       path:"/dados/v2/matriculas",
-      fieldCandidates:["numero","matricula","pessoa","nome","cargo","vinculo","lotacao","situacao","dataAdmissao"]
+      fieldCandidates:[]
     },
     {
       resource:"funcionarios-cargos",
       base:"https://folha.suite.betha.cloud",
       path:"/dados/v2/funcionarios-cargos",
-      fieldCandidates:["funcionario","pessoa","cargo","lotacao","dataInicio","dataFim","situacao"]
+      fieldCandidates:[]
     },
     {
       resource:"remuneracoes",
       base:"https://folha.suite.betha.cloud",
       path:"/dados/v2/remuneracoes",
-      fieldCandidates:["competencia","matricula","valor","valorBruto","valorLiquido","descontos","encargos","evento"]
+      fieldCandidates:[]
     }
   ]
 });
@@ -6449,7 +6449,7 @@ function mergeMultiSystemFields(profile,rows){
 async function multiSystemGetPage(env,tenant,source,offset,limit,fields=[]){
   const query=new URLSearchParams({limit:String(limit),offset:String(offset)});
   const requested=[...new Set((fields||[]).map(String).filter(Boolean))];
-  if(requested.length)query.set("fields",requested.join(","));
+  // Folha v2 OpenAPI lists offset/limit/filter/sort but no fields parameter.\n  // Do not send an undocumented fields selector to these endpoints.\n  if(requested.length&&!String(source.path||"").startsWith("/dados/v2/"))query.set("fields",requested.join(","));
   const target=String(source.base).replace(/\/$/,"")+source.path+"?"+query.toString();
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),30000);
