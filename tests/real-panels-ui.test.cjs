@@ -36,3 +36,12 @@ test('accounting uses all persisted sources without inventing financial metrics'
 test('tables do not turn unavailable or incomplete tributary chart placeholders into money',()=>{
  assert.match(app,/\["error","unavailable","partial"\]\.includes\(state.kind\)/);
 });
+test('persisted overview is read-only and requires the ordinary tenant permission',()=>{
+ const worker=fs.readFileSync('backend/worker.js','utf8');
+ const start=worker.indexOf('async function buildPersistedTributaryOverview('),end=worker.indexOf('async function buildOverviewDashboard(',start);
+ const body=worker.slice(start,end);
+ assert.match(body,/await syncJob/);assert.match(body,/readOnly:true/);
+ assert.doesNotMatch(body,/fetchBethaRows|advanceSync|beginSync|\.put\(|\.run\(/);
+ assert.match(worker,/requireViewPermission\(auth,view\)/);
+ assert.match(app,/if\(view===\"visao-geral\"\)params.set\(\"persisted\",\"1\"\)/);
+});
