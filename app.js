@@ -2405,7 +2405,12 @@
       });
       for(const kpi of def.kpis||[]){
         const meta=document.querySelector('[data-kpi="'+cssEscape(kpi.id)+'"] span');
-        if(meta) meta.textContent="Betha · "+String(kpi.field||"dados reais");
+        if(meta){
+          const finance=payload?.meta?.financialConsolidation;
+          meta.textContent=finance&&["bruto","liquido","descontos"].includes(kpi.id)
+            ? "Betha · "+(finance.complete?"por competência":"PARCIAL: "+finance.rowsProcessed+"/"+finance.totalRecords+" remunerações")
+            : "Betha · "+String(kpi.field||"dados reais");
+        }
       }
     }
   }
@@ -2931,10 +2936,12 @@
     return true;
   }
 
+  const dashboardResponseDiagnostics=new Map();
   async function api(path, options = {}) {
     const base = String(cfg.BACKEND_URL || "").replace(/\/$/, "");
     if (!base) throw new Error("BACKEND_NOT_CONFIGURED");
 
+    const requestTenant=tenantId;
     const headers = {...(options.headers || {}), Accept:"application/json"};
     const token = cfg.AUTH_REQUIRED && window.BIAuth && typeof BIAuth.getToken === "function" ? BIAuth.getToken() : "";
     if (token) headers.Authorization = "Session " + token;
@@ -2955,6 +2962,7 @@
 
       const response = await fetch(base + path, fetchOptions);
       const body = await response.json().catch(() => ({}));
+      if(path.startsWith("/api/dashboard/"))dashboardResponseDiagnostics.set(requestTenant+":"+(path.match(/^\/api\/dashboard\/([^/?]+)/)?.[1]||currentView),{path,httpStatus:response.status,requestedTenant:requestTenant,error:body.error||null,receivedAt:new Date().toISOString(),tenant:body.tenant||null,period:body.period||null,kpis:body.kpis||{},meta:body.meta||{},tables:body.tables||[],charts:body.charts||{}});
       if (!response.ok) {
         const error = new Error(body.error || ("HTTP " + response.status));
         error.status = response.status;
@@ -3792,6 +3800,7 @@
         exercicio:document.getElementById("exercicio")?.value||String(currentYear)
       });
       for(const [key,value] of Object.entries(currentDashboardFilters(view)))params.set(key,value);
+      if(view==="visao-geral")params.set("persisted","1");
 
       const payload=await api("/api/dashboard/"+encodeURIComponent(view)+"?"+params.toString(),{timeoutMs:30000});
       if(!active())return;
@@ -3800,14 +3809,16 @@
         fallback=true;
       }else{
         renderPayload(payload);
-        const audit=payload?.meta?.sourceAudit?.[requestedSystem]||{};
+        const allAudits=Object.values(payload?.meta?.sourceAudit||{});
+        const audit=payload?.meta?.sourceAudit?.[requestedSystem]||{loaded:allAudits.reduce((n,a)=>n+Number(a.loaded||0),0),complete:allAudits.length>0&&allAudits.every(a=>a.complete&&!a.error)};
         const loaded=Number(audit.loaded||0);
-        const complete=audit.complete===true;
+        const finance=payload?.meta?.financialConsolidation;
+        const complete=audit.complete===true&&finance?.complete!==false;
         setLastUpdated(payload?.meta?.updatedAt||payload?.meta?.generatedAt||new Date().toISOString(),"Betha");
         setStatus(
           complete?"online":"waiting",
           "DADOS REAIS · "+loaded.toLocaleString("pt-BR")+" registros processados"+
-          (complete?" · carga concluída":" · carga em andamento")
+          (finance&&!finance.complete?" · FINANCEIRO PARCIAL: "+finance.rowsProcessed+"/"+finance.totalRecords+" remunerações":complete?" · carga concluída":" · carga em andamento")
         );
       }
     }catch(error){
@@ -3827,7 +3838,7 @@
 
   async function loadDashboardData(view, options = {}) {
     if(view===HOME_VIEW) view=currentSystemInfo()?.homeView||DEFAULT_VIEW;
-    if(REAL_MULTI_SYSTEM_HOME_VIEWS.has(view)) return loadRealMultiSystemDashboard(view);
+    if(REAL_MULTI_SYSTEM_HOME_VIEWS.has(view)||view==="visao-geral") return loadRealMultiSystemDashboard(view);
     if(dashboards[view]?.localSample) return loadLocalSampleDashboard(view);
     if(dashboards[view]?.apiSource) return loadApiPanelDashboard(view);
     const generation=++dashboardLoadGeneration;
@@ -5273,6 +5284,8 @@
     activateDrawer("integrationDrawer","#closeIntegration");
 
     const state = document.getElementById("integrationState");
+    const diagnostic=document.getElementById("dashboardResponseOutput");
+    if(diagnostic)diagnostic.textContent=JSON.stringify(dashboardResponseDiagnostics.get(tenantId+":"+currentView)||{status:"Nenhuma resposta HTTP deste painel nesta sessão."},null,2);
     if (!cfg.BACKEND_URL) {
       state.textContent = "Backend ainda não publicado/configurado no front.";
       return;

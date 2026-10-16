@@ -9,6 +9,7 @@
  *   do tenant solicitado.
  */
 import { orderedEnabledTenantIds, reconcileArchivedPages } from "./multisystem-recovery.mjs";
+import { advancePayrollProjection, readPayrollProjection } from "./payroll-projection.mjs";
 const BI_BASE_DEFAULT = "https://tributos.suite.betha.cloud";
 const AUTH_BASE = "https://plataforma-autorizacoes.betha.cloud";
 const PAGE_MAPPING_BASE = "https://autorizacoes.suite.betha.cloud/dados/v1";
@@ -3255,6 +3256,32 @@ async function buildOverviewPart(env,tenant,url,part) {
   }
 
   throw new Error("OVERVIEW_PART_INVALID");
+}
+
+async function buildPersistedTributaryOverview(env,tenant,url) {
+  const config=await syncConfig(env,tenant);
+  const jobId=config.activeJob||config.latestJob;
+  const job=jobId?await syncJob(env,tenant,jobId):null;
+  if(!job)throw new Error("INITIAL_LOAD_REQUIRED");
+  const scope=await syncScope(tenant);
+  const stamp=env.AUTH_DB?await env.AUTH_DB.prepare("SELECT updated_at FROM bi_durable_kv WHERE cache_key=?1 LIMIT 1").bind(scope+":job:"+jobId).first():null;
+  const names={pagamentos:"Pagamentos",debitos:"Débitos",dividas:"Dívidas",parcelamentos:"Parcelamentos",contribuintes:"Contribuintes",imoveis:"Imóveis",economicos:"Econômicos"};
+  const sourceAudit={},realSources=[];
+  for(const [name,label] of Object.entries(names)){
+    const source=job.sources?.["bi:"+name];
+    if(!source)continue;
+    sourceAudit[name]={loaded:Number(source.loaded)||0,pages:Number(source.pages)||0,complete:source.complete===true,error:source.error||source.lastError||null,reportedTotal:source.reportedTotal??null};
+    realSources.push({resource:name,label,jobId,loaded:sourceAudit[name].loaded,pages:sourceAudit[name].pages,status:source.error?"error":source.complete?"complete":"partial"});
+  }
+  const complete=realSources.length===Object.keys(names).length&&Object.values(sourceAudit).every(a=>a.complete&&!a.error);
+  const cadastro=["contribuintes","imoveis","economicos"].filter(key=>sourceAudit[key]?.complete&&!sourceAudit[key]?.error);
+  return {view:"visao-geral",tenant:{id:tenant.id,name:tenant.name},period:{periodo:url.searchParams.get("periodo")||"ano",exercicio:Number(url.searchParams.get("exercicio")||new Date().getFullYear())},
+    kpis:{arrecadado:null,lancado:null,divida:null,parcelado:null,contribuintes:cadastro.includes("contribuintes")?sourceAudit.contribuintes.loaded:null,imoveis:cadastro.includes("imoveis")?sourceAudit.imoveis.loaded:null},
+    charts:cadastro.length?{cadastros:{format:"number",labels:cadastro.map(key=>names[key]),datasets:[{label:"Registros cadastrais",data:cadastro.map(key=>sourceAudit[key].loaded)}]}}:{},
+    tables:[{id:"tributos-cobertura-persistida",title:"Cobertura tributária persistida",subtitle:"Contagens do job atual em todo o histórico. Não são totais financeiros nem contagens filtradas por exercício.",groupLabel:"Fonte",columns:[{id:"registros",label:"Registros",format:"number"},{id:"paginas",label:"Páginas",format:"number"}],rows:realSources.map(item=>({label:item.label,values:[item.loaded,item.pages]})),totalRows:realSources.length}],
+    meta:{realData:true,sampleMode:false,dataMode:complete?"real":"real-partial",sourceAudit,realSources,sourceRows:Object.fromEntries(realSources.map(item=>[item.resource,item.loaded])),updatedAt:stamp?.updated_at||job.finishedAt||job.startedAt,sourceJobId:jobId,readOnly:true,
+      unavailableMetrics:["arrecadado","lancado","divida","parcelado"],warnings:Object.entries(sourceAudit).filter(([,a])=>a.error).map(([source,a])=>({source,error:a.error})),
+      note:"Leitura do job persistido, sem iniciar cargas Betha. Cobertura e cadastros abrangem todo o histórico; valores financeiros por período aguardam consolidação."}};
 }
 
 async function buildOverviewDashboard(env,tenant,url) {
@@ -6763,6 +6790,12 @@ async function runMultiSystemBootstrap(env){
       await Promise.allSettled(
         ["contabil","compras","folha"].map(system=>advanceMultiSystem(env,tenant,system,configUpdatedAt))
       );
+      // Same scheduled execution, after the imports: project immutable payroll pages only.
+      try {
+        const source=await env.AUTH_DB.prepare("SELECT pages,status FROM bi_multisystem_loads WHERE tenant_id=?1 AND system='folha' AND resource='remuneracoes'").bind(String(tenant.id)).first();
+        if(source?.pages)await advancePayrollProjection({db:env.AUTH_DB,bucket:env.BI_SYNC_RAW,tenantId:String(tenant.id),pageCount:Number(source.pages),sourceComplete:source.status==="complete",pageKey:page=>multiSystemPageObjectKey(tenant.id,"folha","remuneracoes",page),batchSize:64});
+      } catch(error) {console.warn("Payroll archive projection paused",tenant.id,error?.message||error);}
+
     }catch(error){
       console.warn("Multi-system tenant bootstrap failed",tenantId,error?.message||error);
     }
@@ -7186,6 +7219,11 @@ async function buildPayrollDashboard(env,tenant,url) {
   if(!available.length)return buildPayrollSampleDashboard(env,tenant,url);
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  const keys=periodo==="todos"?null:new Set(multiSystemMonthlyEntries({monthly:Object.fromEntries(Array.from({length:24},(_,i)=>{const date=new Date(exercicio-1,0+i,1);return [date.getFullYear()+"-"+String(date.getMonth()+1).padStart(2,"0"),1];}))},periodo,exercicio).map(([key])=>key));
+  const finance=await readPayrollProjection(env.AUTH_DB,String(tenant.id),keys);
+  const unsupportedFilters=[...url.searchParams].filter(([key,value])=>value&&!["periodo","exercicio","tenant"].includes(key)).map(([key])=>key);
+  const ready=Boolean(finance&&!finance.state.error&&!unsupportedFilters.length);
+  const consolidation={totalRecords:Number(remuneracoes?.count)||0,unsupportedFilters,complete:ready&&finance.state.status==="complete",pagesProcessed:Number(finance?.state?.next_page)||0,rowsProcessed:Number(finance?.state?.rows_seen)||0,recordsInPeriod:finance?.records||0,unknownCompetence:finance?.unknownCompetence||0,error:finance?.state?.error||null,updatedAt:finance?.state?.updated_at||null};
   return {
     view:"folha-visao-geral",
     tenant:{id:tenant.id,name:tenant.name},
@@ -7193,14 +7231,14 @@ async function buildPayrollDashboard(env,tenant,url) {
     filters:{},
     kpis:{
       servidores:null,
-      bruto:null,
-      liquido:null,
-      descontos:null,
+      bruto:ready?finance.gross:null,
+      liquido:ready?finance.net:null,
+      descontos:ready?finance.discount:null,
       encargos:null,
       ativos:null,
       afastados:null
     },
-    charts:{},
+    charts:ready&&finance.rows.length?{"folha-mensal":{format:"currency",labels:finance.rows.map(row=>multiSystemMonthLabel(row.competence)),datasets:[{label:"Bruto importado",data:finance.rows.map(row=>Number(row.gross_count)===Number(row.records)?Number(row.gross)/100:null)},{label:"Líquido importado",data:finance.rows.map(row=>Number(row.net_count)===Number(row.records)?Number(row.net)/100:null)}]}}:{},
     tables:[{
       id:"folha-cobertura-real",
       title:"Cobertura da carga da Folha",
@@ -7217,8 +7255,10 @@ async function buildPayrollDashboard(env,tenant,url) {
       totalRows:available.length
     }],
     meta:multiSystemRealMeta("folha",available,{
-      unavailableMetrics:["servidores","bruto","liquido","descontos","encargos","ativos","afastados"],
-      note:"Fontes reais disponíveis. Totais financeiros e servidores únicos dependem de agregação e validação; não serão substituídos por valores sintéticos."
+      dataMode:consolidation.complete?"real":"real-partial",
+      financialConsolidation:consolidation,
+      unavailableMetrics:["servidores","encargos","ativos","afastados",...(!ready||finance.gross===null?["bruto"]:[]),...(!ready||finance.net===null?["liquido"]:[]),...(!ready||finance.discount===null?["descontos"]:[])],
+      note:"Soma das remunerações importadas por competência, incluindo todos os processamentos; não equivale à folha oficial. "+(consolidation.complete?"Consolidação do arquivo concluída.":"CONSOLIDAÇÃO PARCIAL: "+consolidation.rowsProcessed+" registros processados.")+" Servidores únicos e encargos permanecem indisponíveis."
     })
   };
 }
@@ -11272,7 +11312,9 @@ export default {
             expected,cursors:{},hasMore:false,pending:new Map(),sourceFilters
           }};
         }
-        const body=await builder(dashboardEnv,tenant,url);
+        const body=view==="visao-geral"&&url.searchParams.get("persisted")==="1"
+          ? await buildPersistedTributaryOverview(env,tenant,url)
+          : await builder(dashboardEnv,tenant,url);
         if (dashboardEnv.BI_DASHBOARD_LOAD) {
           const load=dashboardEnv.BI_DASHBOARD_LOAD;
           body.loading={hasMore:load.hasMore,cursor:load.cursors};
