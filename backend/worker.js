@@ -6975,8 +6975,11 @@ function multiSystemRealMeta(system,summaries,extra={}){
 }
 
 async function buildAccountingDashboard(env,tenant,url){
-  const summary=await getMultiSystemSummary(env,tenant.id,"contabil","empenhos");
-  if(!summary||Number(summary.count)<=0)return buildAccountingSampleDashboard(env,tenant,url);
+  const summaries=await Promise.all(["empenhos","movimentacoes-receitas","movimentacoes-despesas","credores"].map(resource=>getMultiSystemSummary(env,tenant.id,"contabil",resource)));
+  const available=summaries.filter(item=>item&&Number(item.count)>0);
+  if(!available.length)return buildAccountingSampleDashboard(env,tenant,url);
+  const summary=summaries[0]||{monthly:{},groups:{},loadStatus:"partial"};
+  const creditorSummary=summaries[3];
 
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
@@ -7014,16 +7017,21 @@ async function buildAccountingDashboard(env,tenant,url){
       liquidado:null,
       pago:null,
       arrecadado:null,
-      credores:creditors.length?Object.keys(summary.groups||{}).length:null
+      credores:creditorSummary?Number(creditorSummary.count):null
     },
     charts,
-    tables,
-    meta:multiSystemRealMeta("contabil",[summary],{
+    tables:[{
+      id:"contabil-cobertura-real",title:"Cobertura da Contabilidade",
+      subtitle:"Contagens de todo o histórico importado; valores financeiros seguem o período selecionado.",
+      groupLabel:"Fonte",columns:[{id:"registros",label:"Registros importados",format:"number"}],
+      rows:available.map(item=>({label:item.resource,values:[Number(item.count)]})),totalRows:available.length
+    },...tables],
+    meta:multiSystemRealMeta("contabil",available,{
       periodDataAvailable:hasPeriodData,
       unavailableMetrics:["liquidado","pago","arrecadado"],
       note:inProgress
         ?"Empenhos reais em carga. Liquidação, pagamento e receita permanecem indisponíveis até as respectivas fontes serem autorizadas/carregadas."
-        :"Empenhos reais consolidados. Métricas adicionais dependem das demais fontes contábeis."
+        :"Cobertura real das quatro fontes. Valores de receitas, liquidação e pagamentos aguardam validação dos campos financeiros. Credores e contagens de cobertura representam todo o histórico importado."
     })
   };
 }
