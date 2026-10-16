@@ -5298,6 +5298,13 @@
     }
   });
 
+  document.getElementById("inspectAccountingFieldsButton")?.addEventListener("click",async()=>{
+    const output=document.getElementById("accountingFieldsOutput");
+    output.textContent="Conferindo nomes e tipos de campos, sem importar registros…";
+    try{output.textContent=JSON.stringify(await api("/api/admin/multisystem-loads?inspect=contabil",{timeoutMs:70000}),null,2);}
+    catch(error){output.textContent=JSON.stringify({error:error.message,status:error.status||null});}
+  });
+
   document.getElementById("copyContext").addEventListener("click", async (event) => {
     try {
       await navigator.clipboard.writeText(document.getElementById("contextOutput").textContent);

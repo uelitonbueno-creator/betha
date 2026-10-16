@@ -6778,6 +6778,27 @@ async function advanceMultiSystem(env,tenant,system,configUpdatedAt){
   }
 }
 
+async function inspectAccountingFields(env,tenant) {
+  const results=[];
+  for(const source of MULTISYSTEM_BOOTSTRAP_SOURCES.contabil.filter(item=>item.resource.startsWith("movimentacoes-"))){
+    try {
+      const page=await multiSystemGetPage(env,tenant,source,0,1,[]);
+      const fields=[];
+      const walk=(value,prefix="",depth=0)=>{
+        if(!value||typeof value!=="object"||Array.isArray(value)||depth>3)return;
+        for(const [key,item] of Object.entries(value)){
+          const path=prefix?prefix+"."+key:key;
+          fields.push({path,type:item===null?"null":Array.isArray(item)?"array":typeof item});
+          if(item&&typeof item==="object"&&!Array.isArray(item))walk(item,path,depth+1);
+        }
+      };
+      walk(page.rows[0]);
+      results.push({resource:source.resource,httpStatus:page.status,rowsInspected:page.rows.length,fields:fields.slice(0,250)});
+    }catch(error){results.push({resource:source.resource,httpStatus:Number(error.status)||null,error:String(error.message).slice(0,120)});}
+  }
+  return {tenant:{id:tenant.id,name:tenant.name},readOnly:true,results};
+}
+
 async function runMultiSystemBootstrap(env){
   if(!env.AUTH_DB||!env.BI_SYNC_RAW)return;
   await ensureMultiSystemLoadSchema(env);
@@ -11147,6 +11168,7 @@ export default {
         const tenant=await resolveTenant(env,url.searchParams.get('entity')||getTenantId(request,url));
         const auth=await authorizeTenant(request,env,tenant);
         requireTenantConfigAdmin(auth);
+        if(url.searchParams.get("inspect")==="contabil")return json(request,env,200,await inspectAccountingFields(env,tenant));
         if(!env.AUTH_DB)return json(request,env,503,{error:"PANEL_D1_NOT_CONFIGURED"});
         await ensureMultiSystemLoadSchema(env);
         const result=await env.AUTH_DB.prepare(

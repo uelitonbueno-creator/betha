@@ -54,3 +54,8 @@ test('persisted overview reads exact D1 scope when KV metadata is absent',async(
  const result=await fn(env,{id:'paulafreitas'},new URL('https://example.test/?periodo=ano&exercicio=2026'));
  assert.equal(result.kpis.contribuintes,5865);assert.equal(result.kpis.arrecadado,null);assert.equal(result.meta.sourceJobId,jobId);assert.equal(result.meta.updatedAt,'2026-10-16T19:00:00Z');
 });
+test('accounting schema inspector requires configuration admin and returns types only',()=>{
+ const worker=fs.readFileSync('backend/worker.js','utf8');const start=worker.indexOf('async function inspectAccountingFields('),end=worker.indexOf('async function runMultiSystemBootstrap(',start);const code=worker.slice(start,end);
+ assert.match(code,/source,0,1,\[\]/);assert.match(code,/fields.push\(\{path,type:/);assert.doesNotMatch(code,/rows:page.rows|\.put\(|UPDATE bi_multisystem/);
+ assert.match(worker,/requireTenantConfigAdmin\(auth\);\s*if\(url.searchParams.get\("inspect"\)===\"contabil\"\)/);
+});
