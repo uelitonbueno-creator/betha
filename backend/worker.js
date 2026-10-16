@@ -3259,11 +3259,22 @@ async function buildOverviewPart(env,tenant,url,part) {
 }
 
 async function buildPersistedTributaryOverview(env,tenant,url) {
-  const config=await syncConfig(env,tenant);
-  const jobId=config.activeJob||config.latestJob;
-  const job=jobId?await syncJob(env,tenant,jobId):null;
-  if(!job)throw new Error("INITIAL_LOAD_REQUIRED");
   const scope=await syncScope(tenant);
+  const read=async key=>{
+    if(env.AUTH_DB){
+      const row=await env.AUTH_DB.prepare("SELECT payload FROM bi_durable_kv WHERE cache_key=?1 LIMIT 1").bind(key).first();
+      if(row?.payload){try{return JSON.parse(row.payload);}catch{throw new Error("SYNC_METADATA_INVALID");}}
+    }
+    return env.BI_SESSIONS?await env.BI_SESSIONS.get(key,"json"):null;
+  };
+  const config=await read(scope+":config")||{};
+  let job=null,jobId=null;
+  for(const id of [...new Set([config.activeJob,config.latestJob].filter(Boolean))]){
+    if(!/^[a-f0-9-]{36}$/i.test(id))continue;
+    const candidate=await read(scope+":job:"+id);
+    if(candidate){job=candidate;jobId=id;break;}
+  }
+  if(!job)throw new Error("INITIAL_LOAD_REQUIRED");
   const stamp=env.AUTH_DB?await env.AUTH_DB.prepare("SELECT updated_at FROM bi_durable_kv WHERE cache_key=?1 LIMIT 1").bind(scope+":job:"+jobId).first():null;
   const names={pagamentos:"Pagamentos",debitos:"Débitos",dividas:"Dívidas",parcelamentos:"Parcelamentos",contribuintes:"Contribuintes",imoveis:"Imóveis",economicos:"Econômicos"};
   const sourceAudit={},realSources=[];

@@ -40,8 +40,17 @@ test('persisted overview is read-only and requires the ordinary tenant permissio
  const worker=fs.readFileSync('backend/worker.js','utf8');
  const start=worker.indexOf('async function buildPersistedTributaryOverview('),end=worker.indexOf('async function buildOverviewDashboard(',start);
  const body=worker.slice(start,end);
- assert.match(body,/await syncJob/);assert.match(body,/readOnly:true/);
+ assert.match(body,/SELECT payload FROM bi_durable_kv WHERE cache_key=\?1/);assert.match(body,/readOnly:true/);
  assert.doesNotMatch(body,/fetchBethaRows|advanceSync|beginSync|\.put\(|\.run\(/);
  assert.match(worker,/requireViewPermission\(auth,view\)/);
  assert.match(app,/if\(view===\"visao-geral\"\)params.set\(\"persisted\",\"1\"\)/);
+});
+test('persisted overview reads exact D1 scope when KV metadata is absent',async()=>{
+ const worker=fs.readFileSync('backend/worker.js','utf8');const start=worker.indexOf('async function buildPersistedTributaryOverview('),end=worker.indexOf('async function buildOverviewDashboard(',start);
+ const jobId='1fd2b449-ffe0-440d-9c1c-df6f219b17e0';
+ const records={'scope:config':{activeJob:jobId},['scope:job:'+jobId]:{startedAt:'2026-10-01T00:00:00Z',sources:{'bi:contribuintes':{loaded:5865,pages:6,complete:true}}}};
+ const env={AUTH_DB:{prepare(sql){return {bind(key){assert.ok(key.startsWith('scope:'));return {first:async()=>sql.includes('SELECT updated_at')?{updated_at:'2026-10-16T19:00:00Z'}:records[key]?{payload:JSON.stringify(records[key])}:null}}}}},BI_SESSIONS:{get:async()=>null}};
+ const fn=vm.runInNewContext(worker.slice(start,end)+';buildPersistedTributaryOverview',{syncScope:async()=>'scope'});
+ const result=await fn(env,{id:'paulafreitas'},new URL('https://example.test/?periodo=ano&exercicio=2026'));
+ assert.equal(result.kpis.contribuintes,5865);assert.equal(result.kpis.arrecadado,null);assert.equal(result.meta.sourceJobId,jobId);assert.equal(result.meta.updatedAt,'2026-10-16T19:00:00Z');
 });
