@@ -4360,7 +4360,7 @@
         serie:"",
         categoria:"",
         valor:formatValue(raw,kpi.format),
-        fonte:kpi.source||""
+        fonte:currentPayload?.meta?.realData===true?"BETHA · "+currentSystemId:kpi.source||""
       });
     }
     for(const chartDef of def.charts||[]){
@@ -4374,7 +4374,7 @@
             serie:dataset.label||"",
             categoria:chart.labels[index]??"",
             valor:chartDef.format ? formatValue(value,chartDef.format) : String(value??""),
-            fonte:chartDef.source||""
+            fonte:currentPayload?.meta?.realData===true?"BETHA · "+currentSystemId:chartDef.source||""
           });
         });
       });
@@ -4409,7 +4409,7 @@
     }
     const context=exportContextLabel();
     const system=currentSystemInfo();
-    const sampleMode=Boolean(dashboards[currentView]?.localSample);
+    const sampleMode=currentPayload?.meta?.sampleMode===true&&currentPayload?.meta?.realData!==true;
     const header=["Tipo","Item","Série","Categoria","Valor","Fonte"].map(x=>csvEscape(x,separator)).join(separator);
     const body=rows.map(row=>[
       row.tipo,row.item,row.serie,row.categoria,row.valor,row.fonte
@@ -4419,12 +4419,16 @@
       ["Entidade",entityLabel||tenantId||"Entidade"],
       ["Sistema",system?.name||system?.label||currentSystemId],
       ["Painel",dashboards[currentView]?.title||currentView],
-      ["Modo de dados",sampleMode?"AMOSTRA LOCAL · DADOS DE TESTE · SEM CONSUMO DA API":"DADOS AUTORIZADOS"],
-      ["Contexto",context.summary||"Padrão"]
+      ["Modo de dados",sampleMode?"DEMONSTRAÇÃO — DADOS SINTÉTICOS":currentPayload?.meta?.dataMode==="real-partial"?"DADOS REAIS PARCIAIS":"DADOS REAIS"],
+      ["Contexto",context.summary||"Padrão"],
+      ["Atualização da fonte",currentPayload?.meta?.updatedAt||""],
+      ["Consolidação financeira",currentPayload?.meta?.financialConsolidation?JSON.stringify(currentPayload.meta.financialConsolidation):"Não se aplica"]
     ].map(row=>row.map(value=>csvEscape(value,separator)).join(separator)).join("\r\n");
     const text=(extension==="csv"?"\uFEFF":"")+meta+"\r\n\r\n"+header+"\r\n"+body;
     const mime=extension==="csv"?"text/csv;charset=utf-8":"text/plain;charset=utf-8";
     const name=safeFilePart("bi-vella-"+(currentSystemInfo()?.name||currentSystemId)+"-"+(entityLabel||tenantId)+"-"+(dashboards[currentView]?.title||currentView));
+    const preview=document.getElementById("dashboardExportPreview");
+    if(preview)preview.textContent=text;
     downloadBlob(text,mime,name+"."+extension);
     showToast(extension.toUpperCase()+" gerado com sucesso.");
   }

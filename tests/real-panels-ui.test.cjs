@@ -59,3 +59,10 @@ test('accounting schema inspector requires configuration admin and returns types
  assert.match(code,/source,0,1,\[\]/);assert.match(code,/fields.push\(\{path,type:/);assert.doesNotMatch(code,/rows:page.rows|\.put\(|UPDATE bi_multisystem/);
  assert.match(worker,/requireTenantConfigAdmin\(auth\);\s*if\(url.searchParams.get\("inspect"\)===\"contabil\"\)/);
 });
+test('real dashboard CSV uses actual payload provenance even on a sample-capable screen',()=>{
+ const start=app.indexOf('  function exportDashboardDelimited('),end=app.indexOf('  async function fetchDetailExport(',start);
+ const code=app.slice(start,end);let exported='';
+ const context={currentPayload:{meta:{realData:true,sampleMode:false,dataMode:'real-partial',updatedAt:'2026-10-16'}},dashboards:{'folha-visao-geral':{localSample:true,title:'Folha'}},currentView:'folha-visao-geral',currentSystemId:'folha',entityLabel:'Paula Freitas',tenantId:'paulafreitas',showToast:()=>{},dashboardExportRows:()=>[{tipo:'Indicador',item:'Bruto',valor:'—',fonte:'BETHA'}],exportContextLabel:()=>({summary:'2026'}),currentSystemInfo:()=>({name:'Folha'}),csvEscape:value=>String(value??''),safeFilePart:v=>v,downloadBlob:text=>{exported=text},document:{getElementById:()=>({})}};
+ const fn=vm.runInNewContext(code+';exportDashboardDelimited',context);fn(';','csv');
+ assert.match(exported,/DADOS REAIS PARCIAIS/);assert.doesNotMatch(exported,/AMOSTRA LOCAL|DADOS DE TESTE/);assert.match(exported,/Atualização da fonte;2026-10-16/);
+});
