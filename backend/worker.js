@@ -7167,6 +7167,54 @@ async function buildProcurementSampleDashboard(env,tenant,url) {
   };
 }
 
+async function buildPayrollDashboard(env,tenant,url) {
+  // Read-only transition: preserve every D1 checkpoint and R2 page.
+  const [matriculas,funcionarios,remuneracoes]=await Promise.all([
+    getMultiSystemSummary(env,tenant.id,"folha","matriculas"),
+    getMultiSystemSummary(env,tenant.id,"folha","funcionarios-cargos"),
+    getMultiSystemSummary(env,tenant.id,"folha","remuneracoes")
+  ]);
+  const available=[matriculas,funcionarios,remuneracoes].filter(item=>item&&Number(item.count)>0);
+  if(!available.length)return buildPayrollSampleDashboard(env,tenant,url);
+  const periodo=url.searchParams.get("periodo")||"ano";
+  const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
+  return {
+    view:"folha-visao-geral",
+    tenant:{id:tenant.id,name:tenant.name},
+    period:{periodo,exercicio},
+    filters:{},
+    kpis:{
+      servidores:null,
+      bruto:null,
+      liquido:null,
+      descontos:null,
+      encargos:null,
+      ativos:null,
+      afastados:null
+    },
+    charts:{},
+    tables:[{
+      id:"folha-cobertura-real",
+      title:"Cobertura da carga da Folha",
+      subtitle:"Registros reais recebidos da Betha. Contagens por fonte não representam servidores únicos nem valores financeiros.",
+      groupLabel:"Fonte",
+      columns:[{id:"registros",label:"Registros importados",format:"number"}],
+      rows:[
+        ["Matrículas",matriculas],
+        ["Funcionários e cargos",funcionarios],
+        ["Remunerações",remuneracoes]
+      ].filter(([,item])=>item&&Number(item.count)>0).map(([label,item])=>({
+        label,values:[Number(item.count)||0]
+      })),
+      totalRows:available.length
+    }],
+    meta:multiSystemRealMeta("folha",available,{
+      unavailableMetrics:["servidores","bruto","liquido","descontos","encargos","ativos","afastados"],
+      note:"Fontes reais disponíveis. Totais financeiros e servidores únicos dependem de agregação e validação; não serão substituídos por valores sintéticos."
+    })
+  };
+}
+
 async function buildPayrollSampleDashboard(env,tenant,url) {
   const sample=await loadMultiSystemSample("folha");
   const periodo=url.searchParams.get("periodo")||"ano";
@@ -7339,7 +7387,7 @@ function dashboardBuilder(view) {
     territorio:buildTerritoryDashboard,
     "contabil-visao-geral":buildAccountingDashboard,
     "compras-visao-geral":buildProcurementDashboard,
-    "folha-visao-geral":buildPayrollSampleDashboard
+    "folha-visao-geral":buildPayrollDashboard
   };
   return builders[String(view||"")] || null;
 }
