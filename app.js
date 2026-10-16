@@ -1994,7 +1994,7 @@
 
     const kpis=payload?.kpis||{};
     const warnings=Array.isArray(payload?.meta?.warnings)?payload.meta.warnings:[];
-    const sampleMode=Boolean(payload?.meta?.sampleMode||dashboards[currentView]?.localSample);
+    const sampleMode=payload?.meta?.realData!==true && (payload?.meta?.sampleMode===true || Boolean(dashboards[currentView]?.localSample));
     const items=[];
 
     if(String(currentSystemId)==="tributos"){

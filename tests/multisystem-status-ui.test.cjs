@@ -34,3 +34,17 @@ test("tenant changes refresh multi-system status without restarting the load",()
   assert.match(fn,/if\(record\)\{\s*entitySyncAction\(\);\s*refreshMultiSystemLoads\(\);/);
   assert.match(fn,/multiSystemLoadRows"\)\.replaceChildren\(\)/);
 });
+
+test("real multi-system dashboards never display synthetic sample banner",()=>{
+  const begin=app.indexOf("function renderOverviewAttention(");
+  assert.ok(begin>=0,"executive summary renderer exists");
+  const match=app.slice(begin,begin+4000).match(/const sampleMode=([^;]+);/);
+  assert.ok(match,"executive summary contains data mode selection");
+  const mode=new Function("payload","dashboards","currentView","return ("+match[1]+");");
+  const dashboards={"folha-visao-geral":{localSample:{file:"data/samples/folha-100.json"}}};
+  for(const sampleMode of [false,true]){
+    assert.equal(mode({meta:{realData:true,sampleMode}},dashboards,"folha-visao-geral"),false);
+  }
+  assert.equal(mode({meta:{sampleMode:true}},dashboards,"folha-visao-geral"),true);
+  assert.equal(mode({meta:{}},dashboards,"folha-visao-geral"),true);
+});
