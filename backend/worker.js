@@ -3274,7 +3274,7 @@ async function buildPersistedTributaryOverview(env,tenant,url) {
     const candidate=await read(scope+":job:"+id);
     if(candidate){job=candidate;jobId=id;break;}
   }
-  if(!job)throw new Error("INITIAL_LOAD_REQUIRED");
+  if(!job)throw new Error("INITIAL_LOAD_REQUIRED:"+JSON.stringify({scope,activeJob:config.activeJob||null,latestJob:config.latestJob||null,entityId:tenant.entityId,databaseId:tenant.databaseId}));
   const stamp=env.AUTH_DB?await env.AUTH_DB.prepare("SELECT updated_at FROM bi_durable_kv WHERE cache_key=?1 LIMIT 1").bind(scope+":job:"+jobId).first():null;
   const names={pagamentos:"Pagamentos",debitos:"Débitos",dividas:"Dívidas",parcelamentos:"Parcelamentos",contribuintes:"Contribuintes",imoveis:"Imóveis",economicos:"Econômicos"};
   const sourceAudit={},realSources=[];
