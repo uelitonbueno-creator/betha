@@ -3985,6 +3985,7 @@
 
       if(resource==="pagamentos-detalhados") out.push("pagamentosDetalhados");
       if(resource==="encerramento-dividas") out.push("encerramentoDividas","dividas");
+      if(resource==="dividas") out.push("encerramentoDividas");
       if(resource==="encerramento-lancamentos") out.push("encerramentoLancamentos","debitos");
     }
 
