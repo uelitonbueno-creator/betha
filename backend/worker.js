@@ -3145,9 +3145,9 @@ async function buildOverviewPart(env,tenant,url,part) {
     let sourceKey="encerramentoDividas";
     let sourceUsed="base:encerramento-dividas";
 
-    // A API Base pode não estar liberada na credencial atual.
-    // Nesse caso mantém o BI funcional usando a fonte BI de dívidas.
-    if (src.error && [401,403].includes(Number(src.errorStatus))) {
+    // A API Base pode falhar por permissão, ausência de recurso ou erro temporário.
+    // Nesse caso tenta a fonte BI sem alterar cargas ou checkpoints.
+    if (src.error) {
       src=await loadOverviewSource(env,tenant,"bi","dividas",url);
       sourceKey="dividas";
       sourceUsed="bi:dividas";
