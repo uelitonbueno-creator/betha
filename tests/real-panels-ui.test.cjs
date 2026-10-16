@@ -74,3 +74,9 @@ test('legacy tributary keys keep current tenant and service credentials and do n
  const fn=vm.runInNewContext(worker.slice(start,end)+';buildPersistedTributaryOverview',{syncScope:async()=>'bi-sync:v1:current',sha256Hex:async text=>{const args=JSON.parse(text);assert.equal(args[0],tenant.id);assert.equal(args[3],tenant.userAccess);assert.equal(args[4],tenant.accessToken);return args[1]===null&&args[2]===null?'legacy':'current'}});
  const result=await fn(env,tenant,new URL('https://example.test/'));assert.equal(result.meta.scopeCompatibility,'legacy-context-same-credentials');assert.equal(result.kpis.imoveis,2098);
 });
+test('validated accounting fields enrich future pages without rewinding historical loads',()=>{
+ const worker=fs.readFileSync('backend/worker.js','utf8');
+ assert.match(worker,/validatedAdditionalFields:\["dataMovimentacao","valorArrecadado"\]/);
+ const start=worker.indexOf('async function loadMultiSystemIncrementalResource('),end=worker.indexOf('function multiSystemStateNeedsWork(',start);const code=worker.slice(start,end);
+ assert.match(code,/source.validatedAdditionalFields/);assert.match(code,/Math.max\(0,Number\(state\?\.loaded\)\|\|0\)/);assert.doesNotMatch(code,/resetMultiSystemSummary|DELETE FROM/);
+});
