@@ -61,13 +61,19 @@ export async function advancePayrollProjection({db,bucket,tenantId,pageCount,sou
   }
 }
 export async function readPayrollProjection(db,tenantId,monthKeys) {
-  let state;
-  try{state=await db.prepare('SELECT * FROM bi_payroll_projection WHERE tenant_id=?1').bind(tenantId).first();}catch(error){if(/no such table/i.test(String(error.message)))return null;throw error;}
+  let snapshot;
+  try{
+    snapshot=await db.batch([
+      db.prepare('SELECT * FROM bi_payroll_projection WHERE tenant_id=?1').bind(tenantId),
+      db.prepare('SELECT competence,COUNT(*) records,COUNT(gross_cents) gross_count,COUNT(discount_cents) discount_count,COUNT(net_cents) net_count,SUM(gross_cents) gross,SUM(discount_cents) discount,SUM(net_cents) net FROM bi_payroll_values WHERE tenant_id=?1 GROUP BY competence ORDER BY competence').bind(tenantId)
+    ]);
+  }catch(error){if(/no such table/i.test(String(error.message)))return null;throw error;}
+  const state=snapshot[0]?.results?.[0];
   if(!state)return null;
-  const results=await db.prepare('SELECT competence,COUNT(*) records,COUNT(gross_cents) gross_count,COUNT(discount_cents) discount_count,COUNT(net_cents) net_count,SUM(gross_cents) gross,SUM(discount_cents) discount,SUM(net_cents) net FROM bi_payroll_values WHERE tenant_id=?1 GROUP BY competence ORDER BY competence').bind(tenantId).all();
-  const all=results.results||[],unknown=all.find(row=>row.competence===null)?.records||0;
+  const all=snapshot[1]?.results||[],unknown=all.find(row=>row.competence===null)?.records||0;
+  const uniqueRemunerations=all.reduce((n,row)=>n+Number(row.records),0);
   const rows=all.filter(row=>row.competence&&(!monthKeys||monthKeys.has(row.competence)));
   const count=rows.reduce((n,r)=>n+Number(r.records),0);
   const metric=key=>count>0&&!unknown&&!Number(state.missing_ids)&&rows.every(row=>Number(row[key+'_count'])===Number(row.records))?rows.reduce((n,r)=>n+Number(r[key]),0)/100:null;
-  return {state,rows,records:count,unknownCompetence:Number(unknown),gross:metric('gross'),discount:metric('discount'),net:metric('net')};
+  return {state,rows,records:count,uniqueRemunerations,duplicateRows:Math.max(0,Number(state.rows_seen)-uniqueRemunerations),unknownCompetence:Number(unknown),gross:metric('gross'),discount:metric('discount'),net:metric('net')};
 }

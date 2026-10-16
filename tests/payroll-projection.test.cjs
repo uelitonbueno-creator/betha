@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const {DatabaseSync}=require('node:sqlite');
 function database(){
  const sql=new DatabaseSync(':memory:');
- const wrapper={prepare(text){return {bind(...args){return {run:async()=>sql.prepare(text).run(...args),first:async()=>sql.prepare(text).get(...args),all:async()=>({results:sql.prepare(text).all(...args)}),_run:()=>sql.prepare(text).run(...args)}},run:async()=>sql.prepare(text).run()}},async batch(items){sql.exec('BEGIN');try{for(const s of items)s._run();sql.exec('COMMIT')}catch(e){sql.exec('ROLLBACK');throw e}}};
+ const wrapper={prepare(text){return {bind(...args){return {run:async()=>sql.prepare(text).run(...args),first:async()=>sql.prepare(text).get(...args),all:async()=>({results:sql.prepare(text).all(...args)}),_read:/^SELECT/i.test(text)?()=>({results:sql.prepare(text).all(...args)}):null,_run:()=>sql.prepare(text).run(...args)}},run:async()=>sql.prepare(text).run()}},async batch(items){sql.exec('BEGIN');try{const out=items.map(s=>s._read?s._read():s._run());sql.exec('COMMIT');return out}catch(e){sql.exec('ROLLBACK');throw e}}};
  return {db:wrapper,sql};
 }
 const api=import('../backend/payroll-projection.mjs');
@@ -16,7 +16,7 @@ test('archive projection resumes, deduplicates remuneration IDs and isolates ten
  assert.equal((await advance(args)).nextPage,1);
  let value=await read(db,'paulafreitas',new Set(['2026-01']));assert.equal(value.gross,200.5);assert.equal(value.state.status,'partial');
  assert.equal((await advance(args)).complete,true);
- value=await read(db,'paulafreitas',null);assert.equal(value.records,3);assert.equal(value.gross,200.5);assert.equal(value.state.rows_seen,4);
+ value=await read(db,'paulafreitas',null);assert.equal(value.records,3);assert.equal(value.gross,200.5);assert.equal(value.state.rows_seen,4);assert.equal(value.uniqueRemunerations,3);assert.equal(value.duplicateRows,1);
  await advance(args);assert.equal((await read(db,'paulafreitas',null)).gross,200.5);
  assert.equal(await read(db,'other',null),null);
  assert.equal(sql.prepare('SELECT COUNT(*) n FROM bi_payroll_values').get().n,3);

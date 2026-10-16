@@ -7274,7 +7274,7 @@ async function buildPayrollDashboard(env,tenant,url) {
   const finance=await readPayrollProjection(env.AUTH_DB,String(tenant.id),keys);
   const unsupportedFilters=[...url.searchParams].filter(([key,value])=>value&&!["periodo","exercicio","tenant"].includes(key)).map(([key])=>key);
   const ready=Boolean(finance&&!finance.state.error&&!unsupportedFilters.length);
-  const consolidation={totalRecords:Number(remuneracoes?.count)||0,unsupportedFilters,complete:ready&&finance.state.status==="complete",pagesProcessed:Number(finance?.state?.next_page)||0,rowsProcessed:Number(finance?.state?.rows_seen)||0,recordsInPeriod:finance?.records||0,unknownCompetence:finance?.unknownCompetence||0,error:finance?.state?.error||null,updatedAt:finance?.state?.updated_at||null};
+  const consolidation={totalRecords:Number(remuneracoes?.count)||0,unsupportedFilters,complete:ready&&finance.state.status==="complete",pagesProcessed:Number(finance?.state?.next_page)||0,rowsProcessed:Number(finance?.state?.rows_seen)||0,recordsInPeriod:finance?.records||0,uniqueRemunerations:finance?.uniqueRemunerations||0,duplicateRows:finance?.duplicateRows||0,unknownCompetence:finance?.unknownCompetence||0,error:finance?.state?.error||null,updatedAt:finance?.state?.updated_at||null};
   return {
     view:"folha-visao-geral",
     tenant:{id:tenant.id,name:tenant.name},
@@ -7304,9 +7304,16 @@ async function buildPayrollDashboard(env,tenant,url) {
         label,values:[Number(item.count)||0]
       })),
       totalRows:available.length
-    }],
+    },...(ready&&finance.rows.length?[{
+      id:"folha-valores-competencia",title:"Remunerações por competência",
+      subtitle:consolidation.complete?"IDs de remuneração deduplicados; soma dos campos bruto, desconto e líquido.":"PARCIAL — apenas remunerações já consolidadas do arquivo.",
+      groupLabel:"Competência",
+      columns:[{id:"bruto",label:"Bruto",format:"currency"},{id:"descontos",label:"Descontos",format:"currency"},{id:"liquido",label:"Líquido",format:"currency"},{id:"registros",label:"Remunerações",format:"number"}],
+      rows:finance.rows.map(row=>({label:multiSystemMonthLabel(row.competence),values:[Number(row.gross_count)===Number(row.records)?Number(row.gross)/100:null,Number(row.discount_count)===Number(row.records)?Number(row.discount)/100:null,Number(row.net_count)===Number(row.records)?Number(row.net)/100:null,Number(row.records)]})),totalRows:finance.rows.length
+    }]:[])],
     meta:multiSystemRealMeta("folha",available,{
       dataMode:consolidation.complete?"real":"real-partial",
+      warning:consolidation.complete?null:"CONSOLIDAÇÃO FINANCEIRA PARCIAL — valores restritos às remunerações já processadas.",
       financialConsolidation:consolidation,
       unavailableMetrics:["servidores","encargos","ativos","afastados",...(!ready||finance.gross===null?["bruto"]:[]),...(!ready||finance.net===null?["liquido"]:[]),...(!ready||finance.discount===null?["descontos"]:[])],
       note:"Soma das remunerações importadas por competência, incluindo todos os processamentos; não equivale à folha oficial. "+(consolidation.complete?"Consolidação do arquivo concluída.":"CONSOLIDAÇÃO PARCIAL: "+consolidation.rowsProcessed+" registros processados.")+" Servidores únicos e encargos permanecem indisponíveis."
