@@ -9866,6 +9866,14 @@ function mcpDashboardSampleWarning(body) {
     : "AMOSTRA LOCAL SINTÉTICA – 100 registros. Não representa dados reais da prefeitura.";
 }
 
+function mcpDashboardMetric(body,key) {
+  const value=body&&body.kpis?body.kpis[key]:null;
+  return value===null||value===undefined||value===""?null:(Number.isFinite(Number(value))?Number(value):null);
+}
+function mcpDashboardMeta(body) {
+  const meta=body&&body.meta||{};
+  return {dataMode:meta.dataMode||"unknown",warning:meta.warning||null,sourceAudit:meta.sourceAudit||{},realSources:meta.realSources||[],unavailableMetrics:meta.unavailableMetrics||[],updatedAt:meta.updatedAt||null,tables:body&&body.tables||[]};
+}
 async function mcpAccountingExecution(request,env,credential,args) {
   mcpRequireViews(credential,["contabil-visao-geral"]);
   const url=mcpDashboardUrl(request,{
@@ -9879,16 +9887,15 @@ async function mcpAccountingExecution(request,env,credential,args) {
     tenant:body.tenant,
     period:body.period,
     filters:body.filters||{},
-    dataMode:"sample",
-    warning:mcpDashboardSampleWarning(body),
-    receitaPrevista:Number(body.kpis&&body.kpis["receita-prevista"]||0),
-    receitaArrecadada:Number(body.kpis&&body.kpis["receita-arrecadada"]||0),
-    despesaEmpenhada:Number(body.kpis&&body.kpis["despesa-empenhada"]||0),
-    despesaLiquidada:Number(body.kpis&&body.kpis["despesa-liquidada"]||0),
-    despesaPaga:Number(body.kpis&&body.kpis["despesa-paga"]||0),
-    resultado:Number(body.kpis&&body.kpis.resultado||0),
-    restosAPagar:Number(body.kpis&&body.kpis["restos-pagar"]||0),
-    credores:Number(body.kpis&&body.kpis.credores||0),
+    ...mcpDashboardMeta(body),
+    receitaPrevista:mcpDashboardMetric(body,"receita-prevista"),
+    receitaArrecadada:mcpDashboardMetric(body,"receita-arrecadada"),
+    despesaEmpenhada:mcpDashboardMetric(body,"empenhado"),
+    despesaLiquidada:mcpDashboardMetric(body,"liquidado"),
+    despesaPaga:mcpDashboardMetric(body,"pago"),
+    resultado:mcpDashboardMetric(body,"resultado"),
+    restosAPagar:mcpDashboardMetric(body,"restos-pagar"),
+    credores:mcpDashboardMetric(body,"credores"),
     execucaoMensal:mcpChartRows(body.charts&&body.charts["execucao-mensal"],12),
     despesaPorUnidade:mcpChartRows(body.charts&&body.charts["despesa-unidade"],10),
     despesaPorNatureza:mcpChartRows(body.charts&&body.charts["despesa-natureza"],10)
@@ -9908,14 +9915,13 @@ async function mcpProcurementSummary(request,env,credential,args) {
     tenant:body.tenant,
     period:body.period,
     filters:body.filters||{},
-    dataMode:"sample",
-    warning:mcpDashboardSampleWarning(body),
-    processos:Number(body.kpis&&body.kpis.processos||0),
-    valorEstimado:Number(body.kpis&&body.kpis.estimado||0),
-    valorHomologado:Number(body.kpis&&body.kpis.homologado||0),
-    economia:Number(body.kpis&&body.kpis.economia||0),
-    contratosAtivos:Number(body.kpis&&body.kpis["contratos-ativos"]||0),
-    fornecedores:Number(body.kpis&&body.kpis.fornecedores||0),
+    ...mcpDashboardMeta(body),
+    processos:mcpDashboardMetric(body,"processos"),
+    valorEstimado:mcpDashboardMetric(body,"estimado"),
+    valorHomologado:mcpDashboardMetric(body,"homologado"),
+    economia:mcpDashboardMetric(body,"economia"),
+    contratosAtivos:mcpDashboardMetric(body,"contratos-ativos"),
+    fornecedores:mcpDashboardMetric(body,"fornecedores"),
     evolucaoMensal:mcpChartRows(body.charts&&body.charts["compras-mensal"],12),
     porSecretaria:mcpChartRows(body.charts&&body.charts["compras-secretaria"],10),
     porModalidade:mcpChartRows(body.charts&&body.charts["compras-modalidade"],10),
@@ -9936,15 +9942,14 @@ async function mcpPayrollSummary(request,env,credential,args) {
     tenant:body.tenant,
     period:body.period,
     filters:body.filters||{},
-    dataMode:"sample",
-    warning:mcpDashboardSampleWarning(body),
-    servidores:Number(body.kpis&&body.kpis.servidores||0),
-    bruto:Number(body.kpis&&body.kpis.bruto||0),
-    liquido:Number(body.kpis&&body.kpis.liquido||0),
-    descontos:Number(body.kpis&&body.kpis.descontos||0),
-    encargos:Number(body.kpis&&body.kpis.encargos||0),
-    ativos:Number(body.kpis&&body.kpis.ativos||0),
-    afastados:Number(body.kpis&&body.kpis.afastados||0),
+    ...mcpDashboardMeta(body),
+    servidores:mcpDashboardMetric(body,"servidores"),
+    bruto:mcpDashboardMetric(body,"bruto"),
+    liquido:mcpDashboardMetric(body,"liquido"),
+    descontos:mcpDashboardMetric(body,"descontos"),
+    encargos:mcpDashboardMetric(body,"encargos"),
+    ativos:mcpDashboardMetric(body,"ativos"),
+    afastados:mcpDashboardMetric(body,"afastados"),
     evolucaoMensal:mcpChartRows(body.charts&&body.charts["folha-mensal"],12),
     custoPorSecretaria:mcpChartRows(body.charts&&body.charts["folha-secretaria"],10),
     servidoresPorVinculo:mcpChartRows(body.charts&&body.charts["folha-vinculo"],10),
