@@ -3259,7 +3259,12 @@ async function buildOverviewPart(env,tenant,url,part) {
 }
 
 async function buildPersistedTributaryOverview(env,tenant,url) {
+  // Legacy configurations omitted entity/database or stored them as numbers.
+  // Derive only keys using the SAME tenant ID and CURRENT service credentials.
+  // Never enumerate metadata from other tenants or accept a caller-supplied scope.
   const scope=await syncScope(tenant);
+  const contexts=[[tenant.entityId,tenant.databaseId],[null,null],[Number(tenant.entityId)||null,Number(tenant.databaseId)||null],[null,tenant.databaseId],[tenant.entityId,null]];
+  const candidates=[...new Set([scope,...await Promise.all(contexts.map(([entity,database])=>sha256Hex(JSON.stringify([tenant.id,entity,database,tenant.userAccess,tenant.accessToken])).then(hash=>"bi-sync:v1:"+hash)))])];
   const read=async key=>{
     if(env.AUTH_DB){
       const row=await env.AUTH_DB.prepare("SELECT payload FROM bi_durable_kv WHERE cache_key=?1 LIMIT 1").bind(key).first();
@@ -3267,15 +3272,18 @@ async function buildPersistedTributaryOverview(env,tenant,url) {
     }
     return env.BI_SESSIONS?await env.BI_SESSIONS.get(key,"json"):null;
   };
-  const config=await read(scope+":config")||{};
-  let job=null,jobId=null;
-  for(const id of [...new Set([config.activeJob,config.latestJob].filter(Boolean))]){
-    if(!/^[a-f0-9-]{36}$/i.test(id))continue;
-    const candidate=await read(scope+":job:"+id);
-    if(candidate){job=candidate;jobId=id;break;}
+  let job=null,jobId=null,matchedScope=scope;
+  for(const candidateScope of candidates){
+    const config=await read(candidateScope+":config")||{};
+    for(const id of [...new Set([config.activeJob,config.latestJob].filter(Boolean))]){
+      if(!/^[a-f0-9-]{36}$/i.test(id))continue;
+      const candidate=await read(candidateScope+":job:"+id);
+      if(candidate){job=candidate;jobId=id;matchedScope=candidateScope;break;}
+    }
+    if(job)break;
   }
-  if(!job)throw new Error("INITIAL_LOAD_REQUIRED:"+JSON.stringify({scope,activeJob:config.activeJob||null,latestJob:config.latestJob||null,entityId:tenant.entityId,databaseId:tenant.databaseId}));
-  const stamp=env.AUTH_DB?await env.AUTH_DB.prepare("SELECT updated_at FROM bi_durable_kv WHERE cache_key=?1 LIMIT 1").bind(scope+":job:"+jobId).first():null;
+  if(!job)throw new Error("INITIAL_LOAD_REQUIRED");
+  const stamp=env.AUTH_DB?await env.AUTH_DB.prepare("SELECT updated_at FROM bi_durable_kv WHERE cache_key=?1 LIMIT 1").bind(matchedScope+":job:"+jobId).first():null;
   const names={pagamentos:"Pagamentos",debitos:"Débitos",dividas:"Dívidas",parcelamentos:"Parcelamentos",contribuintes:"Contribuintes",imoveis:"Imóveis",economicos:"Econômicos"};
   const sourceAudit={},realSources=[];
   for(const [name,label] of Object.entries(names)){
@@ -3290,7 +3298,7 @@ async function buildPersistedTributaryOverview(env,tenant,url) {
     kpis:{arrecadado:null,lancado:null,divida:null,parcelado:null,contribuintes:cadastro.includes("contribuintes")?sourceAudit.contribuintes.loaded:null,imoveis:cadastro.includes("imoveis")?sourceAudit.imoveis.loaded:null},
     charts:cadastro.length?{cadastros:{format:"number",labels:cadastro.map(key=>names[key]),datasets:[{label:"Registros cadastrais",data:cadastro.map(key=>sourceAudit[key].loaded)}]}}:{},
     tables:[{id:"tributos-cobertura-persistida",title:"Cobertura tributária persistida",subtitle:"Contagens do job atual em todo o histórico. Não são totais financeiros nem contagens filtradas por exercício.",groupLabel:"Fonte",columns:[{id:"registros",label:"Registros",format:"number"},{id:"paginas",label:"Páginas",format:"number"}],rows:realSources.map(item=>({label:item.label,values:[item.loaded,item.pages]})),totalRows:realSources.length}],
-    meta:{realData:true,sampleMode:false,dataMode:complete?"real":"real-partial",sourceAudit,realSources,sourceRows:Object.fromEntries(realSources.map(item=>[item.resource,item.loaded])),updatedAt:stamp?.updated_at||job.finishedAt||job.startedAt,sourceJobId:jobId,readOnly:true,
+    meta:{realData:true,sampleMode:false,dataMode:complete?"real":"real-partial",sourceAudit,realSources,sourceRows:Object.fromEntries(realSources.map(item=>[item.resource,item.loaded])),updatedAt:stamp?.updated_at||job.finishedAt||job.startedAt,sourceJobId:jobId,scopeCompatibility:matchedScope===scope?"current":"legacy-context-same-credentials",readOnly:true,
       unavailableMetrics:["arrecadado","lancado","divida","parcelado"],warnings:Object.entries(sourceAudit).filter(([,a])=>a.error).map(([source,a])=>({source,error:a.error})),
       note:"Leitura do job persistido, sem iniciar cargas Betha. Cobertura e cadastros abrangem todo o histórico; valores financeiros por período aguardam consolidação."}};
 }
@@ -6492,7 +6500,7 @@ async function multiSystemGetPage(env,tenant,source,offset,limit,fields=[]){
   if(requested.length&&!String(source.path||"").startsWith("/dados/v2/"))query.set("fields",requested.join(","));
   const target=String(source.base).replace(/\/$/,"")+source.path+"?"+query.toString();
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),30000);
+  const timer=setTimeout(()=>controller.abort(),Number(env.BI_SCHEMA_AUDIT_TIMEOUT_MS)||30000);
   try{
     const response=await fetch(target,{
       method:"GET",
@@ -6782,7 +6790,8 @@ async function inspectAccountingFields(env,tenant) {
   const results=[];
   for(const source of MULTISYSTEM_BOOTSTRAP_SOURCES.contabil.filter(item=>item.resource.startsWith("movimentacoes-"))){
     try {
-      const page=await multiSystemGetPage(env,tenant,source,0,1,[]);
+      const probeEnv={...env,BI_SCHEMA_AUDIT_TIMEOUT_MS:3000};
+      const page=await multiSystemGetPage(probeEnv,tenant,source,0,1,[]);
       const fields=[];
       const walk=(value,prefix="",depth=0)=>{
         if(!value||typeof value!=="object"||Array.isArray(value)||depth>3)return;
@@ -6793,7 +6802,17 @@ async function inspectAccountingFields(env,tenant) {
         }
       };
       walk(page.rows[0]);
-      results.push({resource:source.resource,httpStatus:page.status,rowsInspected:page.rows.length,fields:fields.slice(0,250)});
+      const candidates=source.resource==="movimentacoes-despesas"
+        ? ["dataMovimentacao","exercicio","valorEmpenhado","valorLiquidado","valorPago","movimentacao"]
+        : ["dataMovimentacao","exercicio","valorArrecadado","valorPrevisto","valorRealizado","movimentacao"];
+      const acceptedFields=[];
+      for(const candidate of candidates){
+        try{
+          const probe=await multiSystemGetPage(probeEnv,tenant,source,0,1,["id",candidate]);
+          if(probe.rows[0]&&Object.hasOwn(probe.rows[0],candidate)){acceptedFields.push(candidate);walk({[candidate]:probe.rows[0][candidate]});}
+        }catch(error){if([401,403].includes(Number(error.status)))break;}
+      }
+      results.push({resource:source.resource,httpStatus:page.status,rowsInspected:page.rows.length,acceptedFields,fields:[...new Map(fields.map(field=>[field.path,field])).values()].slice(0,250)});
     }catch(error){results.push({resource:source.resource,httpStatus:Number(error.status)||null,error:String(error.message).slice(0,120)});}
   }
   return {tenant:{id:tenant.id,name:tenant.name},readOnly:true,results};
