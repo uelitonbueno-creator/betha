@@ -3258,13 +3258,31 @@ async function buildOverviewPart(env,tenant,url,part) {
   throw new Error("OVERVIEW_PART_INVALID");
 }
 
-async function buildPersistedTributaryOverview(env,tenant,url) {
+async function buildPersistedTributaryOverview(env,tenant,url,auth=null) {
   // Legacy configurations omitted entity/database or stored them as numbers.
   // Derive only keys using the SAME tenant ID and CURRENT service credentials.
   // Never enumerate metadata from other tenants or accept a caller-supplied scope.
   const scope=await syncScope(tenant);
   const contexts=[[tenant.entityId,tenant.databaseId],[null,null],[Number(tenant.entityId)||null,Number(tenant.databaseId)||null],[null,tenant.databaseId],[tenant.entityId,null]];
   const candidates=[...new Set([scope,...await Promise.all(contexts.map(([entity,database])=>sha256Hex(JSON.stringify([tenant.id,entity,database,tenant.userAccess,tenant.accessToken])).then(hash=>"bi-sync:v1:"+hash)))])];
+  if(auth){
+    const historical=[parseJsonObject(env.BETHA_TENANTS_JSON,{})[tenant.id]].filter(Boolean);
+    try{
+      const encoded=await env.BI_SESSIONS?.get(TENANT_CONFIG_PREFIX+tenant.id);
+      if(encoded)historical.push(await decodeTenantConfig(env,tenant.id,encoded));
+    }catch{}
+    for(const record of historical){
+      if(!record?.userAccess||record.enabled===false)continue;
+      const historicalTenant={id:tenant.id,entityId:record.entityId?String(record.entityId):null,databaseId:record.databaseId?String(record.databaseId):null,userAccess:record.userAccess,accessToken:record.accessToken||env.BETHA_ACCESS_TOKEN||""};
+      try{
+        const historicalContext=await getTenantContext(auth.userToken,historicalTenant);
+        if(String(historicalContext.entity)!==String(auth.context.entity)||String(historicalContext.database)!==String(auth.context.database))continue;
+        for(const [entity,database] of [[historicalTenant.entityId,historicalTenant.databaseId],[null,null],[Number(historicalTenant.entityId)||null,Number(historicalTenant.databaseId)||null]]){
+          candidates.push("bi-sync:v1:"+await sha256Hex(JSON.stringify([tenant.id,entity,database,historicalTenant.userAccess,historicalTenant.accessToken])));
+        }
+      }catch{}
+    }
+  }
   const read=async key=>{
     if(env.AUTH_DB){
       const row=await env.AUTH_DB.prepare("SELECT payload FROM bi_durable_kv WHERE cache_key=?1 LIMIT 1").bind(key).first();
@@ -3273,7 +3291,7 @@ async function buildPersistedTributaryOverview(env,tenant,url) {
     return env.BI_SESSIONS?await env.BI_SESSIONS.get(key,"json"):null;
   };
   let job=null,jobId=null,matchedScope=scope;
-  for(const candidateScope of candidates){
+  for(const candidateScope of new Set(candidates)){
     const config=await read(candidateScope+":config")||{};
     for(const id of [...new Set([config.activeJob,config.latestJob].filter(Boolean))]){
       if(!/^[a-f0-9-]{36}$/i.test(id))continue;
@@ -6252,12 +6270,14 @@ const MULTISYSTEM_BOOTSTRAP_SOURCES=Object.freeze({
       resource:"movimentacoes-despesas",
       base:"https://contabil.suite.betha.cloud",
       path:"/dados/v1/movimentacoes/despesas",
+      validatedAdditionalFields:["dataMovimentacao"],
       fieldCandidates:["data","ano","valor","tipo","situacao","empenho","credor","unidadeOrcamentaria","naturezaDespesa"]
     },
     {
       resource:"movimentacoes-receitas",
       base:"https://contabil.suite.betha.cloud",
       path:"/dados/v1/movimentacoes/receitas",
+      validatedAdditionalFields:["dataMovimentacao","valorArrecadado"],
       fieldCandidates:["data","ano","valor","tipo","situacao","receita","recurso","unidadeOrcamentaria"]
     },
     {
@@ -6565,7 +6585,7 @@ async function loadMultiSystemIncrementalResource(env,tenant,system,source,state
   const pages=Math.max(0,Number(state?.pages)||0);
   if(!Number.isSafeInteger(loaded)||!Number.isSafeInteger(pages))throw new Error("MULTISYSTEM_CHECKPOINT_INVALID");
 
-  const fields=(profile?.selected||["id"]).filter(Boolean);
+  const fields=[...new Set([...(profile?.selected||["id"]),...(source.validatedAdditionalFields||[])].filter(Boolean))];
   const pageObjectKey=multiSystemPageObjectKey(tenant.id,system,source.resource,pages);
   // Recover a previously archived page before querying Betha. This closes the
   // R2-write/D1-checkpoint crash window without overwriting immutable pages.
@@ -11372,7 +11392,7 @@ export default {
           }};
         }
         const body=view==="visao-geral"&&url.searchParams.get("persisted")==="1"
-          ? await buildPersistedTributaryOverview(env,tenant,url)
+          ? await buildPersistedTributaryOverview(env,tenant,url,auth)
           : await builder(dashboardEnv,tenant,url);
         if (dashboardEnv.BI_DASHBOARD_LOAD) {
           const load=dashboardEnv.BI_DASHBOARD_LOAD;
