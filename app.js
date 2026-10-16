@@ -10,7 +10,7 @@
   const HOME_VIEW="inicio";
   const DEFAULT_VIEW="visao-geral";
   const ADMIN_VIEWS = new Set(["usuarios-admin","configuracoes-admin"]);
-  const REAL_MULTI_SYSTEM_HOME_VIEWS = new Set(["contabil-visao-geral","compras-visao-geral"]);
+  const REAL_MULTI_SYSTEM_HOME_VIEWS = new Set(["contabil-visao-geral","compras-visao-geral","folha-visao-geral"]);
   const bethaApp = document.getElementById("bethaApp");
   const authGate = document.getElementById("authGate");
   const tenantGate = document.getElementById("tenantGate");
@@ -1957,6 +1957,10 @@
     chartInstances.set(baseChartId, instance);
   }
 
+  function attentionMetric(value) {
+    return value===null||value===undefined||value===""?NaN:Number(value);
+  }
+
   function renderOverviewAttention(payload) {
     let panel=document.getElementById("overviewAttention");
     if(!isCurrentSystemHome()){
@@ -1998,10 +2002,10 @@
     const items=[];
 
     if(String(currentSystemId)==="tributos"){
-      const debt=Number(kpis.divida);
-      const installments=Number(kpis.parcelado);
-      const launched=Number(kpis.lancado);
-      const collected=Number(kpis.arrecadado);
+      const debt=attentionMetric(kpis.divida);
+      const installments=attentionMetric(kpis.parcelado);
+      const launched=attentionMetric(kpis.lancado);
+      const collected=attentionMetric(kpis.arrecadado);
 
       if(Number.isFinite(debt)){
         items.push({
@@ -2031,9 +2035,9 @@
         });
       }
     }else if(String(currentSystemId)==="contabil"){
-      const empenhado=Number(kpis.empenhado);
-      const pago=Number(kpis.pago);
-      const arrecadado=Number(kpis.arrecadado);
+      const empenhado=attentionMetric(kpis.empenhado);
+      const pago=attentionMetric(kpis.pago);
+      const arrecadado=attentionMetric(kpis.arrecadado);
       if(Number.isFinite(empenhado)&&Number.isFinite(pago)){
         const saldo=Math.max(0,empenhado-pago);
         const execucao=empenhado?Math.min(100,(pago/empenhado)*100):0;
@@ -2062,10 +2066,10 @@
         });
       }
     }else if(String(currentSystemId)==="compras"){
-      const processos=Number(kpis.processos);
-      const estimado=Number(kpis.estimado);
-      const homologado=Number(kpis.homologado);
-      const economia=Number(kpis.economia);
+      const processos=attentionMetric(kpis.processos);
+      const estimado=attentionMetric(kpis.estimado);
+      const homologado=attentionMetric(kpis.homologado);
+      const economia=attentionMetric(kpis.economia);
       if(Number.isFinite(economia)){
         items.push({
           icon:"cash-check",
@@ -2094,10 +2098,10 @@
         });
       }
     }else if(String(currentSystemId)==="folha"){
-      const bruto=Number(kpis.bruto);
-      const liquido=Number(kpis.liquido);
-      const descontos=Number(kpis.descontos);
-      const encargos=Number(kpis.encargos);
+      const bruto=attentionMetric(kpis.bruto);
+      const liquido=attentionMetric(kpis.liquido);
+      const descontos=attentionMetric(kpis.descontos);
+      const encargos=attentionMetric(kpis.encargos);
       if(Number.isFinite(bruto)&&Number.isFinite(encargos)){
         items.push({
           icon:"bank-transfer",
@@ -2345,6 +2349,8 @@
 
     for(const chartDef of defs){
       if(rendered>=2) break;
+      const state=chartSourceState(chartDef.source,payload);
+      if(["error","unavailable"].includes(state.kind)&&payload?.meta?.realData!==true) continue;
       const data=charts[chartDef.id];
       if(!data||!Array.isArray(data.labels)||!data.labels.length||!Array.isArray(data.datasets)||!data.datasets.length) continue;
       const datasets=data.datasets.filter(ds=>Array.isArray(ds.data)).slice(0,3);
@@ -2376,7 +2382,7 @@
     if(badge){
       badge.hidden=!sampleMode;
       const text=badge.querySelector("span");
-      if(text&&sampleMode) text.textContent="Amostra de teste · fallback local";
+      if(text&&sampleMode) text.textContent="DEMONSTRAÇÃO — DADOS SINTÉTICOS";
     }
 
     const coverage=document.getElementById("integrationCoverage");
@@ -3757,7 +3763,7 @@
       }
       setLastUpdated(doc?.generatedAt||new Date().toISOString(),"Amostra local");
       const activeFilterCount=Object.keys(currentDashboardFilters(view)).length;
-      setStatus("online","AMOSTRA LOCAL · "+rows.length+" de "+allRows.length+" registros"+(activeFilterCount?" · "+activeFilterCount+" filtro(s) ativo(s)":"")+" · 0 chamadas Cloudflare");
+      setStatus("online","DEMONSTRAÇÃO — DADOS SINTÉTICOS · "+rows.length+" de "+allRows.length+" registros"+(activeFilterCount?" · "+activeFilterCount+" filtro(s) ativo(s)":"")+" · 0 chamadas Cloudflare");
     }catch(error){
       if(!active()) return;
       console.warn("Falha ao carregar amostra local:",error);
@@ -3806,8 +3812,9 @@
       }
     }catch(error){
       if(!active())return;
-      console.warn("Falha ao carregar dados reais do sistema; usando fallback local:",error);
-      fallback=true;
+      console.warn("Falha ao carregar dados reais do sistema:",error);
+      setDashboardLoading(false);
+      setStatus("error","Não foi possível consultar os dados reais. Tente novamente; nenhuma demonstração foi substituída por dados de produção.");
     }finally{
       if(active()&&!fallback)setRefreshBusy(false);
     }
