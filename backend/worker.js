@@ -9874,7 +9874,7 @@ async function mcpAccountingExecution(request,env,credential,args) {
     exercicio:args.exercicio||new Date().getFullYear(),
     filters:args.filters||{}
   });
-  const body=await buildAccountingSampleDashboard(env,credential.tenant,url);
+  const body=await buildAccountingDashboard(env,credential.tenant,url);
   return {
     tenant:body.tenant,
     period:body.period,
@@ -9903,7 +9903,7 @@ async function mcpProcurementSummary(request,env,credential,args) {
     exercicio:args.exercicio||new Date().getFullYear(),
     filters:args.filters||{}
   });
-  const body=await buildProcurementSampleDashboard(env,credential.tenant,url);
+  const body=await buildProcurementDashboard(env,credential.tenant,url);
   return {
     tenant:body.tenant,
     period:body.period,
@@ -9931,7 +9931,7 @@ async function mcpPayrollSummary(request,env,credential,args) {
     exercicio:args.exercicio||new Date().getFullYear(),
     filters:args.filters||{}
   });
-  const body=await buildPayrollSampleDashboard(env,credential.tenant,url);
+  const body=await buildPayrollDashboard(env,credential.tenant,url);
   return {
     tenant:body.tenant,
     period:body.period,
