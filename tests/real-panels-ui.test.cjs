@@ -32,3 +32,7 @@ test('accounting uses all persisted sources without inventing financial metrics'
  for(const key of ['pago','liquidado','arrecadado'])assert.equal(result.kpis[key],null);
  assert.equal(result.meta.sources.length,4);assert.equal(result.tables[0].rows.length,4);
 });
+
+test('tables do not turn unavailable or incomplete tributary chart placeholders into money',()=>{
+ assert.match(app,/\["error","unavailable","partial"\]\.includes\(state.kind\)/);
+});

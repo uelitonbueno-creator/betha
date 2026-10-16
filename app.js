@@ -2350,7 +2350,7 @@
     for(const chartDef of defs){
       if(rendered>=2) break;
       const state=chartSourceState(chartDef.source,payload);
-      if(["error","unavailable"].includes(state.kind)&&payload?.meta?.realData!==true) continue;
+      if(["error","unavailable","partial"].includes(state.kind)&&payload?.meta?.realData!==true) continue;
       const data=charts[chartDef.id];
       if(!data||!Array.isArray(data.labels)||!data.labels.length||!Array.isArray(data.datasets)||!data.datasets.length) continue;
       const datasets=data.datasets.filter(ds=>Array.isArray(ds.data)).slice(0,3);
@@ -3814,7 +3814,7 @@
       if(!active())return;
       console.warn("Falha ao carregar dados reais do sistema:",error);
       setDashboardLoading(false);
-      setStatus("error","Não foi possível consultar os dados reais. Tente novamente; nenhuma demonstração foi substituída por dados de produção.");
+      setStatus("error","Não foi possível consultar os dados reais. Tente novamente; dados sintéticos não serão exibidos como substituição.");
     }finally{
       if(active()&&!fallback)setRefreshBusy(false);
     }
