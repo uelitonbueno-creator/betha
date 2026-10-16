@@ -1338,7 +1338,7 @@ async function beginSync(env,tenant,config){
  const scope=await syncScope(tenant);const previous=config.activeJob?await syncJob(env,tenant,config.activeJob):null;
  if(previous?.state==='running')return previous;
  const cards=API_PANEL_CATALOG.groups.flatMap(g=>g.cards);
- const job={id:crypto.randomUUID(),state:'running',startedAt:new Date().toISOString(),sourceIndex:0,completed:0,total:cards.length,rows:0,failures:[],sources:{}};
+ const job={provenance:{tenantId:tenant.id,entityId:tenant.entityId,databaseId:tenant.databaseId},id:crypto.randomUUID(),state:'running',startedAt:new Date().toISOString(),sourceIndex:0,completed:0,total:cards.length,rows:0,failures:[],sources:{}};
  await env.BI_SESSIONS.put(scope+':job:'+job.id,JSON.stringify(job),{expirationTtl:SYNC_TTL});
  await env.BI_SESSIONS.put(scope+':config',JSON.stringify({...config,enabled:true,activeJob:job.id}));return job;
 }
@@ -1348,6 +1348,7 @@ async function advanceSync(env,tenant,config){
   if(!config.enabled||!config.intervalMinutes||config.nextRunAt&&Date.parse(config.nextRunAt)>Date.now())return;
   job=await beginSync(env,tenant,config);
  }
+ job.provenance={tenantId:tenant.id,entityId:tenant.entityId,databaseId:tenant.databaseId};
  const cards=API_PANEL_CATALOG.groups.flatMap(g=>g.cards);
  normalizeRunningSyncJob(job,cards);
  const indexes=pendingSyncIndexes(job,cards);
@@ -3299,6 +3300,17 @@ async function buildPersistedTributaryOverview(env,tenant,url,auth=null) {
       if(candidate){job=candidate;jobId=id;matchedScope=candidateScope;break;}
     }
     if(job)break;
+  }
+  if(!job&&env.AUTH_DB&&auth){
+    // Only provenance written by the normal authenticated-tenant cron qualifies.
+    // Legacy jobs lacking explicit identity are deliberately excluded.
+    const verified=await env.AUTH_DB.prepare("SELECT cache_key,payload FROM bi_durable_kv WHERE cache_key LIKE 'bi-sync:v1:%:job:%' AND json_extract(payload,'$.provenance.tenantId')=?1 AND CAST(json_extract(payload,'$.provenance.entityId') AS TEXT)=?2 AND CAST(json_extract(payload,'$.provenance.databaseId') AS TEXT)=?3 ORDER BY updated_at DESC LIMIT 1").bind(tenant.id,String(auth.context.entity),String(auth.context.database)).first();
+    if(verified){
+      const parsed=JSON.parse(verified.payload);
+      if(parsed.provenance?.tenantId===tenant.id&&String(parsed.provenance.entityId)===String(auth.context.entity)&&String(parsed.provenance.databaseId)===String(auth.context.database)){
+        job=parsed;jobId=parsed.id;matchedScope=verified.cache_key.split(":job:")[0];
+      }
+    }
   }
   if(!job)throw new Error("INITIAL_LOAD_REQUIRED");
   const stamp=env.AUTH_DB?await env.AUTH_DB.prepare("SELECT updated_at FROM bi_durable_kv WHERE cache_key=?1 LIMIT 1").bind(matchedScope+":job:"+jobId).first():null;

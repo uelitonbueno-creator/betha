@@ -80,3 +80,19 @@ test('validated accounting fields enrich future pages without rewinding historic
  const start=worker.indexOf('async function loadMultiSystemIncrementalResource('),end=worker.indexOf('function multiSystemStateNeedsWork(',start);const code=worker.slice(start,end);
  assert.match(code,/source.validatedAdditionalFields/);assert.match(code,/Math.max\(0,Number\(state\?\.loaded\)\|\|0\)/);assert.doesNotMatch(code,/resetMultiSystemSummary|DELETE FROM/);
 });
+test('provenance fallback recovers only the same tenant and entity after credential rotation',async()=>{
+ const {DatabaseSync}=require('node:sqlite');const db=new DatabaseSync(':memory:');
+ db.exec('CREATE TABLE bi_durable_kv(cache_key TEXT PRIMARY KEY,payload TEXT,updated_at TEXT)');
+ const add=(scope,provenance,count,stamp)=>db.prepare('INSERT INTO bi_durable_kv VALUES (?,?,?)').run(scope+':job:11111111-1111-1111-1111-111111111111',JSON.stringify({id:'11111111-1111-1111-1111-111111111111',provenance,sources:{'bi:imoveis':{loaded:count,complete:true}}}),stamp);
+ add('bi-sync:v1:valid',{tenantId:'paulafreitas',entityId:'1158',databaseId:'656'},20,'2026-10-01');
+ add('bi-sync:v1:other-tenant',{tenantId:'other',entityId:'1158',databaseId:'656'},999,'2026-10-03');
+ add('bi-sync:v1:other-entity',{tenantId:'paulafreitas',entityId:'999',databaseId:'656'},888,'2026-10-04');
+ const worker=fs.readFileSync('backend/worker.js','utf8'),start=worker.indexOf('async function buildPersistedTributaryOverview('),end=worker.indexOf('async function buildOverviewDashboard(',start);
+ const fn=vm.runInNewContext(worker.slice(start,end)+';buildPersistedTributaryOverview',{syncScope:async()=>'bi-sync:v1:new-credentials',sha256Hex:async()=>'absent',parseJsonObject:()=>({})});
+ const env={AUTH_DB:{prepare(sql){return {bind(...args){return {first:async()=>db.prepare(sql).get(...args)}}}}}};
+ const result=await fn(env,{id:'paulafreitas'},new URL('https://example.test/'),{context:{entity:'1158',database:'656'}});
+ assert.equal(result.kpis.imoveis,20);assert.equal(result.meta.readOnly,true);
+ db.exec("DELETE FROM bi_durable_kv WHERE cache_key LIKE 'bi-sync:v1:valid:%'");
+ await assert.rejects(()=>fn(env,{id:'paulafreitas'},new URL('https://example.test/'),{context:{entity:'1158',database:'656'}}),/INITIAL_LOAD_REQUIRED/);
+ db.close();
+});
