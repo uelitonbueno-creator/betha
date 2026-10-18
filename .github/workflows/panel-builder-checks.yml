@@ -30,6 +30,7 @@ on:
       - 'tests/multisystem-status-ui.test.cjs'
       - 'tests/mcp-real-dashboard.test.cjs'
       - 'tests/real-panels-ui.test.cjs'
+      - 'app.js'
       - 'panel-builder*.js'
       - 'panel-placements.js'
       - 'tests/panel-builder-*.test.cjs'
