@@ -10345,6 +10345,7 @@ function errorResponse(request,env,error) {
   const code=error && error.message ? error.message : "UNKNOWN_ERROR";
   const statusByCode={
     DASHBOARD_BATCH_PENDING:409,
+    INITIAL_LOAD_REQUIRED:409,
     DASHBOARD_LOAD_ID_INVALID:400,
     DASHBOARD_CURSOR_INVALID:400,
     TENANT_REQUIRED:400,
