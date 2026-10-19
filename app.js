@@ -3825,8 +3825,17 @@
       if(!active())return;
       console.warn("Falha ao carregar dados reais do sistema:",error);
       setDashboardLoading(false);
-      markDashboardChartsUnavailable();
-      setStatus("error","Não foi possível consultar os dados reais. Tente novamente; dados sintéticos não serão exibidos como substituição.");
+      const initialLoadRequired=error.message==="INITIAL_LOAD_REQUIRED";
+      const unavailableMessage=initialLoadRequired
+        ? "Nenhuma carga tributária foi encontrada para esta entidade. As cargas dos outros sistemas permanecem separadas."
+        : "Não foi possível consultar os dados reais. Tente novamente; dados sintéticos não serão exibidos como substituição.";
+      markDashboardChartsUnavailable(initialLoadRequired
+        ? "Nenhuma carga tributária salva foi encontrada para esta entidade."
+        : undefined);
+      markDashboardCoverageUnavailable(initialLoadRequired
+        ? "Nenhuma carga tributária salva para esta entidade. As cargas dos outros sistemas não foram alteradas."
+        : "A consulta falhou antes de receber a cobertura das fontes.");
+      setStatus("error",unavailableMessage);
     }finally{
       if(active()&&!fallback)setRefreshBusy(false);
     }
@@ -3976,13 +3985,22 @@
     view.setAttribute("aria-busy",loading?"true":"false");
   }
 
-  function markDashboardChartsUnavailable() {
+  function markDashboardChartsUnavailable(detailMessage) {
     document.querySelectorAll("#dashboardView #chartGrid .chart-empty").forEach(empty=>{
       const title=empty.querySelector("strong");
       const detail=empty.querySelector("span");
       if(title) title.textContent="Dados indisponíveis";
-      if(detail) detail.textContent="Não foi possível carregar este gráfico. Tente novamente usando ATUALIZAR.";
+      if(detail) detail.textContent=detailMessage||"Não foi possível carregar este gráfico. Tente novamente usando ATUALIZAR.";
     });
+  }
+
+  function markDashboardCoverageUnavailable(message) {
+    const coverageItems=document.getElementById("coverageItems");
+    if(!coverageItems)return;
+    const note=document.createElement("span");
+    note.className="coverage-loading coverage-error";
+    note.textContent=message;
+    coverageItems.replaceChildren(note);
   }
 
   function setLastUpdated(value, source) {

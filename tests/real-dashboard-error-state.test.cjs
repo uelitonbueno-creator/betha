@@ -20,6 +20,7 @@ test("real dashboard API failure replaces chart loading placeholders with an err
     querySelector(selector){return selector==="strong"?this.title:this.detail;}
   });
   const charts=[makeChart(),makeChart()];
+  const coverage={children:[],replaceChildren(...children){this.children=children;}};
   const status=[];
   const loading=[];
   const refresh=[];
@@ -35,12 +36,14 @@ test("real dashboard API failure replaces chart loading placeholders with an err
       getElementById(id){
         if(id==="periodo")return {value:"ano"};
         if(id==="exercicio")return {value:"2026"};
+        if(id==="coverageItems")return coverage;
         return null;
       },
       querySelectorAll(selector){
         assert.equal(selector,"#dashboardView #chartGrid .chart-empty");
         return charts;
-      }
+      },
+      createElement(){return {className:"",textContent:""};}
     },
     currentDashboardFilters:()=>({}),
     api:async()=>{throw new Error("NETWORK_FAILURE");},
@@ -62,5 +65,51 @@ test("real dashboard API failure replaces chart loading placeholders with an err
     type:"error",
     message:"Não foi possível consultar os dados reais. Tente novamente; dados sintéticos não serão exibidos como substituição."
   });
+  assert.equal(coverage.children.length,1);
+  assert.equal(coverage.children[0].textContent,"A consulta falhou antes de receber a cobertura das fontes.");
   assert.deepEqual(Array.from(refresh),[true,false]);
+});
+
+test("missing tributary load gets a specific HTTP conflict and leaves no loading placeholders",async()=>{
+  const source=fs.readFileSync("app.js","utf8");
+  const start=source.indexOf("  async function loadRealMultiSystemDashboard(");
+  const end=source.indexOf("  async function loadDashboardData(",start);
+  const helperStart=source.indexOf("  function markDashboardChartsUnavailable(",end);
+  const helperEnd=source.indexOf("  function setLastUpdated(",helperStart);
+  const makeChart=()=>({title:{textContent:"Carregando dados..."},detail:{textContent:"Aguardando"},querySelector(selector){return selector==="strong"?this.title:this.detail;}});
+  const charts=[makeChart()];
+  const coverage={children:[],replaceChildren(...children){this.children=children;}};
+  const status=[];
+  const context=vm.createContext({
+    REAL_MULTI_SYSTEM_HOME_VIEWS:new Set(),dashboardLoadGeneration:0,tenantId:"paulafreitas",
+    currentView:"visao-geral",currentSystemId:"tributos",currentYear:2026,URLSearchParams,
+    document:{
+      getElementById(id){if(id==="periodo")return {value:"ano"};if(id==="exercicio")return {value:"2026"};if(id==="coverageItems")return coverage;return null;},
+      querySelectorAll:()=>charts,
+      createElement:()=>({className:"",textContent:""})
+    },
+    currentDashboardFilters:()=>({}),
+    api:async()=>{throw Object.assign(new Error("INITIAL_LOAD_REQUIRED"),{status:409});},
+    setRefreshBusy(){},setDashboardLoading(){},setStatus:(type,message)=>status.push({type,message}),
+    console:{warn(){}},renderPayload(){throw new Error("failed dashboard must not render another system's data");}
+  });
+  vm.runInContext(source.slice(start,end)+source.slice(helperStart,helperEnd),context);
+  await vm.runInContext("loadRealMultiSystemDashboard('visao-geral')",context);
+  assert.equal(charts[0].title.textContent,"Dados indisponíveis");
+  assert.match(charts[0].detail.textContent,/Nenhuma carga tributária salva/);
+  assert.match(coverage.children[0].textContent,/As cargas dos outros sistemas/);
+  assert.deepEqual(status.at(-1),{type:"error",message:"Nenhuma carga tributária foi encontrada para esta entidade. As cargas dos outros sistemas permanecem separadas."});
+});
+
+test("Worker maps a missing initial load to HTTP 409",()=>{
+  const worker=fs.readFileSync("backend/worker.js","utf8").replace(/\r\n/g,"\n");
+  const start=worker.indexOf("function errorResponse(request,env,error) {");
+  const end=worker.indexOf("\n\n\nconst PANEL_PREVIEW_FIELDS",start);
+  assert.ok(start>=0&&end>start,"Worker error response handler exists");
+  const handler=vm.runInNewContext(worker.slice(start,end)+";errorResponse",{
+    json:(_request,_env,status,body)=>({status,body})
+  });
+  const result=handler({}, {}, new Error("INITIAL_LOAD_REQUIRED"));
+  assert.equal(result.status,409);
+  assert.equal(result.body.error,"INITIAL_LOAD_REQUIRED");
 });
