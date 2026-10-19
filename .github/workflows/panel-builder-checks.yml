@@ -11,6 +11,7 @@ on:
       - 'tests/multisystem-status-ui.test.cjs'
       - 'tests/mcp-real-dashboard.test.cjs'
       - 'tests/real-panels-ui.test.cjs'
+      - 'tests/real-dashboard-error-state.test.cjs'
       - 'app.js'
       - 'panel-builder*.js'
       - 'panel-placements.js'
@@ -30,6 +31,8 @@ on:
       - 'tests/multisystem-status-ui.test.cjs'
       - 'tests/mcp-real-dashboard.test.cjs'
       - 'tests/real-panels-ui.test.cjs'
+      - 'tests/real-dashboard-error-state.test.cjs'
+      - 'app.js'
       - 'panel-builder*.js'
       - 'panel-placements.js'
       - 'tests/panel-builder-*.test.cjs'
@@ -68,6 +71,7 @@ jobs:
           node --test tests/multisystem-status-ui.test.cjs
           node --test tests/mcp-real-dashboard.test.cjs
           node --test tests/real-panels-ui.test.cjs
+          node --test tests/real-dashboard-error-state.test.cjs
           node --test tests/payroll-projection.test.cjs
           node tests/panel-builder-core.test.cjs
           node tests/panel-builder-kpi.test.cjs
