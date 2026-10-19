@@ -262,6 +262,7 @@ function durableSessions(env) {
           await env.BI_SYNC_RAW.put(rawObjectKey(key), payload, {
             httpMetadata: { contentType: "application/json" }
           });
+          return;
         }
         return kv.put(key, stored, options);
       }
@@ -273,6 +274,7 @@ function durableSessions(env) {
           .prepare("INSERT INTO bi_durable_kv (cache_key,payload,updated_at) VALUES (?1,?2,?3) ON CONFLICT(cache_key) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at")
           .bind(String(key), payload, new Date().toISOString())
           .run();
+        return;
       }
       return kv.put(key, stored, options);
     },
