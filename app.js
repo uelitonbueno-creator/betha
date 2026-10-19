@@ -3825,6 +3825,7 @@
       if(!active())return;
       console.warn("Falha ao carregar dados reais do sistema:",error);
       setDashboardLoading(false);
+      markDashboardChartsUnavailable();
       setStatus("error","Não foi possível consultar os dados reais. Tente novamente; dados sintéticos não serão exibidos como substituição.");
     }finally{
       if(active()&&!fallback)setRefreshBusy(false);
@@ -3973,6 +3974,15 @@
     if(!view) return;
     view.classList.toggle("is-loading",Boolean(loading));
     view.setAttribute("aria-busy",loading?"true":"false");
+  }
+
+  function markDashboardChartsUnavailable() {
+    document.querySelectorAll("#dashboardView #chartGrid .chart-empty").forEach(empty=>{
+      const title=empty.querySelector("strong");
+      const detail=empty.querySelector("span");
+      if(title) title.textContent="Dados indisponíveis";
+      if(detail) detail.textContent="Não foi possível carregar este gráfico. Tente novamente usando ATUALIZAR.";
+    });
   }
 
   function setLastUpdated(value, source) {
