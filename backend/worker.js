@@ -7006,6 +7006,8 @@ function multiSystemSampleMeta(system,sample,rows) {
   return {
     dataMode:"sample",
     sample:true,
+    sampleMode:true,
+    realData:false,
     sampleSystem:system,
     sampleSize:Array.isArray(sample&&sample.rows)?sample.rows.length:0,
     filteredRows:Array.isArray(rows)?rows.length:0,
