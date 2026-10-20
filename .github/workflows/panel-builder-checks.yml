@@ -78,6 +78,7 @@ jobs:
           node --test tests/real-panels-ui.test.cjs
           node --test tests/real-dashboard-error-state.test.cjs
           node --test tests/persistent-sync-storage.test.cjs
+          node --test tests/sample-metadata.test.cjs
           node --test tests/payroll-projection.test.cjs
           node tests/panel-builder-core.test.cjs
           node tests/panel-builder-kpi.test.cjs
