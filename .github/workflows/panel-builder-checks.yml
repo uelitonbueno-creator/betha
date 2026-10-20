@@ -12,6 +12,7 @@ on:
       - 'tests/multisystem-status-ui.test.cjs'
       - 'tests/mcp-real-dashboard.test.cjs'
       - 'tests/real-panels-ui.test.cjs'
+      - 'tests/real-procurement-chart.test.cjs'
       - 'tests/real-dashboard-error-state.test.cjs'
       - 'tests/persistent-sync-storage.test.cjs'
       - 'app.js'
@@ -34,6 +35,7 @@ on:
       - 'tests/multisystem-status-ui.test.cjs'
       - 'tests/mcp-real-dashboard.test.cjs'
       - 'tests/real-panels-ui.test.cjs'
+      - 'tests/real-procurement-chart.test.cjs'
       - 'tests/real-dashboard-error-state.test.cjs'
       - 'tests/persistent-sync-storage.test.cjs'
       - 'app.js'
@@ -76,6 +78,7 @@ jobs:
           node --test tests/multisystem-status-ui.test.cjs
           node --test tests/mcp-real-dashboard.test.cjs
           node --test tests/real-panels-ui.test.cjs
+          node --test tests/real-procurement-chart.test.cjs
           node --test tests/real-dashboard-error-state.test.cjs
           node --test tests/persistent-sync-storage.test.cjs
           node --test tests/payroll-projection.test.cjs

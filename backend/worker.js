@@ -7104,7 +7104,7 @@ async function buildAccountingDashboard(env,tenant,url){
   const inProgress=summary.loadStatus!=="complete";
   const empenhado=hasPeriodData
     ? monthly.reduce((sum,[,value])=>sum+Number(value||0),0)
-    : (inProgress?null:0);
+    : null;
   const creditors=multiSystemSortedEntries(summary.groups,12);
   const charts={
     "execucao-mensal":{
@@ -7160,6 +7160,9 @@ async function buildProcurementDashboard(env,tenant,url){
   const situations=multiSystemSortedEntries(processSummary.groups,12);
 
   const charts={};
+  if(situations.length){
+    charts["compras-situacao"]={format:"number",labels:situations.map(([label])=>label),datasets:[{label:"Processos (histórico importado)",data:situations.map(([,value])=>value)}]};
+  }
   if(hiring.length){
     charts["compras-modalidade"]={
       format:"number",
@@ -7279,6 +7282,7 @@ async function buildProcurementSampleDashboard(env,tenant,url) {
       "contratos-ativos":rows.filter(row=>row&&row.contratoAtivo===true).length
     },
     charts:{
+      "compras-situacao":sampleGroupChart(rows,"status","","Processos","number",{agg:"count"}),
       "compras-mensal":sampleMonthlyChart(rows,[
         {field:"valorEstimado",label:"Estimado"},
         {field:"valorHomologado",label:"Homologado"}
@@ -7305,7 +7309,7 @@ async function buildPayrollDashboard(env,tenant,url) {
   const keys=periodo==="todos"?null:new Set(multiSystemMonthlyEntries({monthly:Object.fromEntries(Array.from({length:24},(_,i)=>{const date=new Date(exercicio-1,0+i,1);return [date.getFullYear()+"-"+String(date.getMonth()+1).padStart(2,"0"),1];}))},periodo,exercicio).map(([key])=>key));
   const finance=await readPayrollProjection(env.AUTH_DB,String(tenant.id),keys);
   const unsupportedFilters=[...url.searchParams].filter(([key,value])=>value&&!["periodo","exercicio","tenant"].includes(key)).map(([key])=>key);
-  const ready=Boolean(finance&&!finance.state.error&&!unsupportedFilters.length);
+  const ready=Boolean(finance&&finance.state.status==="complete"&&!finance.state.error&&!unsupportedFilters.length);
   const consolidation={totalRecords:Number(remuneracoes?.count)||0,unsupportedFilters,complete:ready&&finance.state.status==="complete",pagesProcessed:Number(finance?.state?.next_page)||0,rowsProcessed:Number(finance?.state?.rows_seen)||0,recordsInPeriod:finance?.records||0,uniqueRemunerations:finance?.uniqueRemunerations||0,duplicateRows:finance?.duplicateRows||0,unknownCompetence:finance?.unknownCompetence||0,error:finance?.state?.error||null,updatedAt:finance?.state?.updated_at||null};
   return {
     view:"folha-visao-geral",
