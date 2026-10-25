@@ -2258,13 +2258,13 @@
     if(chartDef.apiPanel&&data){empty.querySelector("strong").textContent=data.status==="unavailable"?"Indicador indisponível":data.status==="missing-fields"?"Campos necessários não informados":"Sem registros neste recorte";empty.querySelector("span").textContent=data.note||"Confira os filtros selecionados.";empty.hidden=false;return;}
     const title=empty.querySelector("strong");
     const detail=empty.querySelector("span");
-    const hasSeries=Boolean(data&&Array.isArray(data.labels)&&data.labels.length&&Array.isArray(data.datasets)&&data.datasets.some(ds=>Array.isArray(ds.data)&&ds.data.length));
-    if(payload?.meta?.realData===true&&!data){
-      title.textContent="Indicador em preparação";
-      detail.textContent=payload?.meta?.note||"Os dados reais já estão conectados, mas os campos necessários para este indicador ainda não foram consolidados.";
-    } else if(payload?.meta?.refreshError&&!hasSeries){
+    const hasSeries=Boolean(data&&Array.isArray(data.labels)&&data.labels.length&&Array.isArray(data.datasets)&&data.datasets.some(ds=>Array.isArray(ds.data)&&ds.data.some(v=>(typeof v==="number"&&Number.isFinite(v))||(typeof v==="string"&&v.trim()!==""&&Number.isFinite(Number(v))))));
+    if(payload?.meta?.refreshError&&!hasSeries){
       title.textContent="Resumo não atualizado";
       detail.textContent=friendlySourceErrorDetail(payload.meta.refreshError);
+    } else if(payload?.meta?.realData===true&&!data){
+      title.textContent="Indisponível — aguardando validação";
+      detail.textContent=payload?.meta?.note||"A fonte foi importada, mas os campos necessários para este indicador ainda não foram validados.";
     } else if(state.kind==="error"){
       title.textContent=/temporária|temporário|normalizar/i.test(state.detail)
         ? "Fonte temporariamente indisponível"
@@ -2447,9 +2447,8 @@
       const chartData=charts[displayChartDefinition(chartDef).id];
       const hasData=chartData && Array.isArray(chartData.labels) && chartData.labels.length &&
         Array.isArray(chartData.datasets) && chartData.datasets.some(ds=>Array.isArray(ds.data) &&
-          ds.data.some(v=>((typeof v==="number"&&Number.isFinite(v))||
-            (typeof v==="string"&&v.trim()!==""&&Number.isFinite(Number(v))))&&
-            (chartDef.apiPanel||Number(v)!==0)));
+          ds.data.some(v=>(typeof v==="number"&&Number.isFinite(v))||
+            (typeof v==="string"&&v.trim()!==""&&Number.isFinite(Number(v)))));
       if (hasData) renderChartData(chartDef,chartData);
       else renderChartEmptyState(chartDef,payload);
     }
