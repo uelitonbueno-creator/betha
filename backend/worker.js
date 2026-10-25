@@ -7172,7 +7172,7 @@ async function buildProcurementDashboard(env,tenant,url){
   const supplierSummary=await getMultiSystemSummary(env,tenant.id,"compras","fornecedores");
   const situations=multiSystemSortedEntries(processSummary.groups,12);
   const monthlyKeys=Object.keys(processSummary.monthly||{});
-  const validMonthlyKeys=monthlyKeys.filter(key=>/^\\d{4}-(0[1-9]|1[0-2])$/.test(key));
+  const validMonthlyKeys=monthlyKeys.filter(key=>/^\d{4}-(0[1-9]|1[0-2])$/.test(key));
   const invalidMonthlyKeys=monthlyKeys.length-validMonthlyKeys.length;
   const ignoredFilters=[...new Set([...url.searchParams.keys()].filter(key=>key!=="tenant"))];
 
