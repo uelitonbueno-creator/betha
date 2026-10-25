@@ -114,3 +114,22 @@ test('procurement aggregation never uses object descriptions as month keys',asyn
  assert.equal(saved.monthly['2026-10'],1);
  assert.equal(saved.monthly['PNEUS ESCOLARES'],undefined);
 });
+
+test('accounting ignores no unsupported dimensions silently',async()=>{
+ const start=worker.indexOf('async function buildAccountingDashboard('),end=worker.indexOf('async function buildProcurementDashboard(',start);
+ const summaries={empenhos:{resource:'empenhos',count:2,loaded:2,loadStatus:'complete',monthly:{'2026-01':100,'2026-02':200},groups:{'Credor A':300}},'movimentacoes-receitas':{resource:'movimentacoes-receitas',count:1,loaded:1,loadStatus:'complete'},'movimentacoes-despesas':{resource:'movimentacoes-despesas',count:1,loaded:1,loadStatus:'complete'},credores:{resource:'credores',count:2,loaded:2,loadStatus:'complete'}};
+ const fn=vm.runInNewContext(worker.slice(start,end)+';buildAccountingDashboard',{getMultiSystemSummary:async(_e,_t,_s,r)=>summaries[r],buildAccountingSampleDashboard:()=>{throw Error('sample')},multiSystemMonthlyEntries:(s,p,y)=>Object.entries(s.monthly||{}).filter(([k])=>p==='todos'||k.startsWith(String(y)+'-')),multiSystemMonthLabel:k=>k,multiSystemSortedEntries:o=>Object.entries(o||{}),multiSystemRealMeta:(_s,_a,e)=>e});
+ const url='https://example.test/?tenant=paulafreitas&periodo=ano&exercicio=2026';
+ const valid=await fn({},{id:'paulafreitas'},new URL(url));
+ assert.equal(valid.kpis.empenhado,300);
+ assert.equal(valid.charts['execucao-mensal'].labels.length,2);
+ const filtered=await fn({},{id:'paulafreitas'},new URL(url+'&unidade=123&fonte=propria'));
+ assert.equal(filtered.kpis.empenhado,null);
+ assert.equal(filtered.charts['execucao-mensal'].labels.length,0);
+ assert.deepEqual(Array.from(filtered.meta.unsupportedFilters),['unidade','fonte']);
+ assert.equal(filtered.meta.periodScope,'mixed');
+ assert.equal(filtered.meta.periodFilterApplied,false);
+ assert.equal(filtered.kpis.credores,2);
+ assert.equal((await fn({},{id:'paulafreitas'},new URL('https://example.test/?exercicio=2027'))).kpis.empenhado,null);
+ assert.ok(fs.readFileSync('app.js','utf8').includes('const ignoredFilters=Array.isArray(payload?.meta?.unsupportedFilters)'));
+});
