@@ -90,3 +90,27 @@ test('real procurement reports all ignored filters without leaking values',async
  assert.ok(app.includes('FILTROS IGNORADOS'));
  assert.ok(app.includes('escapeHtml(ignoredFilters.join(", "))'));
 });
+
+test('procurement aggregation never uses object descriptions as month keys',async()=>{
+ const start=worker.indexOf('function multiSystemSimpleValue(');
+ const end=worker.indexOf('async function getMultiSystemSummary(',start);
+ assert.ok(start>=0&&end>start);
+ const update=vm.runInNewContext(worker.slice(start,end)+';updateMultiSystemSummary');
+ let saved=null;
+ const db={prepare(sql){return {bind(...args){return {
+  async first(){return null;},
+  async run(){if(sql.startsWith('INSERT'))saved=JSON.parse(args[3]);}
+ };}}}};
+ await update({AUTH_DB:db},{id:'paulafreitas'},'compras',{resource:'processos-administrativos'},0,[
+  {id:1,objeto:'PNEUS ESCOLARES',situacao:'HOMOLOGADO',formaContratacao:'DIRETA'},
+  {id:2,objeto:'ALIMENTOS',situacao:'REVOGADO',data:'2026-10-12'},
+  {id:3,objeto:'MATERIAL',situacao:'HOMOLOGADO',data:'31/12/2025'},
+  {id:4,objeto:'SERVIÇOS',situacao:'HOMOLOGADO',data:'sem data válida'}
+ ]);
+ assert.equal(saved.count,4);
+ assert.equal(saved.groups.HOMOLOGADO,3);
+ assert.deepEqual(Object.keys(saved.monthly).sort(),['2025-12','2026-10']);
+ assert.equal(saved.monthly['2025-12'],1);
+ assert.equal(saved.monthly['2026-10'],1);
+ assert.equal(saved.monthly['PNEUS ESCOLARES'],undefined);
+});
