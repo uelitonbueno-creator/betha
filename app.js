@@ -466,11 +466,13 @@
       const activeSystem=currentSystemInfo();
       const realSources=Array.isArray(payload?.meta?.realSources)?payload.meta.realSources:[];
       const historical=payload?.meta?.periodScope==="historical"&&payload?.meta?.periodFilterApplied===false;
-      const ignoredFilters=historical&&Array.isArray(payload?.meta?.unsupportedFilters)?payload.meta.unsupportedFilters:[];
+      const ignoredFilters=Array.isArray(payload?.meta?.unsupportedFilters)?payload.meta.unsupportedFilters:[];
       if(title) title.textContent="Fontes reais desta visão";
       if(description) description.textContent=historical
         ? "Dados reais do histórico importado. Filtros selecionados não aplicados a esta visão."
-        : "Dados carregados das APIs Betha, armazenados no BI Vella e consolidados em segundo plano.";
+        : ignoredFilters.length
+          ? "Alguns filtros não são suportados nesta visão. Indicadores incompatíveis ficam indisponíveis; consulte o escopo das fontes."
+          : "Dados carregados das APIs Betha, armazenados no BI Vella e consolidados em segundo plano.";
       summary.innerHTML=[
         '<span class="source-chip"><strong>BETHA</strong> · '+escapeHtml(activeSystem?.name||currentSystemId)+'</span>',
         historical?'<span class="source-chip"><strong>PERÍODO</strong> · HISTÓRICO COMPLETO — filtro não aplicado</span>':"",
