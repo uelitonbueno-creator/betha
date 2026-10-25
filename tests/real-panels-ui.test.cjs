@@ -96,3 +96,20 @@ test('provenance fallback recovers only the same tenant and entity after credent
  await assert.rejects(()=>fn(env,{id:'paulafreitas'},new URL('https://example.test/'),{context:{entity:'1158',database:'656'}}),/INITIAL_LOAD_REQUIRED/);
  db.close();
 });
+
+test('payroll competence coverage flags future months and rejects invalid dates',()=>{
+ const source=fs.readFileSync('backend/worker.js','utf8');
+ const start=source.indexOf('async function buildPayrollDashboard(');
+ const end=source.indexOf('async function buildPayrollSampleDashboard(',start);
+ assert.ok(start>=0&&end>start,'real payroll dashboard builder exists');
+ const builder=source.slice(start,end);
+ assert.match(builder,/competenceCoverage,/);
+ assert.match(builder,/sourceCompleteness:"not-verified"/);
+ const match=builder.match(/futureCompetence:([^\n]+),\n\s+sourceCompleteness:"not-verified"/);
+ assert.ok(match,'future competence expression exists');
+ const evaluate=competence=>vm.runInNewContext(match[1],{row:{competence}});
+ assert.equal(evaluate('9999-12'),true);
+ assert.equal(evaluate('2000-01'),false);
+ assert.equal(evaluate('2026-13'),false);
+ assert.equal(evaluate('invalid'),false);
+});
