@@ -7150,7 +7150,15 @@ async function buildAccountingDashboard(env,tenant,url){
       subtitle:"Contagens de todo o histórico importado; valores financeiros seguem o período selecionado.",
       groupLabel:"Fonte",columns:[{id:"registros",label:"Registros importados",format:"number"}],
       rows:available.map(item=>({label:item.resource,values:[Number(item.count)]})),totalRows:available.length
-    },...tables],
+    },...(!unsupportedFilters.length&&monthly.length?[{
+      id:"contabil-empenhos-mensais-reais",
+      title:"Empenhos por competência",
+      subtitle:"Série real do resumo persistido de empenhos. Apenas valores numéricos e competências válidas no período selecionado; não representa liquidação nem pagamento.",
+      groupLabel:"Competência",
+      columns:[{id:"empenhado",label:"Empenhado",format:"currency"}],
+      rows:monthly.map(([key,value])=>({label:multiSystemMonthLabel(key),values:[value]})),
+      totalRows:monthly.length
+    }]:[]),...tables],
     meta:multiSystemRealMeta("contabil",available,{
       periodDataAvailable:hasPeriodData&&!unsupportedFilters.length,
       periodScope:"mixed",
