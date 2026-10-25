@@ -7325,7 +7325,7 @@ async function buildPayrollDashboard(env,tenant,url) {
     grossFieldRecords:Number(row.gross_count)||0,
     netFieldRecords:Number(row.net_count)||0,
     discountFieldRecords:Number(row.discount_count)||0,
-    futureCompetence:/^\\d{4}-(0[1-9]|1[0-2])$/.test(String(row.competence)) && String(row.competence)>new Date().toISOString().slice(0,7),
+    futureCompetence:/^\d{4}-(0[1-9]|1[0-2])$/.test(String(row.competence)) && String(row.competence)>new Date().toISOString().slice(0,7),
     sourceCompleteness:"not-verified"
   }));
   return {
