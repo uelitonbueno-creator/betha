@@ -7156,25 +7156,18 @@ async function buildProcurementDashboard(env,tenant,url){
   const processSummary=await getMultiSystemSummary(env,tenant.id,"compras","processos-administrativos");
   if(!processSummary||Number(processSummary.count)<=0)return buildProcurementSampleDashboard(env,tenant,url);
   const supplierSummary=await getMultiSystemSummary(env,tenant.id,"compras","fornecedores");
-  const hiring=multiSystemSortedEntries(processSummary.secondaryGroups,12);
   const situations=multiSystemSortedEntries(processSummary.groups,12);
+  const ignoredPeriodFilters=["periodo","exercicio"].filter(key=>url.searchParams.has(key));
 
   const charts={};
   if(situations.length){
     charts["compras-situacao"]={format:"number",labels:situations.map(([label])=>label),datasets:[{label:"Processos (histórico importado)",data:situations.map(([,value])=>value)}]};
   }
-  if(hiring.length){
-    charts["compras-modalidade"]={
-      format:"number",
-      labels:hiring.map(([label])=>label),
-      datasets:[{label:"Processos",data:hiring.map(([,value])=>value)}]
-    };
-  }
 
   const tables=situations.length?[{
     id:"compras-situacao-real",
     title:"Processos por situação",
-    subtitle:"Distribuição dos processos administrativos carregados.",
+    subtitle:"Histórico completo importado; filtros de período e exercício não aplicados.",
     groupLabel:"Situação",
     columns:[{id:"processos",label:"Processos",format:"number"}],
     rows:situations.map(([label,value])=>({label,values:[value]})),
@@ -7200,7 +7193,10 @@ async function buildProcurementDashboard(env,tenant,url){
     tables,
     meta:multiSystemRealMeta("compras",[processSummary,supplierSummary].filter(Boolean),{
       unavailableMetrics:["estimado","homologado","economia"],
-      note:"Dados reais dos processos administrativos. Valores financeiros serão habilitados quando a API disponibilizar campos compatíveis."
+      periodScope:"historical",
+      periodFilterApplied:false,
+      unsupportedFilters:ignoredPeriodFilters,
+      note:"Histórico completo importado: filtros de período/exercício não aplicados. Valores financeiros aguardam validação de campos."
     })
   };
 }
