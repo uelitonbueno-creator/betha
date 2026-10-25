@@ -4440,7 +4440,7 @@
             serie:column.label||column.id||"Valor",
             categoria:row.label??"",
             valor:summaryCellDisplay(row.values?.[index],column.format||"number"),
-            fonte:currentPayload?.meta?.sampleMode===true?"AMOSTRA LOCAL":currentPayload?.meta?.realData===true?"BETHA":"Painel"
+            fonte:currentPayload?.meta?.realData===true?"BETHA · "+currentSystemId:currentPayload?.meta?.sampleMode===true?"AMOSTRA LOCAL":"Painel"
           });
         });
       }
