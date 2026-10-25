@@ -210,7 +210,7 @@ test('real accounting coverage, monthly series and creditor tables remain visibl
   const exportFn=vm.runInNewContext(ui.slice(start,end)+';dashboardExportRows',{
     dashboards:{'contabil-visao-geral':{kpis:[],charts:[]}},
     currentView:'contabil-visao-geral',
-    currentPayload:{tables,meta:{realData:true}},
+    currentPayload:{tables,meta:{realData:true,sampleMode:true}},
     currentSystemId:'contabil',
     summaryCellDisplay:value=>String(value)
   });
