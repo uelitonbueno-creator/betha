@@ -2356,7 +2356,7 @@
 
     const configured=Array.isArray(payload?.tables)?payload.tables.filter(Boolean):[];
     if(configured.length){
-      for(const table of configured.slice(0,2)){
+      for(const table of configured.slice(0,3)){
         if(appendSummaryTableCard(host,table)) rendered++;
       }
       syncVisibility();
