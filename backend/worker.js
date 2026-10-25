@@ -6416,12 +6416,13 @@ async function updateMultiSystemSummary(env,tenant,system,source,pageNo,rows){
     summary.count=(Number(summary.count)||0)+1;
 
     if(system==="contabil"&&source.resource==="empenhos"){
-      const value=Number(multiSystemSimpleValue(row.valor));
+      const rawValue=multiSystemSimpleValue(row.valor);
+      const value=rawValue===null||rawValue===""||typeof rawValue==="boolean"?null:Number(rawValue);
       if(Number.isFinite(value))summary.totalValue=(Number(summary.totalValue)||0)+value;
       const month=multiSystemMonthKey(multiSystemSimpleValue(row.data));
-      if(month)multiSystemMapAdd(summary.monthly,month,Number.isFinite(value)?value:0,180);
+      if(month&&Number.isFinite(value))multiSystemMapAdd(summary.monthly,month,value,180);
       const creditor=multiSystemSimpleValue(row.credor);
-      if(creditor!==null)multiSystemMapAdd(summary.groups,creditor,Number.isFinite(value)?value:0,160);
+      if(creditor!==null&&Number.isFinite(value))multiSystemMapAdd(summary.groups,creditor,value,160);
     }else if(system==="compras"&&source.resource==="processos-administrativos"){
       const situation=multiSystemSimpleValue(row.situacao);
       const hiring=multiSystemSimpleValue(row.formaContratacao);
@@ -7020,7 +7021,8 @@ function multiSystemSampleMeta(system,sample,rows) {
 
 function multiSystemSortedEntries(values,limit=12){
   return Object.entries(values&&typeof values==="object"?values:{})
-    .map(([label,value])=>[String(label),Number(value)||0])
+    .filter(([,value])=>typeof value==="number"&&Number.isFinite(value))
+    .map(([label,value])=>[String(label),value])
     .sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"pt-BR"))
     .slice(0,Math.max(1,Number(limit)||12));
 }
@@ -7169,6 +7171,9 @@ async function buildProcurementDashboard(env,tenant,url){
   if(!processSummary||Number(processSummary.count)<=0)return buildProcurementSampleDashboard(env,tenant,url);
   const supplierSummary=await getMultiSystemSummary(env,tenant.id,"compras","fornecedores");
   const situations=multiSystemSortedEntries(processSummary.groups,12);
+  const monthlyKeys=Object.keys(processSummary.monthly||{});
+  const validMonthlyKeys=monthlyKeys.filter(key=>/^\\d{4}-(0[1-9]|1[0-2])$/.test(key));
+  const invalidMonthlyKeys=monthlyKeys.length-validMonthlyKeys.length;
   const ignoredFilters=[...new Set([...url.searchParams.keys()].filter(key=>key!=="tenant"))];
 
   const charts={};
@@ -7208,7 +7213,9 @@ async function buildProcurementDashboard(env,tenant,url){
       periodScope:"historical",
       periodFilterApplied:false,
       unsupportedFilters:ignoredFilters,
-      note:"Histórico completo importado: filtros solicitados não são aplicados nesta visão. Valores financeiros aguardam validação de campos."
+      monthlySeriesStatus:validMonthlyKeys.length?"available":invalidMonthlyKeys?"unavailable-invalid-month-keys":"unavailable-no-validated-dates",
+      invalidMonthlyKeyCount:invalidMonthlyKeys,
+      note:"Histórico completo importado: filtros solicitados não são aplicados nesta visão. Valores financeiros aguardam validação de campos."+ (invalidMonthlyKeys?" Série mensal indisponível: "+invalidMonthlyKeys+" chaves legadas não representam competências válidas.":"")
     })
   };
 }
