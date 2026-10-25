@@ -197,3 +197,25 @@ test('accounting monthly table uses only validated D1 summary months and obeys f
   assert.equal(unsupported.kpis.empenhado,null);
   assert.equal(unsupported.tables.some(item=>item.id==='contabil-empenhos-mensais-reais'),false);
 });
+
+test('real accounting coverage, monthly series and creditor tables remain visible and exportable',()=>{
+  const ui=fs.readFileSync('app.js','utf8');
+  const render=ui.slice(ui.indexOf('function renderSummaryTables('),ui.indexOf('function renderPayload('));
+  assert.match(render,/configured\.slice\(0,3\)/);
+  const start=ui.indexOf('function dashboardExportRows(');
+  const end=ui.indexOf('function exportDashboardDelimited(',start);
+  assert.ok(start>=0&&end>start);
+  const tables=['Cobertura da Contabilidade','Empenhos por competência','Empenhado por credor']
+    .map((title,i)=>({title,columns:[{id:'valor',label:'Valor',format:'number'}],rows:[{label:'Item '+i,values:[i+1]}]}));
+  const exportFn=vm.runInNewContext(ui.slice(start,end)+';dashboardExportRows',{
+    dashboards:{'contabil-visao-geral':{kpis:[],charts:[]}},
+    currentView:'contabil-visao-geral',
+    currentPayload:{tables,meta:{realData:true}},
+    currentSystemId:'contabil',
+    summaryCellDisplay:value=>String(value)
+  });
+  const exported=exportFn();
+  assert.equal(exported.length,3);
+  assert.deepEqual(Array.from(exported,row=>row.item),tables.map(t=>t.title));
+  assert.ok(exported.every(row=>row.fonte==='BETHA · contabil'));
+});
