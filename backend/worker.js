@@ -7319,6 +7319,15 @@ async function buildPayrollDashboard(env,tenant,url) {
   const unsupportedFilters=[...url.searchParams].filter(([key,value])=>value&&!["periodo","exercicio","tenant"].includes(key)).map(([key])=>key);
   const ready=Boolean(finance&&finance.state.status==="complete"&&!finance.state.error&&!unsupportedFilters.length);
   const consolidation={totalRecords:Number(remuneracoes?.count)||0,unsupportedFilters,complete:ready&&finance.state.status==="complete",pagesProcessed:Number(finance?.state?.next_page)||0,rowsProcessed:Number(finance?.state?.rows_seen)||0,recordsInPeriod:finance?.records||0,uniqueRemunerations:finance?.uniqueRemunerations||0,duplicateRows:finance?.duplicateRows||0,unknownCompetence:finance?.unknownCompetence||0,error:finance?.state?.error||null,updatedAt:finance?.state?.updated_at||null};
+  const competenceCoverage=(finance?.rows||[]).map(row=>({
+    competence:String(row.competence),
+    records:Number(row.records)||0,
+    grossFieldRecords:Number(row.gross_count)||0,
+    netFieldRecords:Number(row.net_count)||0,
+    discountFieldRecords:Number(row.discount_count)||0,
+    futureCompetence:/^\\d{4}-(0[1-9]|1[0-2])$/.test(String(row.competence)) && String(row.competence)>new Date().toISOString().slice(0,7),
+    sourceCompleteness:"not-verified"
+  }));
   return {
     view:"folha-visao-geral",
     tenant:{id:tenant.id,name:tenant.name},
@@ -7359,6 +7368,7 @@ async function buildPayrollDashboard(env,tenant,url) {
       dataMode:consolidation.complete?"real":"real-partial",
       warning:consolidation.complete?null:"CONSOLIDAÇÃO FINANCEIRA PARCIAL — valores restritos às remunerações já processadas.",
       financialConsolidation:consolidation,
+      competenceCoverage,
       unavailableMetrics:["servidores","encargos","ativos","afastados",...(!ready||finance.gross===null?["bruto"]:[]),...(!ready||finance.net===null?["liquido"]:[]),...(!ready||finance.discount===null?["descontos"]:[])],
       note:"Soma das remunerações importadas por competência, incluindo todos os processamentos; não equivale à folha oficial. "+(consolidation.complete?"Consolidação do arquivo concluída.":"CONSOLIDAÇÃO PARCIAL: "+consolidation.rowsProcessed+" registros processados.")+" Servidores únicos e encargos permanecem indisponíveis."
     })
