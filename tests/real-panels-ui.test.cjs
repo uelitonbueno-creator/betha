@@ -142,3 +142,22 @@ test('real dashboard refresh errors take precedence over missing indicators',()=
  render({id:'receita-mensal',source:'contabil',apiPanel:false},{meta:{realData:true},charts:{}});
  assert.equal(strong.textContent,'Indisponível — aguardando validação');
 });
+
+test('ingestion completion is not indicator validation',()=>{
+ const start=app.indexOf('  function realSourceValidationStatus(');
+ const end=app.indexOf('  function renderSourceProvenance(',start);
+ assert.ok(start>=0&&end>start,'source validation status helper exists');
+ const status=vm.runInNewContext(app.slice(start,end)+';realSourceValidationStatus');
+ const complete=status({realSources:[{status:'complete'}],unavailableMetrics:['pago','arrecadado']});
+ assert.equal(complete.ingestion,'CONCLUÍDA (ingestão)');
+ assert.equal(complete.indicators,'PARCIAL (2 indisponíveis)');
+ const partial=status({realSources:[{status:'partial'}]});
+ assert.equal(partial.ingestion,'PARCIAL (ingestão)');
+ assert.equal(partial.indicators,'NÃO COMPROVADA');
+ const noEvidence=status({realSources:[{status:'complete'}]});
+ assert.equal(noEvidence.indicators,'NÃO COMPROVADA');
+ const sourceUI=app.slice(end,app.indexOf('  function formatValue(',end));
+ assert.match(sourceUI,/validationStatus=realSourceValidationStatus/);
+ assert.match(sourceUI,/escapeHtml\(validationStatus.ingestion\)/);
+ assert.match(sourceUI,/escapeHtml\(validationStatus.indicators\)/);
+});
