@@ -7105,16 +7105,18 @@ async function buildAccountingDashboard(env,tenant,url){
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
   const monthly=multiSystemMonthlyEntries(summary,periodo,exercicio);
   const hasPeriodData=monthly.length>0;
+  // Additional dimensions cannot be applied to persisted monthly aggregates.
+  const unsupportedFilters=[...new Set([...url.searchParams.keys()].filter(key=>!["tenant","periodo","exercicio"].includes(key)))];
   const inProgress=summary.loadStatus!=="complete";
-  const empenhado=hasPeriodData
+  const empenhado=hasPeriodData&&!unsupportedFilters.length
     ? monthly.reduce((sum,[,value])=>sum+Number(value||0),0)
     : null;
   const creditors=multiSystemSortedEntries(summary.groups,12);
   const charts={
     "execucao-mensal":{
       format:"currency",
-      labels:monthly.map(([key])=>multiSystemMonthLabel(key)),
-      datasets:[{label:"Empenhado",data:monthly.map(([,value])=>value)}]
+      labels:unsupportedFilters.length?[]:monthly.map(([key])=>multiSystemMonthLabel(key)),
+      datasets:[{label:"Empenhado",data:unsupportedFilters.length?[]:monthly.map(([,value])=>value)}]
     }
   };
   const tables=creditors.length?[{
@@ -7147,11 +7149,16 @@ async function buildAccountingDashboard(env,tenant,url){
       rows:available.map(item=>({label:item.resource,values:[Number(item.count)]})),totalRows:available.length
     },...tables],
     meta:multiSystemRealMeta("contabil",available,{
-      periodDataAvailable:hasPeriodData,
-      unavailableMetrics:["liquidado","pago","arrecadado"],
-      note:inProgress
-        ?"Empenhos reais em carga. Liquidação, pagamento e receita permanecem indisponíveis até as respectivas fontes serem autorizadas/carregadas."
-        :"Cobertura real das quatro fontes. Valores de receitas, liquidação e pagamentos aguardam validação dos campos financeiros. Credores e contagens de cobertura representam todo o histórico importado."
+      periodDataAvailable:hasPeriodData&&!unsupportedFilters.length,
+      periodScope:"mixed",
+      periodFilterApplied:unsupportedFilters.length===0,
+      unsupportedFilters,
+      unavailableMetrics:["liquidado","pago","arrecadado",...(unsupportedFilters.length?["empenhado"]:[])],
+      note:unsupportedFilters.length
+        ?"Filtros adicionais não suportados: empenhado e execução mensal indisponíveis para evitar resultados sem o recorte solicitado. Credores e contagens são históricos."
+        :inProgress
+          ?"Empenhos reais em carga. Liquidação, pagamento e receita permanecem indisponíveis até validação das fontes."
+          :"Cobertura real das quatro fontes. Valores de receitas, liquidação e pagamentos aguardam validação dos campos financeiros. Credores e contagens de cobertura representam todo o histórico importado."
     })
   };
 }
