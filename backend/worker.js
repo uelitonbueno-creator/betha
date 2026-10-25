@@ -6425,10 +6425,14 @@ async function updateMultiSystemSummary(env,tenant,system,source,pageNo,rows){
     }else if(system==="compras"&&source.resource==="processos-administrativos"){
       const situation=multiSystemSimpleValue(row.situacao);
       const hiring=multiSystemSimpleValue(row.formaContratacao);
-      const object=multiSystemSimpleValue(row.objeto);
+      // Only an explicit, validated process date may contribute to a monthly series.
+      // Legacy object descriptions in persisted summaries are not monthly data.
+      const processDate=multiSystemSimpleValue(row.data);
       if(situation!==null)multiSystemMapAdd(summary.groups,situation,1,80);
       if(hiring!==null)multiSystemMapAdd(summary.secondaryGroups,hiring,1,80);
-      if(object!==null)multiSystemMapAdd(summary.monthly,object,1,120);
+      const month=typeof processDate==="string"&&/^(?:\d{4}-(?:0[1-9]|1[0-2])-\d{2}(?:T.*)?|(?:0[1-9]|[12]\d|3[01])\/(?:0[1-9]|1[0-2])\/\d{4})$/.test(processDate.trim())
+        ?multiSystemMonthKey(processDate.trim()):null;
+      if(month)multiSystemMapAdd(summary.monthly,month,1,120);
     }else if(system==="compras"&&source.resource==="fornecedores"){
       const name=multiSystemSimpleValue(row.nome??row.razaoSocial??row.nomeFantasia);
       if(name!==null)multiSystemMapAdd(summary.groups,name,1,160);
