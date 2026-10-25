@@ -51,7 +51,8 @@ function isTransientSyncError(code) {
     || value === "AbortError"
     || value === "REQUEST_TIMEOUT"
     || /^BETHA_HTTP_(408|409|425|429|5\d\d)$/.test(value)
-    || /^D1_ERROR:/.test(value);
+    || /^D1_ERROR:/.test(value)
+    || /^put: .*internal error.*\(10001\)$/i.test(value);
 }
 
 function normalizeJob(job) {
