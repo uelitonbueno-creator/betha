@@ -66,3 +66,27 @@ test('procurement frontend labels unfiltered historical results',()=>{
  assert.match(app,/HISTÓRICO COMPLETO — filtro não aplicado/);
  assert.doesNotMatch(worker.slice(worker.indexOf('async function buildProcurementDashboard('),worker.indexOf('async function buildAccountingSampleDashboard(')),/charts\["compras-modalidade"\]/);
 });
+
+
+test('real procurement reports all ignored filters without leaking values',async()=>{
+ const start=worker.indexOf('async function buildProcurementDashboard(');
+ const end=worker.indexOf('async function buildAccountingSampleDashboard(',start);
+ const summaries={
+  'processos-administrativos':{resource:'processos-administrativos',count:2,loaded:2,loadStatus:'complete',groups:{HOMOLOGADO:2},secondaryGroups:{}},
+  fornecedores:{resource:'fornecedores',count:1,loaded:1,loadStatus:'complete'}
+ };
+ const fn=vm.runInNewContext(worker.slice(start,end)+';buildProcurementDashboard',{
+  getMultiSystemSummary:async(_env,_tenant,_system,resource)=>summaries[resource],
+  buildProcurementSampleDashboard:()=>{throw Error('unexpected sample')},
+  multiSystemSortedEntries:values=>Object.entries(values||{}),
+  multiSystemRealMeta:(_system,_items,extra)=>extra
+ });
+ const url=new URL('https://example.test/?tenant=paulafreitas&periodo=ano&exercicio=2026&unidade=123&fonte=propria');
+ const result=await fn({}, {id:'paulafreitas'},url);
+ assert.deepEqual(Array.from(result.meta.unsupportedFilters),['periodo','exercicio','unidade','fonte']);
+ assert.equal(result.meta.periodFilterApplied,false);
+ assert.equal(result.kpis.estimado,null);
+ const app=fs.readFileSync('app.js','utf8');
+ assert.ok(app.includes('FILTROS IGNORADOS'));
+ assert.ok(app.includes('escapeHtml(ignoredFilters.join(", "))'));
+});

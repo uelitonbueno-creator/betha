@@ -7157,7 +7157,7 @@ async function buildProcurementDashboard(env,tenant,url){
   if(!processSummary||Number(processSummary.count)<=0)return buildProcurementSampleDashboard(env,tenant,url);
   const supplierSummary=await getMultiSystemSummary(env,tenant.id,"compras","fornecedores");
   const situations=multiSystemSortedEntries(processSummary.groups,12);
-  const ignoredPeriodFilters=["periodo","exercicio"].filter(key=>url.searchParams.has(key));
+  const ignoredFilters=[...new Set([...url.searchParams.keys()].filter(key=>key!=="tenant"))];
 
   const charts={};
   if(situations.length){
@@ -7167,7 +7167,7 @@ async function buildProcurementDashboard(env,tenant,url){
   const tables=situations.length?[{
     id:"compras-situacao-real",
     title:"Processos por situação",
-    subtitle:"Histórico completo importado; filtros de período e exercício não aplicados.",
+    subtitle:"Histórico completo importado; filtros solicitados não aplicados.",
     groupLabel:"Situação",
     columns:[{id:"processos",label:"Processos",format:"number"}],
     rows:situations.map(([label,value])=>({label,values:[value]})),
@@ -7195,8 +7195,8 @@ async function buildProcurementDashboard(env,tenant,url){
       unavailableMetrics:["estimado","homologado","economia"],
       periodScope:"historical",
       periodFilterApplied:false,
-      unsupportedFilters:ignoredPeriodFilters,
-      note:"Histórico completo importado: filtros de período/exercício não aplicados. Valores financeiros aguardam validação de campos."
+      unsupportedFilters:ignoredFilters,
+      note:"Histórico completo importado: filtros solicitados não são aplicados nesta visão. Valores financeiros aguardam validação de campos."
     })
   };
 }
