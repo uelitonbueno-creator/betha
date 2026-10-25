@@ -161,3 +161,39 @@ test('ingestion completion is not indicator validation',()=>{
  assert.match(sourceUI,/escapeHtml\(validationStatus.ingestion\)/);
  assert.match(sourceUI,/escapeHtml\(validationStatus.indicators\)/);
 });
+
+test('accounting monthly table uses only validated D1 summary months and obeys filters',async()=>{
+  const worker=fs.readFileSync('backend/worker.js','utf8');
+  const helperStart=worker.indexOf('function multiSystemMonthlyEntries(');
+  const helperEnd=worker.indexOf('function multiSystemRealMeta(',helperStart);
+  const start=worker.indexOf('async function buildAccountingDashboard(');
+  const end=worker.indexOf('async function buildProcurementDashboard(',start);
+  assert.ok(helperStart>=0&&helperEnd>helperStart&&start>=0&&end>start);
+  const fixtures={
+    empenhos:{resource:'empenhos',count:5,loadStatus:'complete',groups:{},monthly:{'2026-01':10,'2026-02':20,'2026-13':900,'bad-key':500,'2026-03':null,'2026-04':'7'}},
+    'movimentacoes-receitas':{resource:'movimentacoes-receitas',count:7,loadStatus:'complete'},
+    'movimentacoes-despesas':{resource:'movimentacoes-despesas',count:10,loadStatus:'complete'},
+    credores:{resource:'credores',count:3,loadStatus:'complete'}
+  };
+  const fn=vm.runInNewContext(worker.slice(helperStart,helperEnd)+'\n'+worker.slice(start,end)+'\n;buildAccountingDashboard',{
+    getMultiSystemSummary:async(_env,tenant,system,resource)=>{
+      assert.equal(tenant,'paulafreitas');assert.equal(system,'contabil');return fixtures[resource];
+    },
+    multiSystemSortedEntries:()=>[],
+    multiSystemRealMeta:(_system,_items,extra)=>extra,
+    buildAccountingSampleDashboard:()=>{throw Error('real data must not fall back to sample')}
+  });
+  const valid=await fn({}, {id:'paulafreitas',name:'Paula Freitas'},new URL('https://test.local/?periodo=ano&exercicio=2026'));
+  const table=valid.tables.find(item=>item.id==='contabil-empenhos-mensais-reais');
+  assert.ok(table);
+  assert.equal(table.totalRows,2);
+  assert.deepEqual(Array.from(table.rows,row=>row.values[0]),[10,20]);
+  assert.deepEqual(Array.from(valid.charts['execucao-mensal'].datasets[0].data),[10,20]);
+  assert.equal(valid.kpis.empenhado,30);
+  const otherYear=await fn({}, {id:'paulafreitas'},new URL('https://test.local/?periodo=ano&exercicio=2025'));
+  assert.equal(otherYear.kpis.empenhado,null);
+  assert.equal(otherYear.tables.some(item=>item.id==='contabil-empenhos-mensais-reais'),false);
+  const unsupported=await fn({}, {id:'paulafreitas'},new URL('https://test.local/?periodo=ano&exercicio=2026&unidade=123'));
+  assert.equal(unsupported.kpis.empenhado,null);
+  assert.equal(unsupported.tables.some(item=>item.id==='contabil-empenhos-mensais-reais'),false);
+});
