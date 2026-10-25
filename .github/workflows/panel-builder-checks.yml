@@ -15,6 +15,7 @@ on:
       - 'tests/real-procurement-chart.test.cjs'
       - 'tests/real-dashboard-error-state.test.cjs'
       - 'tests/persistent-sync-storage.test.cjs'
+      - 'tests/transient-sync-errors.test.cjs'
       - 'app.js'
       - 'panel-builder*.js'
       - 'panel-placements.js'
@@ -38,6 +39,7 @@ on:
       - 'tests/real-procurement-chart.test.cjs'
       - 'tests/real-dashboard-error-state.test.cjs'
       - 'tests/persistent-sync-storage.test.cjs'
+      - 'tests/transient-sync-errors.test.cjs'
       - 'app.js'
       - 'panel-builder*.js'
       - 'panel-placements.js'
@@ -81,6 +83,7 @@ jobs:
           node --test tests/real-procurement-chart.test.cjs
           node --test tests/real-dashboard-error-state.test.cjs
           node --test tests/persistent-sync-storage.test.cjs
+          node --test tests/transient-sync-errors.test.cjs
           node --test tests/payroll-projection.test.cjs
           node tests/panel-builder-core.test.cjs
           node tests/panel-builder-kpi.test.cjs
