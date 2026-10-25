@@ -2446,7 +2446,10 @@
     for (const chartDef of dashboardCharts()) {
       const chartData=charts[displayChartDefinition(chartDef).id];
       const hasData=chartData && Array.isArray(chartData.labels) && chartData.labels.length &&
-        Array.isArray(chartData.datasets) && chartData.datasets.some(ds=>Array.isArray(ds.data) && ds.data.some(v=>v!==null&&Number(v)!==0||chartDef.apiPanel&&v!==null));
+        Array.isArray(chartData.datasets) && chartData.datasets.some(ds=>Array.isArray(ds.data) &&
+          ds.data.some(v=>((typeof v==="number"&&Number.isFinite(v))||
+            (typeof v==="string"&&v.trim()!==""&&Number.isFinite(Number(v))))&&
+            (chartDef.apiPanel||Number(v)!==0)));
       if (hasData) renderChartData(chartDef,chartData);
       else renderChartEmptyState(chartDef,payload);
     }
