@@ -7027,8 +7027,9 @@ function multiSystemSortedEntries(values,limit=12){
 
 function multiSystemMonthlyEntries(summary,periodo,exercicio){
   const entries=Object.entries(summary?.monthly||{})
-    .filter(([key])=>/^\d{4}-\d{2}$/.test(String(key)))
-    .map(([key,value])=>[String(key),Number(value)||0])
+    .filter(([key,value])=>/^\d{4}-(0[1-9]|1[0-2])$/.test(String(key))&&
+      typeof value==="number"&&Number.isFinite(value))
+    .map(([key,value])=>[String(key),value])
     .sort((a,b)=>a[0].localeCompare(b[0]));
 
   if(periodo==="todos")return entries;
