@@ -117,7 +117,7 @@ test('payroll competence coverage flags future months and rejects invalid dates'
 
 test('real chart accepts legitimate zero but rejects null, undefined and NaN',()=>{
  const start=app.indexOf('      const hasData=chartData &&');
- const end=app.indexOf(';\\n      if (hasData)',start);
+ const end=app.indexOf(';\n      if (hasData)',start);
  assert.ok(start>=0&&end>start,'chart data detector exists');
  const expression=app.slice(start+'      const hasData='.length,end);
  const hasData=(data)=>Boolean(vm.runInNewContext(expression,{chartData:data,chartDef:{apiPanel:false}}));
