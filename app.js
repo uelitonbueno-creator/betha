@@ -433,6 +433,16 @@
     return source.startsWith("base:") ? "DADOS" : "BI";
   }
 
+  // Ingestion completeness is not proof that all dashboard indicators are valid.
+  function realSourceValidationStatus(meta={}) {
+    const sources=Array.isArray(meta.realSources)?meta.realSources:[];
+    const unavailable=Array.isArray(meta.unavailableMetrics)?[...new Set(meta.unavailableMetrics)]:[];
+    const ingestion=sources.length===0?"NÃO COMPROVADA":
+      sources.every(item=>item.status==="complete")?"CONCLUÍDA (ingestão)":"PARCIAL (ingestão)";
+    const indicators=unavailable.length?"PARCIAL ("+unavailable.length+" indisponíveis)":"NÃO COMPROVADA";
+    return {ingestion,indicators};
+  }
+
   function renderSourceProvenance(payload,view=currentView) {
     const def=dashboards[view]||{};
     const title=document.getElementById("sourceDisclosureTitle");
@@ -467,6 +477,7 @@
       const realSources=Array.isArray(payload?.meta?.realSources)?payload.meta.realSources:[];
       const historical=payload?.meta?.periodScope==="historical"&&payload?.meta?.periodFilterApplied===false;
       const ignoredFilters=Array.isArray(payload?.meta?.unsupportedFilters)?payload.meta.unsupportedFilters:[];
+      const validationStatus=realSourceValidationStatus(payload?.meta);
       if(title) title.textContent="Fontes reais desta visão";
       if(description) description.textContent=historical
         ? "Dados reais do histórico importado. Filtros selecionados não aplicados a esta visão."
@@ -475,6 +486,8 @@
           : "Dados carregados das APIs Betha, armazenados no BI Vella e consolidados em segundo plano.";
       summary.innerHTML=[
         '<span class="source-chip"><strong>BETHA</strong> · '+escapeHtml(activeSystem?.name||currentSystemId)+'</span>',
+        '<span class="source-chip"><strong>CARGA</strong> · '+escapeHtml(validationStatus.ingestion)+'</span>',
+        '<span class="source-chip"><strong>INDICADORES</strong> · '+escapeHtml(validationStatus.indicators)+'</span>',
         historical?'<span class="source-chip"><strong>PERÍODO</strong> · HISTÓRICO COMPLETO — filtro não aplicado</span>':"",
         ignoredFilters.length?'<span class="source-chip"><strong>FILTROS IGNORADOS</strong> · '+escapeHtml(ignoredFilters.join(", "))+'</span>':"",
         ...realSources.map(item=>
