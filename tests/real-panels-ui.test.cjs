@@ -113,3 +113,32 @@ test('payroll competence coverage flags future months and rejects invalid dates'
  assert.equal(evaluate('2026-13'),false);
  assert.equal(evaluate('invalid'),false);
 });
+
+
+test('real chart accepts legitimate zero but rejects null, undefined and NaN',()=>{
+ const start=app.indexOf('      const hasData=chartData &&');
+ const end=app.indexOf(';\\n      if (hasData)',start);
+ assert.ok(start>=0&&end>start,'chart data detector exists');
+ const expression=app.slice(start+'      const hasData='.length,end);
+ const hasData=(data)=>Boolean(vm.runInNewContext(expression,{chartData:data,chartDef:{apiPanel:false}}));
+ for(const value of [0,'0',12.5])assert.equal(hasData({labels:['Jan'],datasets:[{data:[value]}]}),true);
+ for(const value of [null,undefined,NaN,Infinity,'', '   ',false])assert.equal(hasData({labels:['Jan'],datasets:[{data:[value]}]}),false);
+});
+
+test('real dashboard refresh errors take precedence over missing indicators',()=>{
+ const start=app.indexOf('  function renderChartEmptyState(');
+ const end=app.indexOf('  function summaryCellDisplay(',start);
+ assert.ok(start>=0&&end>start,'chart empty state renderer exists');
+ const strong={textContent:''},span={textContent:''};
+ const empty={hidden:true,querySelector:selector=>selector==='strong'?strong:span};
+ const card={querySelector:()=>empty};
+ const context={document:{querySelector:()=>card},cssEscape:x=>x,
+   chartSourceState:()=>({kind:'loaded',detail:'loaded'}),displayChartDefinition:x=>x,
+   friendlySourceErrorDetail:()=> 'HTTP 500',hasRecentLoadActivity:()=>false};
+ const render=vm.runInNewContext(app.slice(start,end)+';renderChartEmptyState',context);
+ render({id:'receita-mensal',source:'contabil',apiPanel:false},{meta:{realData:true,refreshError:'HTTP 500'},charts:{}});
+ assert.equal(strong.textContent,'Resumo não atualizado');
+ assert.equal(span.textContent,'HTTP 500');
+ render({id:'receita-mensal',source:'contabil',apiPanel:false},{meta:{realData:true},charts:{}});
+ assert.equal(strong.textContent,'Indisponível — aguardando validação');
+});
