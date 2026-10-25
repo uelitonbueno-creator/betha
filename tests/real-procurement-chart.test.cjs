@@ -133,3 +133,34 @@ test('accounting ignores no unsupported dimensions silently',async()=>{
  assert.equal((await fn({},{id:'paulafreitas'},new URL('https://example.test/?exercicio=2027'))).kpis.empenhado,null);
  assert.ok(fs.readFileSync('app.js','utf8').includes('const ignoredFilters=Array.isArray(payload?.meta?.unsupportedFilters)'));
 });
+
+test('group chart helper preserves true zero and rejects unknown amounts',()=>{
+ const start=worker.indexOf('function multiSystemSortedEntries(');
+ const end=worker.indexOf('function multiSystemMonthlyEntries(',start);
+ assert.ok(start>=0&&end>start);
+ const sorted=vm.runInNewContext(worker.slice(start,end)+';multiSystemSortedEntries');
+ const values=sorted({HOMOLOGADO:2,ZERO:0,UNKNOWN:null,BAD:'5',INVALID:NaN});
+ assert.deepEqual(Array.from(values,([key,value])=>[key,value]),[['HOMOLOGADO',2],['ZERO',0]]);
+});
+
+test('procurement marks legacy non-date monthly keys unavailable without mutating source data',async()=>{
+ const start=worker.indexOf('async function buildProcurementDashboard(');
+ const end=worker.indexOf('async function buildAccountingSampleDashboard(',start);
+ const monthly={'AQUISICAO DE PNEUS':1,'OUTRO OBJETO':2};
+ const summaries={
+  'processos-administrativos':{resource:'processos-administrativos',count:3,loaded:3,loadStatus:'complete',groups:{HOMOLOGADO:3},monthly},
+  fornecedores:{resource:'fornecedores',count:1,loaded:1,loadStatus:'complete'}
+ };
+ const fn=vm.runInNewContext(worker.slice(start,end)+';buildProcurementDashboard',{
+  getMultiSystemSummary:async(_env,_tenant,_system,resource)=>summaries[resource],
+  buildProcurementSampleDashboard:()=>{throw Error('sample fallback forbidden')},
+  multiSystemSortedEntries:values=>Object.entries(values||{}),
+  multiSystemRealMeta:(_system,_items,extra)=>extra
+ });
+ const result=await fn({}, {id:'paulafreitas'},new URL('https://example.test/?exercicio=2026'));
+ assert.equal(result.meta.monthlySeriesStatus,'unavailable-invalid-month-keys');
+ assert.equal(result.meta.invalidMonthlyKeyCount,2);
+ assert.equal(result.charts['compras-situacao'].datasets[0].data[0],3);
+ assert.equal(Object.keys(monthly).length,2);
+ for(const key of ['estimado','homologado','economia'])assert.equal(result.kpis[key],null);
+});
