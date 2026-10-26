@@ -280,10 +280,10 @@ test('D1 summary lookup isolates tenant in both summary and load status join',as
   'agudosdosul:compras:processos-administrativos':{summary_json:JSON.stringify({count:3,resource:'processos-administrativos'}),status:'error',loaded:0,pages:0,http_status:403,error:'BETHA_HTTP_403'}
  };
  const env={AUTH_DB:{prepare(sql){
-  assert.match(sql,/s\\.tenant_id=\\?1/);
-  assert.match(sql,/l\\.tenant_id=s\\.tenant_id/);
-  assert.match(sql,/l\\.system=s\\.system/);
-  assert.match(sql,/l\\.resource=s\\.resource/);
+  assert.match(sql,/s\.tenant_id=\?1/);
+  assert.match(sql,/l\.tenant_id=s\.tenant_id/);
+  assert.match(sql,/l\.system=s\.system/);
+  assert.match(sql,/l\.resource=s\.resource/);
   return {bind(tenant,system,resource){return {first:async()=>rows[tenant+':'+system+':'+resource]||null};}};
  }}};
  const paula=await fn(env,'paulafreitas','compras','processos-administrativos');
