@@ -295,3 +295,51 @@ test('D1 summary lookup isolates tenant in both summary and load status join',as
  assert.equal(agudos.httpStatus,403);
  assert.equal(await fn(env,'terceiro','compras','processos-administrativos'),null);
 });
+
+
+test('missing or malformed D1 summary preserves real source coverage and never uses synthetic sample',async()=>{
+ const start=worker.indexOf('async function getMultiSystemSummary(');
+ const end=worker.indexOf('function multiSystemResourcePrefix(',start);
+ assert.ok(start>=0&&end>start);
+ const getter=vm.runInNewContext(worker.slice(start,end)+';getMultiSystemSummary',{
+  emptyMultiSystemSummary:(system,resource)=>({system,resource,count:0,monthly:{},groups:{},secondaryGroups:{}}),
+  parseMultiSystemFieldProfile:()=>({selected:['id'],discoveryDone:false})
+ });
+ for(const raw of [null,'{malformed']){
+  const env={AUTH_DB:{prepare(sql){
+   return {bind(tenant,system,resource){
+    assert.equal(tenant,'paulafreitas');
+    assert.equal(system,'compras');
+    assert.equal(resource,'processos-administrativos');
+    return {first:async()=>sql.includes('FROM bi_multisystem_summaries')?(raw?{summary_json:raw}:null):{status:'complete',loaded:2373,pages:24,updated_at:'2026-10-09'}};
+   }};
+  }}};
+  const actual=await getter(env,'paulafreitas','compras','processos-administrativos');
+  assert.equal(actual.count,2373);
+  assert.equal(actual.loaded,2373);
+  assert.equal(actual.summaryMissing,true);
+  assert.equal(actual.loadStatus,'complete');
+  const metaStart=worker.indexOf('function multiSystemRealMeta(');
+  const metaEnd=worker.indexOf('async function buildAccountingDashboard(',metaStart);
+  const metadata=vm.runInNewContext(worker.slice(metaStart,metaEnd)+';multiSystemRealMeta',{
+   MULTISYSTEM_BOOTSTRAP_SOURCES:{compras:[{resource:'processos-administrativos'},{resource:'fornecedores'}]}
+  });
+  const state=metadata('compras',[actual,{resource:'fornecedores',count:9500,loaded:9500,loadStatus:'complete'}]);
+  assert.equal(state.dataMode,'real-partial');
+  assert.deepEqual(Array.from(state.sourceAudit.compras.missingSummaries),['processos-administrativos']);
+  assert.equal(state.realSources[0].summaryAvailable,false);
+  const builderStart=worker.indexOf('async function buildProcurementDashboard(');
+  const builderEnd=worker.indexOf('async function buildAccountingSampleDashboard(',builderStart);
+  const builder=vm.runInNewContext(worker.slice(builderStart,builderEnd)+';buildProcurementDashboard',{
+   getMultiSystemSummary:async(_env,_tenant,_system,resource)=>resource==='processos-administrativos'?actual:null,
+   buildProcurementSampleDashboard:()=>{throw Error('synthetic sample forbidden when real load exists')},
+   multiSystemSortedEntries:values=>Object.entries(values||{}),
+   multiSystemRealMeta:metadata
+  });
+  const payload=await builder({}, {id:'paulafreitas',name:'Paula Freitas'},new URL('https://example.test/?exercicio=2026'));
+  assert.equal(payload.kpis.processos,2373);
+  assert.equal(payload.kpis.estimado,null);
+  assert.equal(payload.meta.dataMode,'real-partial');
+  assert.deepEqual(Array.from(payload.charts['compras-fontes'].datasets[0].data),[2373]);
+ }
+});
