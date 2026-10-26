@@ -191,3 +191,35 @@ test('real procurement shows independently counted source coverage and exportabl
  const catalog=fs.readFileSync('system-catalog.js','utf8');
  assert.ok(catalog.includes('ch("compras-fontes","Registros importados por fonte","bar"'));
 });
+
+
+test('source completeness requires every configured resource, not just completed summaries',()=>{
+ const start=worker.indexOf('function multiSystemRealMeta(');
+ const end=worker.indexOf('async function buildAccountingDashboard(',start);
+ assert.ok(start>=0&&end>start);
+ const configured={
+  contabil:[{resource:'empenhos'},{resource:'movimentacoes-receitas'},{resource:'movimentacoes-despesas'},{resource:'credores'}],
+  compras:[{resource:'processos-administrativos'},{resource:'fornecedores'}],
+  folha:[{resource:'matriculas'},{resource:'funcionarios-cargos'},{resource:'remuneracoes'}]
+ };
+ const fn=vm.runInNewContext(worker.slice(start,end)+';multiSystemRealMeta',{MULTISYSTEM_BOOTSTRAP_SOURCES:configured});
+ const partial=fn('contabil',[{resource:'empenhos',loaded:10,count:10,loadStatus:'complete',fieldsProfile:{selected:['id','valor']}}]);
+ assert.equal(partial.sourceAudit.contabil.complete,false);
+ assert.equal(partial.dataMode,'real-partial');
+ assert.deepEqual(Array.from(partial.sourceAudit.contabil.missingResources),['movimentacoes-receitas','movimentacoes-despesas','credores']);
+ assert.deepEqual(Array.from(partial.realSources.filter(item=>item.status==='missing').map(item=>item.resource)),['movimentacoes-receitas','movimentacoes-despesas','credores']);
+ assert.equal(partial.sourceAudit.contabil.fieldCoverageVerified,false);
+ const complete=fn('compras',[
+  {resource:'processos-administrativos',loaded:2373,loadStatus:'complete'},
+  {resource:'fornecedores',loaded:9500,loadStatus:'complete'}
+ ]);
+ assert.equal(complete.sourceAudit.compras.complete,true);
+ assert.equal(complete.dataMode,'real');
+ assert.equal(complete.realSources.filter(item=>item.status==='missing').length,0);
+ const failed=fn('folha',[
+  {resource:'matriculas',loaded:1634,loadStatus:'complete'},
+  {resource:'funcionarios-cargos',loaded:1032,loadStatus:'error'},
+  {resource:'remuneracoes',loaded:98904,loadStatus:'complete'}
+ ]);
+ assert.equal(failed.sourceAudit.folha.complete,false);
+});
