@@ -219,3 +219,33 @@ test('real accounting coverage, monthly series and creditor tables remain visibl
   assert.deepEqual(Array.from(exported,row=>row.item),tables.map(t=>t.title));
   assert.ok(exported.every(row=>row.fonte==='BETHA · contabil'));
 });
+
+
+test('unavailable real charts explain the missing aggregation without invented values',()=>{
+ const worker=fs.readFileSync('backend/worker.js','utf8');
+ const accounting=worker.slice(worker.indexOf('async function buildAccountingDashboard('),worker.indexOf('async function buildProcurementDashboard('));
+ const procurement=worker.slice(worker.indexOf('async function buildProcurementDashboard('),worker.indexOf('async function buildAccountingSampleDashboard('));
+ const payroll=worker.slice(worker.indexOf('async function buildPayrollDashboard('),worker.indexOf('async function buildPayrollSampleDashboard('));
+ for(const [body,ids] of [[accounting,['despesa-funcao','receita-mensal']],[procurement,['compras-mensal','compras-modalidade','compras-secretaria']],[payroll,['folha-secretaria','folha-vinculo']]]){
+   assert.match(body,/chartUnavailableReasons:\\{/);
+   for(const id of ids)assert.ok(body.includes('"'+id+'":'),'missing reason for '+id);
+ }
+ const start=app.indexOf('  function renderChartEmptyState(');
+ const end=app.indexOf('  function summaryCellDisplay(',start);
+ const title={textContent:''},detail={textContent:''};
+ const empty={hidden:true,querySelector:key=>key==='strong'?title:detail};
+ const render=vm.runInNewContext(app.slice(start,end)+';renderChartEmptyState',{
+   document:{querySelector:()=>({querySelector:()=>empty})},
+   cssEscape:x=>x,chartSourceState:()=>({kind:'loaded',detail:''}),
+   displayChartDefinition:x=>x,hasRecentLoadActivity:()=>false,
+   friendlySourceErrorDetail:x=>x
+ });
+ const message='Resumo D1 sem agregação mensal validada.';
+ render({id:'receita-mensal',source:'contabil',apiPanel:false},{
+   meta:{realData:true,chartUnavailableReasons:{'receita-mensal':message}},
+   charts:{}
+ });
+ assert.equal(title.textContent,'Indisponível — aguardando validação');
+ assert.equal(detail.textContent,message);
+ assert.equal(empty.hidden,false);
+});
