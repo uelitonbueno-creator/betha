@@ -6370,17 +6370,21 @@ function multiSystemMapAdd(target,key,amount=1,maxKeys=160){
 }
 
 function multiSystemMonthKey(value){
-  if(!value)return null;
-  const text=String(value);
-  const direct=text.match(/^(\d{4})-(\d{2})/);
-  if(direct)return direct[1]+"-"+direct[2];
-  const br=text.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-  if(br)return br[3]+"-"+br[2];
+  if(value===null||value===undefined||value==="")return null;
+  const text=String(value).trim();
+  const iso=text.match(/^(\d{4})-(\d{2})(?:-(\d{2})(?:[T\s].*)?)?$/);
+  const br=text.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s.*)?$/);
+  if(iso||br){
+    const year=Number(iso?iso[1]:br[3]);
+    const month=Number(iso?iso[2]:br[2]);
+    const day=iso?Number(iso[3]||1):Number(br[1]);
+    if(year<1000||month<1||month>12||day<1||day>new Date(Date.UTC(year,month,0)).getUTCDate())return null;
+    return String(year)+"-"+String(month).padStart(2,"0");
+  }
   const date=new Date(text);
   if(Number.isNaN(date.getTime()))return null;
-  return date.getFullYear()+"-"+String(date.getMonth()+1).padStart(2,"0");
+  return date.getUTCFullYear()+"-"+String(date.getUTCMonth()+1).padStart(2,"0");
 }
-
 function emptyMultiSystemSummary(system,resource){
   return {
     version:1,
