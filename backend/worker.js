@@ -6463,19 +6463,40 @@ async function getMultiSystemSummary(env,tenantId,system,resource){
   const row=await env.AUTH_DB.prepare(
     "SELECT s.summary_json,s.updated_at,l.status,l.loaded,l.pages,l.http_status,l.error,l.fields_json FROM bi_multisystem_summaries s LEFT JOIN bi_multisystem_loads l ON l.tenant_id=s.tenant_id AND l.system=s.system AND l.resource=s.resource WHERE s.tenant_id=?1 AND s.system=?2 AND s.resource=?3 LIMIT 1"
   ).bind(String(tenantId),system,resource).first();
-  if(!row)return null;
-  try{
-    const summary=JSON.parse(String(row.summary_json||"null"));
-    return summary&&typeof summary==="object"?{
-      ...summary,
-      loadStatus:row.status||null,
-      loaded:Number(row.loaded)||0,
-      pages:Number(row.pages)||0,
-      httpStatus:row.http_status||null,
-      error:row.error||null,
-      fieldsProfile:parseMultiSystemFieldProfile(row.fields_json)
-    }:null;
-  }catch{return null;}
+  if(row){
+    try{
+      const summary=JSON.parse(String(row.summary_json||"null"));
+      if(summary&&typeof summary==="object"&&!Array.isArray(summary)){
+        return {
+          ...summary,
+          loadStatus:row.status||null,
+          loaded:Number(row.loaded)||0,
+          pages:Number(row.pages)||0,
+          httpStatus:row.http_status||null,
+          error:row.error||null,
+          fieldsProfile:parseMultiSystemFieldProfile(row.fields_json)
+        };
+      }
+    }catch{}
+  }
+  // Missing or malformed aggregate does not erase a real ingestion checkpoint.
+  // Show read-only source coverage instead of replacing real data with a sample.
+  const load=await env.AUTH_DB.prepare(
+    "SELECT status,loaded,pages,http_status,error,fields_json,updated_at FROM bi_multisystem_loads WHERE tenant_id=?1 AND system=?2 AND resource=?3 LIMIT 1"
+  ).bind(String(tenantId),system,resource).first();
+  if(!load||!(Number(load.loaded)>0))return null;
+  return {
+    ...emptyMultiSystemSummary(system,resource),
+    count:Number(load.loaded),
+    loaded:Number(load.loaded),
+    pages:Number(load.pages)||0,
+    loadStatus:load.status||"partial",
+    httpStatus:load.http_status||null,
+    error:load.error||null,
+    fieldsProfile:parseMultiSystemFieldProfile(load.fields_json),
+    updatedAt:load.updated_at||null,
+    summaryMissing:true
+  };
 }
 
 function multiSystemResourcePrefix(tenantId,system,resource){
@@ -7069,9 +7090,11 @@ function multiSystemRealMeta(system,summaries,extra={}){
   const expectedResources=(typeof MULTISYSTEM_BOOTSTRAP_SOURCES!=="undefined"&&Array.isArray(MULTISYSTEM_BOOTSTRAP_SOURCES[system]))
     ?MULTISYSTEM_BOOTSTRAP_SOURCES[system].map(source=>String(source.resource)):[];
   const missingResources=expectedResources.filter(resource=>!list.some(item=>item.resource===resource));
-  const complete=expectedResources.length>0
+  const missingSummaries=list.filter(item=>item.summaryMissing===true).map(item=>item.resource);
+  const completeWithoutSummaryCheck=expectedResources.length>0
     ?expectedResources.every(resource=>list.some(item=>item.resource===resource&&item.loadStatus==="complete"))
     :list.length>0&&list.every(item=>item.loadStatus==="complete");
+  const complete=completeWithoutSummaryCheck&&!missingSummaries.length;
   const errors=list.filter(item=>item.error).map(item=>({source:item.resource,error:item.error}));
   const updatedAt=list.map(item=>item.updatedAt).filter(Boolean).sort().at(-1)||new Date().toISOString();
   return {
@@ -7080,7 +7103,7 @@ function multiSystemRealMeta(system,summaries,extra={}){
     sampleMode:false,
     generatedAt:updatedAt,
     updatedAt,
-    warning:complete?null:errors.length?"DADOS REAIS DA BETHA · fontes com falha de ingestão.":missingResources.length?"DADOS REAIS DA BETHA · fontes obrigatórias ausentes.":"DADOS REAIS DA BETHA · carga incremental em andamento.",
+    warning:complete?null:errors.length?"DADOS REAIS DA BETHA · fontes com falha de ingestão.":missingResources.length?"DADOS REAIS DA BETHA · fontes obrigatórias ausentes.":missingSummaries.length?"DADOS REAIS DA BETHA · resumo agregado ausente; contagens reais preservadas, indicadores aguardam validação.":"DADOS REAIS DA BETHA · carga incremental em andamento.",
     sourceRows:{[system]:loaded},
     sourceTotals:{[system]:loaded},
     sourceAudit:{
@@ -7089,6 +7112,7 @@ function multiSystemRealMeta(system,summaries,extra={}){
         reportedTotal:null,
         complete,
         missingResources,
+        missingSummaries,
         fieldCoverageVerified:false,
         pages,
         error:errors.length?errors.map(item=>item.error).join("; "):null,
@@ -7102,6 +7126,7 @@ function multiSystemRealMeta(system,summaries,extra={}){
       loaded:Number(item.loaded)||0,
       pages:Number(item.pages)||0,
       status:item.loadStatus||"partial",
+      summaryAvailable:item.summaryMissing!==true,
       fields:item.fieldsProfile?.selected||[]
     })),...missingResources.map(resource=>({resource,loaded:0,pages:0,status:"missing",fields:[]}))],
     ...extra
