@@ -2275,6 +2275,9 @@
     if(payload?.meta?.refreshError&&!hasSeries){
       title.textContent="Resumo não atualizado";
       detail.textContent=friendlySourceErrorDetail(payload.meta.refreshError);
+    } else if(payload?.meta?.chartUnavailableReasons?.[chartDef.id]&&!hasSeries){
+      title.textContent="Indisponível — aguardando validação";
+      detail.textContent=String(payload.meta.chartUnavailableReasons[chartDef.id]);
     } else if(payload?.meta?.realData===true&&!data){
       title.textContent="Indisponível — aguardando validação";
       detail.textContent=payload?.meta?.note||"A fonte foi importada, mas os campos necessários para este indicador ainda não foram validados.";
