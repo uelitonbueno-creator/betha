@@ -7062,7 +7062,12 @@ function multiSystemRealMeta(system,summaries,extra={}){
   const list=(summaries||[]).filter(Boolean);
   const loaded=list.reduce((sum,item)=>sum+(Number(item.loaded)||Number(item.count)||0),0);
   const pages=list.reduce((sum,item)=>sum+(Number(item.pages)||0),0);
-  const complete=list.length>0&&list.every(item=>item.loadStatus==="complete");
+  const expectedResources=(typeof MULTISYSTEM_BOOTSTRAP_SOURCES!=="undefined"&&Array.isArray(MULTISYSTEM_BOOTSTRAP_SOURCES[system]))
+    ?MULTISYSTEM_BOOTSTRAP_SOURCES[system].map(source=>String(source.resource)):[];
+  const missingResources=expectedResources.filter(resource=>!list.some(item=>item.resource===resource));
+  const complete=expectedResources.length>0
+    ?expectedResources.every(resource=>list.some(item=>item.resource===resource&&item.loadStatus==="complete"))
+    :list.length>0&&list.every(item=>item.loadStatus==="complete");
   const errors=list.filter(item=>item.error).map(item=>({source:item.resource,error:item.error}));
   const updatedAt=list.map(item=>item.updatedAt).filter(Boolean).sort().at(-1)||new Date().toISOString();
   return {
@@ -7079,6 +7084,8 @@ function multiSystemRealMeta(system,summaries,extra={}){
         loaded,
         reportedTotal:null,
         complete,
+        missingResources,
+        fieldCoverageVerified:false,
         pages,
         error:errors.length?errors.map(item=>item.error).join("; "):null,
         errorStatus:null,
@@ -7086,13 +7093,13 @@ function multiSystemRealMeta(system,summaries,extra={}){
       }
     },
     warnings:errors,
-    realSources:list.map(item=>({
+    realSources:[...list.map(item=>({
       resource:item.resource,
       loaded:Number(item.loaded)||0,
       pages:Number(item.pages)||0,
       status:item.loadStatus||"partial",
       fields:item.fieldsProfile?.selected||[]
-    })),
+    })),...missingResources.map(resource=>({resource,loaded:0,pages:0,status:"missing",fields:[]}))],
     ...extra
   };
 }
