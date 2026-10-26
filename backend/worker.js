@@ -7165,6 +7165,10 @@ async function buildAccountingDashboard(env,tenant,url){
       periodFilterApplied:unsupportedFilters.length===0,
       unsupportedFilters,
       unavailableMetrics:["liquidado","pago","arrecadado",...(unsupportedFilters.length?["empenhado"]:[])],
+      chartUnavailableReasons:{
+        "despesa-funcao":"As movimentações de despesas foram importadas, mas não existe agregação validada por função no resumo D1. A contagem de registros não comprova os valores por função.",
+        "receita-mensal":"A fonte de movimentações de receitas foi importada, porém o agregador persistido não produz série mensal de valorArrecadado/dataMovimentacao. Não é seguro inferir a receita a partir das contagens."
+      },
       note:unsupportedFilters.length
         ?"Filtros adicionais não suportados: empenhado e execução mensal indisponíveis para evitar resultados sem o recorte solicitado. Credores e contagens são históricos."
         :inProgress
@@ -7223,6 +7227,11 @@ async function buildProcurementDashboard(env,tenant,url){
       unsupportedFilters:ignoredFilters,
       monthlySeriesStatus:validMonthlyKeys.length?"available":invalidMonthlyKeys?"unavailable-invalid-month-keys":"unavailable-no-validated-dates",
       invalidMonthlyKeyCount:invalidMonthlyKeys,
+      chartUnavailableReasons:{
+        "compras-mensal":invalidMonthlyKeys?"O resumo contém "+invalidMonthlyKeys+" chaves que não são competências válidas; valores estimados e homologados não foram validados.":"Não há série mensal financeira validada para os processos importados.",
+        "compras-modalidade":"A origem possui formaContratacao, mas o resumo persistido não possui classificação por modalidade validada. Não equiparar os dois campos sem conferência.",
+        "compras-secretaria":"Não existem valores homologados e agrupamento por secretaria validados no resumo D1."
+      },
       note:"Histórico completo importado: filtros solicitados não são aplicados nesta visão. Valores financeiros aguardam validação de campos."+ (invalidMonthlyKeys?" Série mensal indisponível: "+invalidMonthlyKeys+" chaves legadas não representam competências válidas.":"")
     })
   };
@@ -7384,6 +7393,10 @@ async function buildPayrollDashboard(env,tenant,url) {
       warning:consolidation.complete?null:"CONSOLIDAÇÃO FINANCEIRA PARCIAL — valores restritos às remunerações já processadas.",
       financialConsolidation:consolidation,
       competenceCoverage,
+      chartUnavailableReasons:{
+        "folha-secretaria":"As remunerações foram consolidadas por competência, mas não existe associação validada de valores às secretarias/organogramas.",
+        "folha-vinculo":"As matrículas foram importadas, mas não existe contagem deduplicada e validada de servidores por vínculo."
+      },
       unavailableMetrics:["servidores","encargos","ativos","afastados",...(!ready||finance.gross===null?["bruto"]:[]),...(!ready||finance.net===null?["liquido"]:[]),...(!ready||finance.discount===null?["descontos"]:[])],
       note:"Soma das remunerações importadas por competência, incluindo todos os processamentos; não equivale à folha oficial. "+(consolidation.complete?"Consolidação do arquivo concluída.":"CONSOLIDAÇÃO PARCIAL: "+consolidation.rowsProcessed+" registros processados.")+" Servidores únicos e encargos permanecem indisponíveis."
     })
