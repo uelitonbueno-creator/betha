@@ -223,3 +223,20 @@ test('source completeness requires every configured resource, not just completed
  ]);
  assert.equal(failed.sourceAudit.folha.complete,false);
 });
+
+test('month keys reject impossible dates without changing valid historical competencies',()=>{
+ const start=worker.indexOf('function multiSystemMonthKey(');
+ const end=worker.indexOf('\nfunction emptyMultiSystemSummary(',start);
+ assert.ok(start>=0&&end>start);
+ const parse=vm.runInNewContext(worker.slice(start,end)+';multiSystemMonthKey');
+ const valid=[
+  ['2026-10-20','2026-10'],
+  ['2026-10-20T23:59:00-03:00','2026-10'],
+  ['31/12/2025','2025-12'],
+  ['29/02/2024','2024-02'],
+  ['2026-10','2026-10']
+ ];
+ const invalid=['2026-13-01','2026-00-01','2026-02-30','29/02/2025','31/11/2026','PNEUS ESCOLARES'];
+ for(const [input,expected] of valid)assert.equal(parse(input),expected,input);
+ for(const input of invalid)assert.equal(parse(input),null,input);
+});
