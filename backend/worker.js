@@ -7080,7 +7080,7 @@ function multiSystemRealMeta(system,summaries,extra={}){
     sampleMode:false,
     generatedAt:updatedAt,
     updatedAt,
-    warning:complete?null:"DADOS REAIS DA BETHA · carga incremental em andamento.",
+    warning:complete?null:errors.length?"DADOS REAIS DA BETHA · fontes com falha de ingestão.":missingResources.length?"DADOS REAIS DA BETHA · fontes obrigatórias ausentes.":"DADOS REAIS DA BETHA · carga incremental em andamento.",
     sourceRows:{[system]:loaded},
     sourceTotals:{[system]:loaded},
     sourceAudit:{
