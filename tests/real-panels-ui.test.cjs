@@ -227,7 +227,7 @@ test('unavailable real charts explain the missing aggregation without invented v
  const procurement=worker.slice(worker.indexOf('async function buildProcurementDashboard('),worker.indexOf('async function buildAccountingSampleDashboard('));
  const payroll=worker.slice(worker.indexOf('async function buildPayrollDashboard('),worker.indexOf('async function buildPayrollSampleDashboard('));
  for(const [body,ids] of [[accounting,['despesa-funcao','receita-mensal']],[procurement,['compras-mensal','compras-modalidade','compras-secretaria']],[payroll,['folha-secretaria','folha-vinculo']]]){
-   assert.match(body,/chartUnavailableReasons:\\{/);
+   assert.ok(body.includes('chartUnavailableReasons:{'));
    for(const id of ids)assert.ok(body.includes('"'+id+'":'),'missing reason for '+id);
  }
  const start=app.indexOf('  function renderChartEmptyState(');
