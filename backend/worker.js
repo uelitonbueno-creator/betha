@@ -7188,12 +7188,32 @@ async function buildProcurementDashboard(env,tenant,url){
   const invalidMonthlyKeys=monthlyKeys.length-validMonthlyKeys.length;
   const ignoredFilters=[...new Set([...url.searchParams.keys()].filter(key=>key!=="tenant"))];
 
-  const charts={};
+  const sourceCoverage=[
+    {label:"Processos administrativos",count:Number(processSummary.count)},
+    ...(supplierSummary&&Number(supplierSummary.count)>0
+      ?[{label:"Fornecedores",count:Number(supplierSummary.count)}]
+      :[])
+  ];
+  const charts={
+    "compras-fontes":{
+      format:"number",
+      labels:sourceCoverage.map(item=>item.label),
+      datasets:[{label:"Registros importados por fonte (histórico)",data:sourceCoverage.map(item=>item.count)}]
+    }
+  };
   if(situations.length){
     charts["compras-situacao"]={format:"number",labels:situations.map(([label])=>label),datasets:[{label:"Processos (histórico importado)",data:situations.map(([,value])=>value)}]};
   }
 
-  const tables=situations.length?[{
+  const tables=[{
+    id:"compras-cobertura-real",
+    title:"Cobertura real por fonte",
+    subtitle:"Contagens históricas de fontes distintas; não representam valores financeiros e não aplicam filtro de exercício.",
+    groupLabel:"Fonte",
+    columns:[{id:"registros",label:"Registros importados",format:"number"}],
+    rows:sourceCoverage.map(item=>({label:item.label,values:[item.count]})),
+    totalRows:sourceCoverage.length
+  },...(situations.length?[{
     id:"compras-situacao-real",
     title:"Processos por situação",
     subtitle:"Histórico completo importado; filtros solicitados não aplicados.",
@@ -7201,7 +7221,7 @@ async function buildProcurementDashboard(env,tenant,url){
     columns:[{id:"processos",label:"Processos",format:"number"}],
     rows:situations.map(([label,value])=>({label,values:[value]})),
     totalRows:situations.length
-  }]:[];
+  }]:[])];
 
   return {
     view:"compras-visao-geral",
