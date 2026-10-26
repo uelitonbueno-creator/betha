@@ -240,3 +240,58 @@ test('month keys reject impossible dates without changing valid historical compe
  for(const [input,expected] of valid)assert.equal(parse(input),expected,input);
  for(const input of invalid)assert.equal(parse(input),null,input);
 });
+
+
+test('real coverage distinguishes missing resources, failed sources and active ingestion',()=>{
+ const start=worker.indexOf('function multiSystemRealMeta(');
+ const end=worker.indexOf('async function buildAccountingDashboard(',start);
+ assert.ok(start>=0&&end>start);
+ const configured={compras:[{resource:'processos-administrativos'},{resource:'fornecedores'}]};
+ const meta=vm.runInNewContext(worker.slice(start,end)+';multiSystemRealMeta',{MULTISYSTEM_BOOTSTRAP_SOURCES:configured});
+ const missing=meta('compras',[{resource:'processos-administrativos',count:2,loaded:2,loadStatus:'complete'}]);
+ assert.match(missing.warning,/fontes obrigatórias ausentes/);
+ const failed=meta('compras',[
+  {resource:'processos-administrativos',count:2,loaded:2,loadStatus:'complete'},
+  {resource:'fornecedores',count:0,loaded:0,loadStatus:'error',error:'BETHA_HTTP_401'}
+ ]);
+ assert.match(failed.warning,/fontes com falha de ingestão/);
+ assert.equal(failed.sourceAudit.compras.complete,false);
+ const running=meta('compras',[
+  {resource:'processos-administrativos',count:2,loaded:2,loadStatus:'complete'},
+  {resource:'fornecedores',count:1,loaded:1,loadStatus:'running'}
+ ]);
+ assert.match(running.warning,/carga incremental em andamento/);
+ const complete=meta('compras',[
+  {resource:'processos-administrativos',count:2,loaded:2,loadStatus:'complete'},
+  {resource:'fornecedores',count:1,loaded:1,loadStatus:'complete'}
+ ]);
+ assert.equal(complete.warning,null);
+});
+
+test('D1 summary lookup isolates tenant in both summary and load status join',async()=>{
+ const start=worker.indexOf('async function getMultiSystemSummary(');
+ const end=worker.indexOf('function multiSystemResourcePrefix(',start);
+ assert.ok(start>=0&&end>start);
+ const fn=vm.runInNewContext(worker.slice(start,end)+';getMultiSystemSummary',{
+  parseMultiSystemFieldProfile:()=>({selected:['id'],discoveryDone:false})
+ });
+ const rows={
+  'paulafreitas:compras:processos-administrativos':{summary_json:JSON.stringify({count:2373,resource:'processos-administrativos'}),status:'complete',loaded:2373,pages:24,http_status:200},
+  'agudosdosul:compras:processos-administrativos':{summary_json:JSON.stringify({count:3,resource:'processos-administrativos'}),status:'error',loaded:0,pages:0,http_status:403,error:'BETHA_HTTP_403'}
+ };
+ const env={AUTH_DB:{prepare(sql){
+  assert.match(sql,/s\\.tenant_id=\\?1/);
+  assert.match(sql,/l\\.tenant_id=s\\.tenant_id/);
+  assert.match(sql,/l\\.system=s\\.system/);
+  assert.match(sql,/l\\.resource=s\\.resource/);
+  return {bind(tenant,system,resource){return {first:async()=>rows[tenant+':'+system+':'+resource]||null};}};
+ }}};
+ const paula=await fn(env,'paulafreitas','compras','processos-administrativos');
+ const agudos=await fn(env,'agudosdosul','compras','processos-administrativos');
+ assert.equal(paula.count,2373);
+ assert.equal(paula.loadStatus,'complete');
+ assert.equal(paula.error,null);
+ assert.equal(agudos.loadStatus,'error');
+ assert.equal(agudos.httpStatus,403);
+ assert.equal(await fn(env,'terceiro','compras','processos-administrativos'),null);
+});
