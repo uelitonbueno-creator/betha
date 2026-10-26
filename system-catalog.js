@@ -170,6 +170,7 @@
     ],
     [
       ch("compras-situacao","Processos por situação (histórico importado)","doughnut",{group:"status",agg:"count",format:"number"},"Histórico importado; filtro de exercício indisponível até haver data confiável."),
+      ch("compras-fontes","Registros importados por fonte","bar",{group:"fonte",agg:"count",format:"number"},"Fontes distintas do histórico; não são partes de um mesmo total e não aplicam filtro de exercício."),
       ch("compras-mensal","Valores por mês","line",{group:"mes",fields:[{field:"valorEstimado",label:"Estimado"},{field:"valorHomologado",label:"Homologado"}],agg:"sum",format:"currency"}),
       ch("compras-modalidade","Processos por modalidade","doughnut",{group:"modalidade",agg:"count",format:"number"}),
       ch("compras-secretaria","Contratações por secretaria","bar",{group:"secretaria",field:"valorHomologado",agg:"sum",format:"currency"})
