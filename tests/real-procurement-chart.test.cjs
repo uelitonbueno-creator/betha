@@ -164,3 +164,30 @@ test('procurement marks legacy non-date monthly keys unavailable without mutatin
  assert.equal(Object.keys(monthly).length,2);
  for(const key of ['estimado','homologado','economia'])assert.equal(result.kpis[key],null);
 });
+
+test('real procurement shows independently counted source coverage and exportable table without invented amounts',async()=>{
+ const start=worker.indexOf('async function buildProcurementDashboard(');
+ const end=worker.indexOf('async function buildAccountingSampleDashboard(',start);
+ const summaries={
+  'processos-administrativos':{resource:'processos-administrativos',count:2373,loaded:2373,pages:24,loadStatus:'complete',groups:{HOMOLOGADO:2127,REVOGADO:246}},
+  fornecedores:{resource:'fornecedores',count:9500,loaded:9500,pages:95,loadStatus:'complete'}
+ };
+ const fn=vm.runInNewContext(worker.slice(start,end)+';buildProcurementDashboard',{
+  getMultiSystemSummary:async(_env,_tenant,_system,resource)=>summaries[resource],
+  buildProcurementSampleDashboard:()=>{throw Error('must use real data')},
+  multiSystemSortedEntries:values=>Object.entries(values||{}),
+  multiSystemRealMeta:(_system,_items,extra)=>extra
+ });
+ const result=await fn({}, {id:'paulafreitas'},new URL('https://example.test/?periodo=ano&exercicio=2026'));
+ assert.deepEqual(Array.from(result.charts['compras-fontes'].labels),['Processos administrativos','Fornecedores']);
+ assert.deepEqual(Array.from(result.charts['compras-fontes'].datasets[0].data),[2373,9500]);
+ const coverage=result.tables.find(table=>table.id==='compras-cobertura-real');
+ assert.ok(coverage);
+ assert.equal(coverage.rows.length,2);
+ assert.deepEqual(Array.from(coverage.rows.map(row=>row.values[0])),[2373,9500]);
+ assert.match(coverage.subtitle,/não aplicam filtro de exercício/);
+ assert.equal(result.meta.periodFilterApplied,false);
+ for(const metric of ['estimado','homologado','economia'])assert.equal(result.kpis[metric],null);
+ const catalog=fs.readFileSync('system-catalog.js','utf8');
+ assert.ok(catalog.includes('ch("compras-fontes","Registros importados por fonte","bar"'));
+});
