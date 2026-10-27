@@ -11029,9 +11029,14 @@ export default {
       try {
         const userToken=await getUserToken(request,env);
         if (!userToken) throw new Error("USER_TOKEN_REQUIRED");
+        // A locally decodable session is not proof that the upstream Betha
+        // token is still valid. This also avoids opening an empty dashboard
+        // with a revoked or expired account session.
+        const accesses=await getUserAccesses(userToken);
         return json(request,env,200,{
           ok:true,
-          sessionValid:true
+          sessionValid:true,
+          accessCount:Array.isArray(accesses)?accesses.length:0
         });
       } catch(error) {
         return errorResponse(request,env,error);
@@ -11339,23 +11344,6 @@ export default {
       } catch(error) {
         console.error("auth exchange",error);
         return json(request,env,500,{error:"AUTH_EXCHANGE_INTERNAL_ERROR"});
-      }
-    }
-
-    if (url.pathname==="/api/auth/session-check" && request.method==="GET") {
-      try {
-        const userToken=await getUserToken(request,env);
-        if (!userToken) throw new Error("USER_TOKEN_REQUIRED");
-
-        // Valida também se o token Betha continua aceito, sem retornar dados pessoais.
-        const accesses=await getUserAccesses(userToken);
-        return json(request,env,200,{
-          ok:true,
-          sessionValid:true,
-          accessCount:Array.isArray(accesses)?accesses.length:0
-        });
-      } catch(error) {
-        return errorResponse(request,env,error);
       }
     }
 
