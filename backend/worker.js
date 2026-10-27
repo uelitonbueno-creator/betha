@@ -6467,7 +6467,11 @@ async function getMultiSystemSummary(env,tenantId,system,resource){
   if(row){
     try{
       const summary=JSON.parse(String(row.summary_json||"null"));
-      if(summary&&typeof summary==="object"&&!Array.isArray(summary)){
+      // Only trust aggregated charts when the persisted summary matches its load checkpoint.
+      // An orphan or stale summary must never be presented as complete real data.
+      if(summary&&typeof summary==="object"&&!Array.isArray(summary)&&
+          row.status&&typeof row.loaded==="number"&&Number.isSafeInteger(row.loaded)&&row.loaded>=0&&
+          typeof summary.count==="number"&&Number.isSafeInteger(summary.count)&&summary.count===row.loaded){
         return {
           ...summary,
           loadStatus:row.status||null,
