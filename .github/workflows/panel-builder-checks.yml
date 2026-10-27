@@ -19,6 +19,8 @@ on:
       - 'app.js'
       - 'index.html'
       - 'tests/boot-readiness.test.cjs'
+      - 'auth/auth.js'
+      - 'tests/auth-handoff-timeout.test.cjs'
       - 'panel-builder*.js'
       - 'panel-placements.js'
       - 'tests/panel-builder-*.test.cjs'
@@ -45,6 +47,8 @@ on:
       - 'app.js'
       - 'index.html'
       - 'tests/boot-readiness.test.cjs'
+      - 'auth/auth.js'
+      - 'tests/auth-handoff-timeout.test.cjs'
       - 'panel-builder*.js'
       - 'panel-placements.js'
       - 'tests/panel-builder-*.test.cjs'
@@ -74,6 +78,7 @@ jobs:
           node --check backend/multisystem-recovery.mjs
           node --check backend/payroll-projection.mjs
           node --check app.js
+          node --check auth/auth.js
           node --check panel-builder-core.js
           node --check panel-builder-ui.js
           node --check panel-builder-samples.js
@@ -85,6 +90,7 @@ jobs:
           node --test tests/mcp-real-dashboard.test.cjs
           node --test tests/real-panels-ui.test.cjs
           node --test tests/boot-readiness.test.cjs
+          node --test tests/auth-handoff-timeout.test.cjs
           node --test tests/real-procurement-chart.test.cjs
           node --test tests/real-dashboard-error-state.test.cjs
           node --test tests/persistent-sync-storage.test.cjs
