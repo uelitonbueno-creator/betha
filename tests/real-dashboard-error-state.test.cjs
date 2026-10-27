@@ -138,3 +138,34 @@ test("real dashboard builders fail closed when D1 has no source instead of loadi
     );
   }
 });
+
+
+test("D1 summary must match its ingestion checkpoint before financial aggregates can be shown",async()=>{
+  const source=fs.readFileSync("backend/worker.js","utf8");
+  const start=source.indexOf("async function getMultiSystemSummary(");
+  const end=source.indexOf("function multiSystemResourcePrefix(",start);
+  assert.ok(start>=0&&end>start);
+  const fn=vm.runInNewContext(source.slice(start,end)+";getMultiSystemSummary",{
+    emptyMultiSystemSummary:(_system,resource)=>({resource,monthly:{},groups:{}}),
+    parseMultiSystemFieldProfile:()=>({selected:["id"]})
+  });
+  const load={status:"complete",loaded:3,pages:1,updated_at:"2026-10-27T07:00:00Z"};
+  const fakeDb=(summaryRow,checkpoint)=>({
+    prepare(sql){return {bind(){return {async first(){
+      return sql.includes("LEFT JOIN")?summaryRow:checkpoint;
+    }}}}}
+  });
+  const stale={summary_json:JSON.stringify({resource:"empenhos",count:2,monthly:{"2026-01":1000},groups:{x:2}}),...load};
+  const recovered=await fn({AUTH_DB:fakeDb(stale,load)},"paulafreitas","contabil","empenhos");
+  assert.equal(recovered.summaryMissing,true);
+  assert.equal(recovered.count,3);
+  assert.equal(recovered.loadStatus,"complete");
+  assert.equal(Object.keys(recovered.monthly).length,0);
+  assert.equal(Object.keys(recovered.groups).length,0);
+  const matching={...stale,summary_json:JSON.stringify({resource:"empenhos",count:3,monthly:{"2026-01":1000}})};
+  const real=await fn({AUTH_DB:fakeDb(matching,load)},"paulafreitas","contabil","empenhos");
+  assert.equal(real.summaryMissing,undefined);
+  assert.equal(real.monthly["2026-01"],1000);
+  const orphan=await fn({AUTH_DB:fakeDb({...matching,status:null,loaded:null},null)},"paulafreitas","contabil","empenhos");
+  assert.equal(orphan,null);
+});
