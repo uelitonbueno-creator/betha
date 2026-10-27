@@ -40,11 +40,13 @@ test("real multi-system dashboards never display synthetic sample banner",()=>{
   assert.ok(begin>=0,"executive summary renderer exists");
   const match=app.slice(begin,begin+4000).match(/const sampleMode=([^;]+);/);
   assert.ok(match,"executive summary contains data mode selection");
-  const mode=new Function("payload","dashboards","currentView","return ("+match[1]+");");
-  const dashboards={"folha-visao-geral":{localSample:{file:"data/samples/folha-100.json"}}};
-  for(const sampleMode of [false,true]){
-    assert.equal(mode({meta:{realData:true,sampleMode}},dashboards,"folha-visao-geral"),false);
+  const mode=new Function("payload","dashboards","currentView","currentSystemId","REAL_MULTI_SYSTEM_IDS","return ("+match[1]+");");
+  const realSystems=new Set(["contabil","compras","folha"]);
+  for(const [system,view] of [["contabil","contabil-visao-geral"],["compras","compras-visao-geral"],["folha","folha-visao-geral"]]){
+    const dashboards={[view]:{system,localSample:{file:"data/samples/"+system+"-100.json"}}};
+    for(const meta of [{realData:true,sampleMode:false},{realData:true,sampleMode:true},{sampleMode:true},{}]){
+      assert.equal(mode({meta},dashboards,view,system,realSystems),false,
+        system+": a real dashboard must never be classified as a sample");
+    }
   }
-  assert.equal(mode({meta:{sampleMode:true}},dashboards,"folha-visao-geral"),true);
-  assert.equal(mode({meta:{}},dashboards,"folha-visao-geral"),true);
 });
