@@ -249,3 +249,14 @@ test('unavailable real charts explain the missing aggregation without invented v
  assert.equal(detail.textContent,message);
  assert.equal(empty.hidden,false);
 });
+
+test('real system homes never switch to synthetic fallback after an API response',()=>{
+ const start=app.indexOf('  async function loadRealMultiSystemDashboard(');
+ const end=app.indexOf('  async function loadDashboardData(',start);
+ const body=app.slice(start,end);
+ assert.ok(start>=0&&end>start);
+ assert.doesNotMatch(body,/return loadLocalSampleDashboard\(view\)/);
+ assert.match(body,/payload\?\.meta\?\.realData!==true/);
+ assert.match(body,/markDashboardChartsUnavailable/);
+ assert.match(body,/Nenhuma amostra sintética foi exibida/);
+});
