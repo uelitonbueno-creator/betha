@@ -280,3 +280,30 @@ test("real dashboard refresh clears stale KPIs, charts, tables and CSV snapshot 
   assert.equal(attention.children.length,0);
   assert.deepEqual(executive.children,["primary chart card"],"primary chart must survive refresh");
 });
+
+
+test("fragmented dashboard aggregation never turns null or empty metrics into zero",()=>{
+  const source=fs.readFileSync("app.js","utf8");
+  const start=source.indexOf("  function mergeDashboardPart(");
+  const end=source.indexOf("  function ",start+12);
+  assert.ok(start>=0&&end>start,"dashboard merge helper exists");
+  const merge=vm.runInNewContext(source.slice(start,end)+";mergeDashboardPart");
+  const part=(kpis,data)=>({
+    kpis,charts:{monthly:{labels:["Jan","Fev","Mar","Abr"],datasets:[{label:"Valor",data}]}},
+    meta:{sourceRows:{},sourceTotals:{},sourceAudit:{}}
+  });
+  const target={};
+  merge(target,part({total:100,partial:10,validZero:0},[0,100,null,""]));
+  merge(target,part({total:null,partial:5,validZero:0},[0,null,5,7]));
+  merge(target,part({total:10,partial:3,validZero:0},[0,7,9,4]));
+  assert.equal(target.kpis.total,null,"a missing fragment must invalidate the total");
+  assert.equal(target.kpis.partial,18,"fully validated fragments still add");
+  assert.equal(target.kpis.validZero,0,"a validated zero must remain zero");
+  assert.deepEqual(Array.from(target.charts.monthly.datasets[0].data),[0,null,null,null],
+    "null, empty and missing values must not become synthetic zeros");
+  const another={};
+  merge(another,part({total:null},[null,0,1,2]));
+  merge(another,part({total:20},[5,0,3,4]));
+  assert.equal(another.kpis.total,null,"a later valid fragment cannot restore an invalid total");
+  assert.equal(another.charts.monthly.datasets[0].data[0],null);
+});
