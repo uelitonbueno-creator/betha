@@ -4412,7 +4412,11 @@
       if(typeof value==="boolean"||!Number.isFinite(Number(value)))return "—";
       return Number(value).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
     }
-    if(format==="number")return Number.isFinite(Number(value))?Number(value).toLocaleString("pt-BR",{maximumFractionDigits:6}):String(value);
+    if(format==="number"){
+      // A boolean is not a validated numeric detail (Number(false) would invent 0).
+      if(typeof value==="boolean")return "—";
+      return Number.isFinite(Number(value))?Number(value).toLocaleString("pt-BR",{maximumFractionDigits:6}):String(value);
+    }
     if(format==="boolean")return value===true?"Sim":value===false?"Não":String(value);
     if(format==="date"){
       const d=new Date(value);
