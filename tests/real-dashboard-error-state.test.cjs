@@ -343,11 +343,11 @@ test("KPI, chart drill-down and detailed currency preserve unavailable values",(
   const chartDef={title:"Empenhos mensais"};
   const make=data=>({labels:["Jan","Fev"],datasets:[{label:"Valor",data}],format:"currency"});
   const incomplete=chartSeriesTable(chartDef,make([100,null]));
-  assert.match(incomplete,/<tfoot>[\\s\\S]*?<th>—<\\/th>/,"incomplete total must be unavailable");
+  assert.match(incomplete,/<tfoot>[\s\S]*?<th>—<\/th>/,"incomplete total must be unavailable");
   assert.doesNotMatch(incomplete,/detail-percent/,"partial series must not imply validated percentages");
   const complete=chartSeriesTable(chartDef,make([100,0]));
-  assert.match(complete,/<tfoot>[\\s\\S]*?100,00/,"complete total must remain available");
+  assert.match(complete,/<tfoot>[\s\S]*?100,00/,"complete total must remain available");
   assert.match(complete,/detail-percent/,"complete series may show validated percentages");
   const short=chartSeriesTable(chartDef,make([100]));
-  assert.match(short,/<tfoot>[\\s\\S]*?<th>—<\\/th>/,"missing label must invalidate total");
+  assert.match(short,/<tfoot>[\s\S]*?<th>—<\/th>/,"missing label must invalidate total");
 });
