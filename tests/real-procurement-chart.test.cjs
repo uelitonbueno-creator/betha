@@ -299,8 +299,9 @@ test('D1 summary lookup isolates tenant in both summary and load status join',as
  assert.equal(paula.count,2373);
  assert.equal(paula.loadStatus,'complete');
  assert.equal(paula.error,null);
- assert.equal(agudos.loadStatus,'error');
- assert.equal(agudos.httpStatus,403);
+ // A stale summary (3) conflicts with a zero-row failed checkpoint (0):
+ // it must not expose another tenant's or unverified historical data.
+ assert.equal(agudos,null);
  assert.equal(await fn(env,'terceiro','compras','processos-administrativos'),null);
 });
 
