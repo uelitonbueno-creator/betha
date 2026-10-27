@@ -3131,11 +3131,25 @@
     target.meta.generatedAt = meta.generatedAt || target.meta.generatedAt;
     target.meta.warnings = [...(target.meta.warnings || []), ...(meta.warnings || [])];
 
-    for(const [key,value] of Object.entries(meta.sourceRows||{})){
-      target.meta.sourceRows[key]=(Number(target.meta.sourceRows[key])||0)+(Number(value)||0);
-    }
-    for(const [key,value] of Object.entries(meta.sourceTotals||{})){
-      target.meta.sourceTotals[key]=(Number(target.meta.sourceTotals[key])||0)+(Number(value)||0);
+    // Missing, blank, boolean and non-finite source metadata is unknown, never zero.
+    // This matters when several real API fragments are consolidated.
+    const fragmentNumber=value=>{
+      if(value===null||value===undefined||typeof value==="boolean"||
+         (typeof value==="string"&&!value.trim()))return null;
+      const parsed=Number(value);
+      return Number.isFinite(parsed)?parsed:null;
+    };
+    target.meta.sourceRows=target.meta.sourceRows||{};
+    target.meta.sourceTotals=target.meta.sourceTotals||{};
+    target.meta.sourceAudit=target.meta.sourceAudit||{};
+    for(const [field,values] of [["sourceRows",meta.sourceRows],["sourceTotals",meta.sourceTotals]]){
+      const destination=target.meta[field];
+      for(const [key,value] of Object.entries(values||{})){
+        const previous=Object.prototype.hasOwnProperty.call(destination,key)
+          ? fragmentNumber(destination[key]) : 0;
+        const incoming=fragmentNumber(value);
+        destination[key]=previous===null||incoming===null?null:previous+incoming;
+      }
     }
 
     for(const [key,audit] of Object.entries(meta.sourceAudit||{})){

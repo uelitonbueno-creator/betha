@@ -260,3 +260,36 @@ test('real system homes never switch to synthetic fallback after an API response
  assert.match(body,/markDashboardChartsUnavailable/);
  assert.match(body,/Nenhuma amostra sintética foi exibida/);
 });
+
+
+test('real fragment metadata never converts unknown source rows or totals to zero',()=>{
+ const start=app.indexOf('  function mergeDashboardPart(');
+ const end=app.indexOf('\n  function ',start+10);
+ assert.ok(start>=0&&end>start);
+ const merge=vm.runInNewContext(app.slice(start,end)+';mergeDashboardPart');
+ const target={meta:{warnings:[]}};
+ merge(target,{meta:{
+   sourceRows:{empenhos:null,processos:5,zero:0,invalid:false},
+   sourceTotals:{empenhos:undefined,processos:7,zero:0,invalid:'  '}
+ }});
+ for(const key of ['empenhos','invalid']){
+   assert.equal(target.meta.sourceRows[key],null);
+   assert.equal(target.meta.sourceTotals[key],null);
+ }
+ assert.equal(target.meta.sourceRows.processos,5);
+ assert.equal(target.meta.sourceTotals.processos,7);
+ assert.equal(target.meta.sourceRows.zero,0);
+ assert.equal(target.meta.sourceTotals.zero,0);
+ merge(target,{meta:{
+   sourceRows:{empenhos:10,processos:3,zero:0,invalid:12},
+   sourceTotals:{empenhos:15,processos:4,zero:0,invalid:13}
+ }});
+ for(const key of ['empenhos','invalid']){
+   assert.equal(target.meta.sourceRows[key],null);
+   assert.equal(target.meta.sourceTotals[key],null);
+ }
+ assert.equal(target.meta.sourceRows.processos,8);
+ assert.equal(target.meta.sourceTotals.processos,11);
+ assert.equal(target.meta.sourceRows.zero,0);
+ assert.equal(target.meta.sourceTotals.zero,0);
+});
