@@ -17,6 +17,8 @@ on:
       - 'tests/persistent-sync-storage.test.cjs'
       - 'tests/transient-sync-errors.test.cjs'
       - 'app.js'
+      - 'index.html'
+      - 'tests/boot-readiness.test.cjs'
       - 'panel-builder*.js'
       - 'panel-placements.js'
       - 'tests/panel-builder-*.test.cjs'
@@ -41,6 +43,8 @@ on:
       - 'tests/persistent-sync-storage.test.cjs'
       - 'tests/transient-sync-errors.test.cjs'
       - 'app.js'
+      - 'index.html'
+      - 'tests/boot-readiness.test.cjs'
       - 'panel-builder*.js'
       - 'panel-placements.js'
       - 'tests/panel-builder-*.test.cjs'
@@ -80,6 +84,7 @@ jobs:
           node --test tests/multisystem-status-ui.test.cjs
           node --test tests/mcp-real-dashboard.test.cjs
           node --test tests/real-panels-ui.test.cjs
+          node --test tests/boot-readiness.test.cjs
           node --test tests/real-procurement-chart.test.cjs
           node --test tests/real-dashboard-error-state.test.cjs
           node --test tests/persistent-sync-storage.test.cjs
