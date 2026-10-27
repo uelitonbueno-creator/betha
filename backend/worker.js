@@ -7222,10 +7222,12 @@ async function buildProcurementDashboard(env,tenant,url){
   const persistedSituations=multiSystemSortedEntries(processSummary.groups,12);
   // Older D1 summaries omit situation groups despite complete R2 source pages.
   // Read only the checkpointed pages; never include orphaned duplicate R2 pages.
-  const recoveredSituations=persistedSituations.length?null:await readProcurementSituationCounts({
-    bucket:env.BI_SYNC_RAW,tenantId:tenant.id,summary:processSummary,
-    pageKey:page=>multiSystemPageObjectKey(tenant.id,"compras","processos-administrativos",page)
-  });
+  const recoveredSituations=persistedSituations.length?null:!env.BI_SYNC_RAW
+    ?{status:"unavailable",reason:"R2_UNAVAILABLE",groups:{}}
+    :await readProcurementSituationCounts({
+      bucket:env.BI_SYNC_RAW,tenantId:tenant.id,summary:processSummary,
+      pageKey:page=>multiSystemPageObjectKey(tenant.id,"compras","processos-administrativos",page)
+    });
   const situations=persistedSituations.length?persistedSituations:multiSystemSortedEntries(recoveredSituations?.groups,12);
   const monthlyKeys=Object.keys(processSummary.monthly||{});
   const validMonthlyKeys=monthlyKeys.filter(key=>/^\d{4}-(0[1-9]|1[0-2])$/.test(key));
