@@ -138,3 +138,51 @@ test("upstream Betha 401 must not become sessionValid true",async()=>{
   assert.equal(result.status,401);
   assert.equal(result.error,"PLATFORM_HTTP_401");
 });
+
+test("OAuth callback failure is not masked by an anonymous session-check",async()=>{
+  const readyStart=source.indexOf("  const ready = (async () => {");
+  const readyEnd=source.indexOf("\n  window.BIAuth =",readyStart);
+  assert.ok(readyStart>=0&&readyEnd>readyStart);
+  let checks=0;
+  const ready=vm.runInNewContext(source.slice(readyStart,readyEnd)+";ready",{
+    handleCallback:async()=>true,
+    getError:()=>"AUTH_HANDOFF_INVALID",
+    getToken:()=>"",
+    validate:async()=>{checks++;return false;},
+    serverAuth:{authenticated:false},
+    setItem:()=>{},removeItem:()=>{},KEY_ERROR:"betha_bi_auth_error"
+  });
+  assert.equal(await ready,false);
+  assert.equal(checks,0,"failed OAuth callback must not be overwritten by USER_TOKEN_REQUIRED");
+});
+
+test("successful OAuth callback still validates its session",async()=>{
+  const readyStart=source.indexOf("  const ready = (async () => {");
+  const readyEnd=source.indexOf("\n  window.BIAuth =",readyStart);
+  let checks=0;
+  const ready=vm.runInNewContext(source.slice(readyStart,readyEnd)+";ready",{
+    handleCallback:async()=>true,
+    getError:()=>"",
+    getToken:()=>"session",
+    validate:async()=>{checks++;return true;},
+    serverAuth:{authenticated:false},
+    setItem:()=>{},removeItem:()=>{},KEY_ERROR:"betha_bi_auth_error"
+  });
+  assert.equal(await ready,true);
+  assert.equal(checks,1);
+});
+
+test("login gate exposes safe diagnostic messages without leaking backend errors",()=>{
+  const app=fs.readFileSync("app.js","utf8");
+  const start=app.indexOf("  function authGateFailureMessage(");
+  const end=app.indexOf("\n  if (authRequired && window.BIAuth",start);
+  assert.ok(start>=0&&end>start);
+  const message=vm.runInNewContext(app.slice(start,end)+";authGateFailureMessage");
+  assert.equal(message("USER_TOKEN_REQUIRED"),"");
+  assert.equal(message("HTTP_401"),"");
+  assert.match(message("AUTH_HANDOFF_INVALID"),/login Betha/);
+  assert.match(message("AUTH_HANDOFF_TIMEOUT"),/tempo limite/);
+  assert.match(message("PLATFORM_HTTP_403"),/autorização/);
+  const secret="token-private-123";
+  assert.doesNotMatch(message(secret),/token-private-123/);
+});

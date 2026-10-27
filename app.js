@@ -37,6 +37,25 @@
     }
   }
 
+  function authGateFailureMessage(code) {
+    const reason=String(code || "");
+    // An anonymous first visit is expected, not a failed login.
+    if (!reason || reason==="USER_TOKEN_REQUIRED" || reason==="HTTP_401") return "";
+    const messages={
+      AUTH_HANDOFF_TIMEOUT:"O retorno do login Betha excedeu o tempo limite. Tente novamente.",
+      AUTH_HANDOFF_INVALID:"O retorno do login Betha não pôde ser validado. Entre novamente.",
+      AUTH_CALLBACK_FAILED:"O retorno do login Betha falhou. Tente novamente.",
+      AUTH_HANDOFF_MISSING:"O retorno do login Betha não trouxe uma sessão válida. Entre novamente.",
+      AUTH_VALIDATION_TIMEOUT:"A validação da sessão Betha excedeu o tempo limite. Tente novamente.",
+      APPLICATION_SESSION_EXPIRED:"Sua sessão Betha expirou. Entre novamente.",
+      PLATFORM_HTTP_401:"A sessão Betha foi recusada. Entre novamente.",
+      PLATFORM_HTTP_403:"Seu usuário Betha não tem autorização suficiente para abrir o BI.",
+      BACKEND_NOT_CONFIGURED:"O serviço do BI não está configurado. Contate o suporte."
+    };
+    // Never reflect arbitrary backend messages or tokens into the login screen.
+    return messages[reason] || "Não foi possível validar a sessão Betha. Tente entrar novamente.";
+  }
+
   if (authRequired && window.BIAuth && BIAuth.ready) {
     try { await BIAuth.ready; } catch {}
   }
@@ -46,8 +65,10 @@
     authGate.hidden = false;
 
     const button = document.getElementById("loginButton");
-    // Erros de autenticação permanecem disponíveis internamente no BIAuth,
-    // mas não são exibidos na tela inicial para manter a entrada limpa.
+    // Exibe apenas mensagens seguras e úteis; não reflete detalhes brutos da API.
+    const authNotice=authGate?.querySelector(".auth-access-note");
+    const authMessage=authGateFailureMessage(window.BIAuth?.getError?.());
+    if (authNotice && authMessage) authNotice.textContent=authMessage;
 
     // O login Betha usa navegação HTML nativa. Assim ele continua funcionando
     // mesmo se algum módulo JavaScript falhar ou estiver com cache antigo.

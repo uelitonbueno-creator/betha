@@ -310,7 +310,10 @@
   }
 
   const ready = (async () => {
-    await handleCallback();
+    const callbackHandled = await handleCallback();
+    // A callback error must not be overwritten by the anonymous session-check
+    // (USER_TOKEN_REQUIRED). Keep the real OAuth failure visible for diagnosis.
+    if (callbackHandled && getError() && !getToken()) return false;
     const valid = await validate();
 
     if (!valid && serverAuth && serverAuth.reason && !getError()) {
