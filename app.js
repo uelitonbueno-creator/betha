@@ -21,6 +21,21 @@
   const settingsUtilityMenu = document.getElementById("settingsUtilityMenu");
   const authRequired = cfg.AUTH_REQUIRED !== false;
 
+  async function waitForBethaAppRegistration(timeoutMs=4000) {
+    const registry=window.customElements;
+    if (!registry || typeof registry.whenDefined!=="function") return false;
+    if (typeof registry.get==="function" && registry.get("bth-app")) return true;
+    let timer;
+    try {
+      return await Promise.race([
+        Promise.resolve().then(()=>registry.whenDefined("bth-app")).then(()=>true,()=>false),
+        new Promise(resolve=>{ timer=setTimeout(()=>resolve(false),timeoutMs); })
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   if (authRequired && window.BIAuth && BIAuth.ready) {
     try { await BIAuth.ready; } catch {}
   }
@@ -53,10 +68,12 @@
   // confirmar que a entidade solicitada pertence ao usuário.
   bethaApp.style.display = authRequired ? "none" : "";
   if (tenantGate) tenantGate.hidden = true;
-  // O componente Betha é registrado de forma assíncrona pelo loader.
-  // Aguarda o upgrade antes de chamar métodos como setMenuAtivo().
-  if (window.customElements && customElements.whenDefined) {
-    try { await customElements.whenDefined("bth-app"); } catch {}
+  // O loader Betha é externo. Falhas de CDN não podem bloquear o BI indefinidamente.
+  // O contexto da prefeitura continua oculto até /api/me/tenants validar a sessão.
+  const componentRegistered=await waitForBethaAppRegistration();
+  if (!componentRegistered) {
+    console.warn("[BI Vella] Componente Betha indisponível; iniciando navegação de contingência.");
+    document.documentElement.dataset.bethaComponentStatus="fallback";
   }
 
   const query = Object.fromEntries(new URLSearchParams(location.search).entries());
