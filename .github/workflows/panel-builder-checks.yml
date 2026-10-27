@@ -7,6 +7,8 @@ on:
       - 'backend/entry-persistent.js'
       - 'backend/multisystem-recovery.mjs'
       - 'backend/payroll-projection.mjs'
+      - 'backend/procurement-situation.mjs'
+      - 'tests/procurement-situation.test.cjs'
       - 'tests/payroll-projection.test.cjs'
       - 'tests/multisystem-recovery.test.cjs'
       - 'tests/multisystem-status-ui.test.cjs'
@@ -37,6 +39,8 @@ on:
       - 'backend/entry-persistent.js'
       - 'backend/multisystem-recovery.mjs'
       - 'backend/payroll-projection.mjs'
+      - 'backend/procurement-situation.mjs'
+      - 'tests/procurement-situation.test.cjs'
       - 'tests/payroll-projection.test.cjs'
       - 'tests/multisystem-recovery.test.cjs'
       - 'tests/multisystem-status-ui.test.cjs'
@@ -81,6 +85,7 @@ jobs:
           node --check backend/entry-persistent.js
           node --check backend/multisystem-recovery.mjs
           node --check backend/payroll-projection.mjs
+          node --check backend/procurement-situation.mjs
           node --check app.js
           node --check auth/auth.js
           node --check panel-builder-core.js
@@ -96,6 +101,7 @@ jobs:
           node --test tests/boot-readiness.test.cjs
           node --test tests/auth-handoff-timeout.test.cjs
           node --test tests/real-procurement-chart.test.cjs
+          node --test tests/procurement-situation.test.cjs
           node --test tests/real-dashboard-error-state.test.cjs
           node --test tests/persistent-sync-storage.test.cjs
           node --test tests/transient-sync-errors.test.cjs
