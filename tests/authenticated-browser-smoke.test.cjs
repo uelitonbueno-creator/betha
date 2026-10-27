@@ -16,7 +16,7 @@ function respond(res, body, type='text/plain', status=200) {
 }
 function json(res, data, status=200) { respond(res, JSON.stringify(data), 'application/json', status); }
 
-function mockServer() {
+function mockServer({realAuth=false}={}) {
   const server = http.createServer(async (req,res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     try {
@@ -26,10 +26,16 @@ function mockServer() {
           admin:true, technical:true, allowedViews:['contabil-visao-geral','contabil-empenhos','compras-visao-geral','compras-processos']
         }]});
       }
+      if (realAuth && url.pathname === '/api/auth/session-check') {
+        return json(res, {error:'USER_TOKEN_REQUIRED'}, 401);
+      }
       if (url.pathname.startsWith('/api/')) {
         return json(res, {ok:true, tenant:'paulafreitas', period:{ano:2026}, kpis:{}, charts:{}, tables:[], meta:{source:'TEST_FIXTURE_ONLY'}});
       }
       if (url.pathname === '/auth/auth.js') {
+        if (realAuth) {
+          return respond(res, await fs.readFile(path.join(ROOT,'auth/auth.js'),'utf8'), 'application/javascript');
+        }
         return respond(res, 'window.BIAuth={ready:Promise.resolve(true),isAuthenticated:()=>true,getToken:()=>"test-only-session",getError:()=>"",clear:()=>{},logout:()=>{}};', 'application/javascript');
       }
       if (url.pathname === '/config.js') {
@@ -95,6 +101,24 @@ test('authenticated startup opens Contabilidade and Compras without a blank scre
       assert.ok(diagnostics,system + ': browser diagnostics node missing');
       assert.deepEqual(JSON.parse(diagnostics[1] || '[]'),[],system + ': uncaught JavaScript errors');
     }
+  } finally {
+    await new Promise(resolve=>mock.close(resolve));
+  }
+});
+
+test('failed Betha OAuth callback shows a useful login error instead of a blank screen (real auth.js)', {timeout:100000}, async () => {
+  assert.ok(CHROME,'Chrome/Chromium is required for callback smoke');
+  const mock=mockServer({realAuth:true});
+  await new Promise(resolve=>mock.listen(0,'127.0.0.1',resolve));
+  try {
+    const html=await runChrome('http://127.0.0.1:'+mock.address().port+'/?auth_error=AUTH_HANDOFF_INVALID');
+    const gate=html.match(/<div id="authGate"[^>]*>/);
+    assert.ok(gate && !gate[0].includes(' hidden'),'login gate must be visible after OAuth failure');
+    assert.match(html,/O retorno do login Betha não pôde ser validado/);
+    assert.ok(!html.includes('auth_error=AUTH_HANDOFF_INVALID'),'OAuth callback query must be cleared');
+    const diagnostics=html.match(/<pre id="biBootErrors"[^>]*>([^<]*)<\/pre>/);
+    assert.ok(diagnostics,'browser diagnostics missing');
+    assert.deepEqual(JSON.parse(diagnostics[1] || '[]'),[],'uncaught JavaScript errors');
   } finally {
     await new Promise(resolve=>mock.close(resolve));
   }
