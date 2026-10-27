@@ -144,29 +144,42 @@
     clearLegacy();
   }
 
-  async function exchangeHandoff(handoff) {
+  async function exchangeHandoff(handoff, timeoutMs=12000) {
     const base = backendBase();
     if (!base) throw new Error("BACKEND_NOT_CONFIGURED");
 
-    const response = await fetch(base + "/api/auth/session-exchange", {
-      method: "POST",
-      headers: {
-        "Accept": "application/json",
-        "Content-Type": "application/json"
-      },
-      credentials: "omit",
-      body: JSON.stringify({handoff})
-    });
+    // A entrega OAuth não pode manter a tela inicial bloqueada sem limite.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(base + "/api/auth/session-exchange", {
+        method: "POST",
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json"
+        },
+        credentials: "omit",
+        signal: controller.signal,
+        body: JSON.stringify({handoff})
+      });
 
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.session) {
-      const error = new Error(payload.error || ("HTTP_" + response.status));
-      error.status = response.status;
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.session) {
+        const error = new Error(payload.error || ("HTTP_" + response.status));
+        error.status = response.status;
+        throw error;
+      }
+
+      saveSession(payload.session, payload.expires_in);
+      return true;
+    } catch (error) {
+      if (error && error.name === "AbortError") {
+        throw new Error("AUTH_HANDOFF_TIMEOUT");
+      }
       throw error;
+    } finally {
+      clearTimeout(timer);
     }
-
-    saveSession(payload.session, payload.expires_in);
-    return true;
   }
 
   async function handleCallback() {
