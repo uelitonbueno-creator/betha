@@ -23,8 +23,8 @@ test("candidate checkout renders a visible login gate in headless Chromium",()=>
   assert.ok(html.includes("BI Vella"),"Application HTML missing");
   const gate=html.match(/<div id="authGate"[^>]*>/);
   assert.ok(gate,"Authentication gate missing");
-  assert.doesNotMatch(gate[0],/\\shidden(?:\\s|>)/,"Authentication gate remained hidden after startup");
+  assert.ok(!gate[0].includes(" hidden"),"Authentication gate remained hidden after startup");
   const login=html.match(/<a id="loginButton"[^>]*>/);
   assert.ok(login,"Login button missing");
-  assert.match(login[0],/betha-bi-api\\.ueliton-bueno\\.workers\\.dev\\/api\\/auth\\/login/);
+  assert.ok(login[0].includes("https://betha-bi-api.ueliton-bueno.workers.dev/api/auth/login"),"Login URL not initialized");
 });
