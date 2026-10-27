@@ -93,8 +93,6 @@ jobs:
           node --test tests/real-panels-ui.test.cjs
           node --test tests/boot-readiness.test.cjs
           node --test tests/auth-handoff-timeout.test.cjs
-      - name: Smoke-test public Pages and Worker (read-only)
-        run: node --test tests/live-entrypoint-smoke.test.cjs
           node --test tests/real-procurement-chart.test.cjs
           node --test tests/real-dashboard-error-state.test.cjs
           node --test tests/persistent-sync-storage.test.cjs
@@ -111,3 +109,5 @@ jobs:
           node tests/panel-builder-schema.test.cjs
       - name: Validate D1 migration chain
         run: python3 tests/panel-builder-migrations.test.py
+      - name: Smoke-test public Pages and Worker (read-only)
+        run: node --test tests/live-entrypoint-smoke.test.cjs
