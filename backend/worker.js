@@ -7137,7 +7137,7 @@ function multiSystemRealMeta(system,summaries,extra={}){
 async function buildAccountingDashboard(env,tenant,url){
   const summaries=await Promise.all(["empenhos","movimentacoes-receitas","movimentacoes-despesas","credores"].map(resource=>getMultiSystemSummary(env,tenant.id,"contabil",resource)));
   const available=summaries.filter(item=>item&&Number(item.count)>0);
-  if(!available.length)return buildAccountingSampleDashboard(env,tenant,url);
+  if(!available.length)throw new Error("INITIAL_LOAD_REQUIRED");
   const summary=summaries[0]||{monthly:{},groups:{},loadStatus:"partial"};
   const creditorSummary=summaries[3];
 
@@ -7217,7 +7217,7 @@ async function buildAccountingDashboard(env,tenant,url){
 
 async function buildProcurementDashboard(env,tenant,url){
   const processSummary=await getMultiSystemSummary(env,tenant.id,"compras","processos-administrativos");
-  if(!processSummary||Number(processSummary.count)<=0)return buildProcurementSampleDashboard(env,tenant,url);
+  if(!processSummary||Number(processSummary.count)<=0)throw new Error("INITIAL_LOAD_REQUIRED");
   const supplierSummary=await getMultiSystemSummary(env,tenant.id,"compras","fornecedores");
   // A chart is complete only if every persisted D1 group is a valid count and
   // the sum exactly matches the source checkpoint. Never present partial groups.
@@ -7418,7 +7418,7 @@ async function buildPayrollDashboard(env,tenant,url) {
     getMultiSystemSummary(env,tenant.id,"folha","remuneracoes")
   ]);
   const available=[matriculas,funcionarios,remuneracoes].filter(item=>item&&Number(item.count)>0);
-  if(!available.length)return buildPayrollSampleDashboard(env,tenant,url);
+  if(!available.length)throw new Error("INITIAL_LOAD_REQUIRED");
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
   const keys=periodo==="todos"?null:new Set(multiSystemMonthlyEntries({monthly:Object.fromEntries(Array.from({length:24},(_,i)=>{const date=new Date(exercicio-1,0+i,1);return [date.getFullYear()+"-"+String(date.getMonth()+1).padStart(2,"0"),1];}))},periodo,exercicio).map(([key])=>key));
