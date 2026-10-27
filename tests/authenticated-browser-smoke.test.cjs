@@ -91,7 +91,9 @@ test('authenticated startup opens Contabilidade and Compras without a blank scre
       assert.ok(tenant?.[0].includes(' hidden'),system + ': tenant gate must be hidden after selecting authorized tenant ');
       assert.ok(!/style="[^"]*display:\s*none/.test(app[0]),system + ': application remains hidden ');
       assert.ok(html.includes('Paula Freitas'),system + ': authorized tenant was not selected ');
-      assert.ok(html.includes('<pre id="biBootErrors" hidden>[]>'),system + ': JavaScript runtime errors: ' + (html.match(/<pre id="biBootErrors" hidden>([^<]*)/) || [])[1]);
+      const diagnostics=html.match(/<pre id="biBootErrors"[^>]*>([^<]*)<\/pre>/);
+      assert.ok(diagnostics,system + ': browser diagnostics node missing');
+      assert.deepEqual(JSON.parse(diagnostics[1] || '[]'),[],system + ': uncaught JavaScript errors');
     }
   } finally {
     await new Promise(resolve=>mock.close(resolve));
