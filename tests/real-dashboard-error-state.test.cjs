@@ -40,7 +40,7 @@ test("real dashboard API failure replaces chart loading placeholders with an err
         return null;
       },
       querySelectorAll(selector){
-        assert.equal(selector,"#dashboardView #chartGrid .chart-empty");
+        assert.equal(selector,"#dashboardView [data-chart] .chart-empty");
         return charts;
       },
       createElement(){return {className:"",textContent:""};}
@@ -235,8 +235,8 @@ test("real dashboard refresh clears stale KPIs, charts, tables and CSV snapshot 
   const empties=[{hidden:true},{hidden:true}];
   const tables={hidden:false,children:["old"],replaceChildren(){this.children=[];}};
   const heading={hidden:false};
-  const attention={removed:false,remove(){this.removed=true;}};
-  const executive={removed:false,remove(){this.removed=true;}};
+  const attention={children:["old"],replaceChildren(){this.children=[];}};
+  const executive={children:["primary chart card"]};
   let destroyed=0,updated="old",apiSawCleared=false;
   const context=vm.createContext({
     currentPayload:{meta:{realData:true},kpis:{empenhado:100}},
@@ -245,7 +245,7 @@ test("real dashboard refresh clears stale KPIs, charts, tables and CSV snapshot 
     document:{
       querySelectorAll(selector){
         if(selector==="#kpiGrid [data-value]")return kpis;
-        if(selector==="#chartGrid .chart-empty")return empties;
+        if(selector==="#dashboardView [data-chart] .chart-empty")return empties;
         throw Error("Unexpected selector: "+selector);
       },
       getElementById(id){
@@ -277,6 +277,6 @@ test("real dashboard refresh clears stale KPIs, charts, tables and CSV snapshot 
   assert.equal(updated,null);
   assert.equal(tables.hidden,true);
   assert.equal(heading.hidden,true);
-  assert.equal(attention.removed,true);
-  assert.equal(executive.removed,true);
+  assert.equal(attention.children.length,0);
+  assert.deepEqual(executive.children,["primary chart card"],"primary chart must survive refresh");
 });
