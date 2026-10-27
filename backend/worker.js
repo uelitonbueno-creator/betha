@@ -7219,7 +7219,17 @@ async function buildProcurementDashboard(env,tenant,url){
   const processSummary=await getMultiSystemSummary(env,tenant.id,"compras","processos-administrativos");
   if(!processSummary||Number(processSummary.count)<=0)return buildProcurementSampleDashboard(env,tenant,url);
   const supplierSummary=await getMultiSystemSummary(env,tenant.id,"compras","fornecedores");
-  const persistedSituations=multiSystemSortedEntries(processSummary.groups,12);
+  // A chart is complete only if every persisted D1 group is a valid count and
+  // the sum exactly matches the source checkpoint. Never present partial groups.
+  const persistedSituationEntries=multiSystemSortedEntries(processSummary.groups,250);
+  const expectedSituationCount=Number(processSummary.count);
+  const persistedSituationMismatch=Object.keys(processSummary.groups||{}).length>0 && (
+    !Number.isSafeInteger(expectedSituationCount) ||
+    persistedSituationEntries.length!==Object.keys(processSummary.groups).length ||
+    persistedSituationEntries.some(([,value])=>!Number.isSafeInteger(value)||value<0) ||
+    persistedSituationEntries.reduce((sum,[,value])=>sum+value,0)!==expectedSituationCount
+  );
+  const persistedSituations=persistedSituationMismatch?[]:persistedSituationEntries;
   // Older D1 summaries omit situation groups despite complete R2 source pages.
   // Read only the checkpointed pages; never include orphaned duplicate R2 pages.
   const recoveredSituations=persistedSituations.length?null:!env.BI_SYNC_RAW
@@ -7292,11 +7302,15 @@ async function buildProcurementDashboard(env,tenant,url){
       periodFilterApplied:false,
       unsupportedFilters:ignoredFilters,
       situationChartSource:persistedSituations.length?"d1-summary":recoveredSituations?.status==="complete"?"r2-validated-pages":null,
-      situationChartError:recoveredSituations?.status==="unavailable"?recoveredSituations.reason:null,
+      situationChartError:recoveredSituations?.status==="unavailable"
+        ?(persistedSituationMismatch?"D1_GROUPS_COUNT_MISMATCH;":"")+recoveredSituations.reason
+        :null,
       monthlySeriesStatus:validMonthlyKeys.length?"available":invalidMonthlyKeys?"unavailable-invalid-month-keys":"unavailable-no-validated-dates",
       invalidMonthlyKeyCount:invalidMonthlyKeys,
       chartUnavailableReasons:{
-        ...(!situations.length?{"compras-situacao":"Não foi possível validar todas as páginas R2 do checkpoint para agrupar processos por situação."}:{}),
+        ...(!situations.length?{"compras-situacao":persistedSituationMismatch
+          ?"As situações persistidas no D1 não conferem com o total importado e a recuperação R2 não foi validada."
+          :"Não foi possível validar todas as páginas R2 do checkpoint para agrupar processos por situação."}:{}),
         "compras-mensal":invalidMonthlyKeys?"O resumo contém "+invalidMonthlyKeys+" chaves que não são competências válidas; valores estimados e homologados não foram validados.":"Não há série mensal financeira validada para os processos importados.",
         "compras-modalidade":"A origem possui formaContratacao, mas o resumo persistido não possui classificação por modalidade validada. Não equiparar os dois campos sem conferência.",
         "compras-secretaria":"Não existem valores homologados e agrupamento por secretaria validados no resumo D1."
