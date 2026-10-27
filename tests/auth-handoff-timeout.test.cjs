@@ -39,3 +39,57 @@ test("OAuth handoff preserves explicit HTTP errors",async()=>{
   const exchange=make(async()=>({ok:false,status:401,json:async()=>({error:"AUTH_HANDOFF_INVALID"})}));
   await assert.rejects(exchange("invalid",100),/AUTH_HANDOFF_INVALID/);
 });
+
+const validateStart=source.indexOf("  async function validate() {");
+const validateEnd=source.indexOf("\n  function login()",validateStart);
+assert.ok(validateStart>=0 && validateEnd>validateStart,"validate must exist");
+
+function makeSessionCheck(status,code) {
+  let token="stale-session";
+  const errors=[];
+  let clears=0;
+  let sent;
+  const validate=vm.runInNewContext(
+    "let cookieAuthenticated=false;const serverAuth={authenticated:false};"+
+      source.slice(validateStart,validateEnd)+";validate",
+    {
+      getToken:()=>token,
+      backendBase:()=>"https://backend.test",
+      fetch:async(url,options)=>{
+        sent={url,options};
+        return {ok:status>=200&&status<300,status,
+          json:async()=>status===200?{sessionValid:true}:{error:code}};
+      },
+      setItem:(key,value)=>errors.push({key,value}),
+      removeItem:()=>{},
+      clearSessionOnly:()=>{clears++;token="";},
+      KEY_ERROR:"betha_bi_auth_error",
+      AbortController,setTimeout,clearTimeout,Error,Boolean,JSON
+    }
+  );
+  return {validate,errors,clears:()=>clears,token:()=>token,sent:()=>sent};
+}
+test("explicit 401 rejects cached session even with a non-local error code",async()=>{
+  const x=makeSessionCheck(401,"PLATFORM_HTTP_401");
+  assert.equal(await x.validate(),false);
+  assert.equal(x.clears(),1);
+  assert.equal(x.token(),"");
+  assert.equal(x.errors.at(-1).value,"PLATFORM_HTTP_401");
+  assert.equal(x.sent().options.credentials,"include");
+});
+test("explicit 403 cannot open the app using a cached session",async()=>{
+  const x=makeSessionCheck(403,"PLATFORM_HTTP_403");
+  assert.equal(await x.validate(),false);
+  assert.equal(x.clears(),1);
+});
+test("transient 503 preserves cached session without treating null as a success",async()=>{
+  const x=makeSessionCheck(503,"PLATFORM_HTTP_503");
+  assert.equal(await x.validate(),true);
+  assert.equal(x.clears(),0);
+  assert.equal(x.errors.at(-1).value,"PLATFORM_HTTP_503");
+});
+test("valid server-side session still passes",async()=>{
+  const x=makeSessionCheck(200);
+  assert.equal(await x.validate(),true);
+  assert.equal(x.clears(),0);
+});
