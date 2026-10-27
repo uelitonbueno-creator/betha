@@ -3837,12 +3837,28 @@
     }
   }
 
+  function clearRealDashboardSnapshot() {
+    // A failed refresh must not leave old figures visible or exportable as the current filter/tenant.
+    currentPayload=null;
+    destroyCharts();
+    document.querySelectorAll("#kpiGrid [data-value]").forEach(value=>{value.textContent="—";});
+    document.querySelectorAll("#chartGrid .chart-empty").forEach(empty=>{empty.hidden=false;});
+    const tables=document.getElementById("tableGrid");
+    if(tables){tables.replaceChildren();tables.hidden=true;}
+    const heading=document.getElementById("tableSectionHeading");
+    if(heading)heading.hidden=true;
+    document.getElementById("overviewAttention")?.remove();
+    document.getElementById("overviewExecutive")?.remove();
+    setLastUpdated(null);
+  }
+
   async function loadRealMultiSystemDashboard(view) {
     const generation=++dashboardLoadGeneration;
     const requestedTenant=tenantId;
     const requestedSystem=currentSystemId;
     const active=()=>generation===dashboardLoadGeneration&&currentView===view&&tenantId===requestedTenant&&currentSystemId===requestedSystem;
 
+    clearRealDashboardSnapshot();
     setRefreshBusy(true);
     setDashboardLoading(true);
     setStatus("waiting","Carregando dados reais da Betha...");
@@ -3908,6 +3924,7 @@
   function showRealSubpanelUnavailable(view) {
     // Never fetch data/samples/*.json for production systems. Keep blank KPIs as em dashes.
     ++dashboardLoadGeneration;
+    clearRealDashboardSnapshot();
     const badge=document.getElementById("sampleModeBadge");
     if(badge)badge.hidden=true;
     setRefreshBusy(false);
