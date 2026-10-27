@@ -94,7 +94,7 @@ test("missing archive reports unavailable chart, never invents zeros",async()=>{
     multiSystemPageObjectKey:()=>"",
     multiSystemRealMeta:(_s,_a,extra)=>extra
   });
-  const result=await fn({},{id:"paulafreitas"},new URL("https://example.test/"));
+  const result=await fn({BI_SYNC_RAW:{}},{id:"paulafreitas"},new URL("https://example.test/"));
   assert.equal(result.charts["compras-situacao"],undefined);
   assert.equal(result.meta.situationChartError,"ARCHIVE_PAGE_MISSING");
   assert.match(result.meta.chartUnavailableReasons["compras-situacao"],/validar/);
