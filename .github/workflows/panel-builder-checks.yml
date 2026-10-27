@@ -21,6 +21,7 @@ on:
       - 'tests/boot-readiness.test.cjs'
       - 'auth/auth.js'
       - 'tests/auth-handoff-timeout.test.cjs'
+      - 'tests/live-entrypoint-smoke.test.cjs'
       - 'panel-builder*.js'
       - 'panel-placements.js'
       - 'tests/panel-builder-*.test.cjs'
@@ -49,6 +50,7 @@ on:
       - 'tests/boot-readiness.test.cjs'
       - 'auth/auth.js'
       - 'tests/auth-handoff-timeout.test.cjs'
+      - 'tests/live-entrypoint-smoke.test.cjs'
       - 'panel-builder*.js'
       - 'panel-placements.js'
       - 'tests/panel-builder-*.test.cjs'
@@ -91,6 +93,8 @@ jobs:
           node --test tests/real-panels-ui.test.cjs
           node --test tests/boot-readiness.test.cjs
           node --test tests/auth-handoff-timeout.test.cjs
+      - name: Smoke-test public Pages and Worker (read-only)
+        run: node --test tests/live-entrypoint-smoke.test.cjs
           node --test tests/real-procurement-chart.test.cjs
           node --test tests/real-dashboard-error-state.test.cjs
           node --test tests/persistent-sync-storage.test.cjs
