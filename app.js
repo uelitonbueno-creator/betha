@@ -3064,10 +3064,18 @@
 
     // Na Visão Geral fragmentada, cada lote representa uma parcela do total.
     for (const [key,value] of Object.entries(part.kpis || {})) {
-      if (value === null || value === undefined) continue;
+      // Um lote sem métrica validada invalida o total, não representa zero.
+      if (value === null || value === undefined || typeof value === "boolean" ||
+          (typeof value === "string" && !value.trim())) {
+        target.kpis[key]=null;
+        continue;
+      }
+      if (target.kpis[key] === null) continue;
       const n=Number(value);
       if (Number.isFinite(n)) {
-        target.kpis[key]=(Number(target.kpis[key])||0)+n;
+        const previous=target.kpis[key];
+        const prior=previous===undefined ? 0 : Number(previous);
+        target.kpis[key]=Number.isFinite(prior) ? prior+n : null;
       } else {
         target.kpis[key]=value;
       }
@@ -3091,8 +3099,16 @@
           }
           const max=Math.max(existingDs.data?.length||0,ds.data?.length||0);
           const summed=[];
+          const numeric=value=>{
+            if(value===null||value===undefined||typeof value==="boolean"||
+               (typeof value==="string"&&!value.trim()))return null;
+            const parsed=Number(value);
+            return Number.isFinite(parsed)?parsed:null;
+          };
           for(let i=0;i<max;i++){
-            summed[i]=(Number(existingDs.data?.[i])||0)+(Number(ds.data?.[i])||0);
+            const left=numeric(existingDs.data?.[i]);
+            const right=numeric(ds.data?.[i]);
+            summed[i]=left===null||right===null?null:left+right;
           }
           existingDs.data=summed;
         }
