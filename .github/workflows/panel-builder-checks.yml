@@ -22,6 +22,7 @@ on:
       - 'auth/auth.js'
       - 'tests/auth-handoff-timeout.test.cjs'
       - 'tests/live-entrypoint-smoke.test.cjs'
+      - 'tests/browser-boot-smoke.test.cjs'
       - 'panel-builder*.js'
       - 'panel-placements.js'
       - 'tests/panel-builder-*.test.cjs'
@@ -51,6 +52,7 @@ on:
       - 'auth/auth.js'
       - 'tests/auth-handoff-timeout.test.cjs'
       - 'tests/live-entrypoint-smoke.test.cjs'
+      - 'tests/browser-boot-smoke.test.cjs'
       - 'panel-builder*.js'
       - 'panel-placements.js'
       - 'tests/panel-builder-*.test.cjs'
@@ -111,3 +113,8 @@ jobs:
         run: python3 tests/panel-builder-migrations.test.py
       - name: Smoke-test public Pages and Worker (read-only)
         run: node --test tests/live-entrypoint-smoke.test.cjs
+      - name: Render candidate login in headless Chrome
+        run: |
+          python3 -m http.server 8765 --bind 127.0.0.1 >/tmp/bi-vella-http.log 2>&1 &
+          sleep 1
+          node --test tests/browser-boot-smoke.test.cjs
