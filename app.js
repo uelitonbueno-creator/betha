@@ -3836,7 +3836,6 @@
     setDashboardLoading(true);
     setStatus("waiting","Carregando dados reais da Betha...");
 
-    let fallback=false;
     try{
       const params=new URLSearchParams({
         periodo:document.getElementById("periodo")?.value||"ano",
@@ -3849,7 +3848,11 @@
       if(!active())return;
 
       if(payload?.meta?.realData!==true){
-        fallback=true;
+        // Real system homes must never silently switch to the local synthetic dataset.
+        setDashboardLoading(false);
+        markDashboardChartsUnavailable("Não há agregados reais validados para esta entidade.");
+        markDashboardCoverageUnavailable("O backend não retornou dados reais persistidos; a amostra local foi bloqueada.");
+        setStatus("error","Dados reais indisponíveis para esta entidade. Nenhuma amostra sintética foi exibida.");
       }else{
         renderPayload(payload);
         const allAudits=Object.values(payload?.meta?.sourceAudit||{});
@@ -3880,12 +3883,7 @@
         : "A consulta falhou antes de receber a cobertura das fontes.");
       setStatus("error",unavailableMessage);
     }finally{
-      if(active()&&!fallback)setRefreshBusy(false);
-    }
-
-    if(fallback&&active()){
-      setRefreshBusy(false);
-      return loadLocalSampleDashboard(view);
+      if(active())setRefreshBusy(false);
     }
   }
 
