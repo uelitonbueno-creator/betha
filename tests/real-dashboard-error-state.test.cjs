@@ -51,6 +51,7 @@ test("real dashboard API failure replaces chart loading placeholders with an err
     setDashboardLoading:value=>loading.push(value),
     setStatus:(type,message)=>status.push({type,message}),
     console:{warn(){}},
+    clearRealDashboardSnapshot(){},
     renderPayload(){throw new Error("failed dashboard must not render synthetic data");}
   });
 
@@ -91,7 +92,8 @@ test("missing tributary load gets a specific HTTP conflict and leaves no loading
     currentDashboardFilters:()=>({}),
     api:async()=>{throw Object.assign(new Error("INITIAL_LOAD_REQUIRED"),{status:409});},
     setRefreshBusy(){},setDashboardLoading(){},setStatus:(type,message)=>status.push({type,message}),
-    console:{warn(){}},renderPayload(){throw new Error("failed dashboard must not render another system's data");}
+    console:{warn(){}},clearRealDashboardSnapshot(){},
+    renderPayload(){throw new Error("failed dashboard must not render another system's data");}
   });
   vm.runInContext(source.slice(start,end)+source.slice(helperStart,helperEnd),context);
   await vm.runInContext("loadRealMultiSystemDashboard('visao-geral')",context);
@@ -196,6 +198,7 @@ test("production subpanels never read local synthetic files or expose sample bad
       markDashboardChartsUnavailable:message=>charts.push(message),
       markDashboardCoverageUnavailable:message=>coverage.push(message),
       setLastUpdated:value=>loads.push(["updated",value]),
+      clearRealDashboardSnapshot(){},
       setStatus:(type,message)=>statuses.push({type,message}),
       loadRealMultiSystemDashboard:()=>{throw Error("Unexpected home loader");},
       loadApiPanelDashboard:()=>{throw Error("Unexpected API loader");},
@@ -212,9 +215,68 @@ test("production subpanels never read local synthetic files or expose sample bad
     assert.ok(loads.some(item=>item[0]==="loading"&&item[1]===false));
     // Direct invocation is also guarded against future routing regressions.
     vm.runInContext(source.slice(sampleStart,sampleEnd),context);
+    // The separate snapshot-reset regression tests the helper with a full DOM.
+    vm.runInContext("clearRealDashboardSnapshot=()=>{}",context);
     await vm.runInContext("loadLocalSampleDashboard("+JSON.stringify(view)+")",context);
     assert.equal(statuses.length,2,system+": direct sample loader must be blocked");
   }
   assert.match(source,/if\(REAL_MULTI_SYSTEM_IDS\.has\(currentSystemId\)&&payload\?\.meta\?\.realData!==true\)/,
     "renderPayload must reject unverified synthetic or cached payloads");
+});
+
+
+test("real dashboard refresh clears stale KPIs, charts, tables and CSV snapshot before fetching",async()=>{
+  const source=fs.readFileSync("app.js","utf8");
+  const start=source.indexOf("  function clearRealDashboardSnapshot(");
+  const end=source.indexOf("  async function loadRealMultiSystemDashboard(",start);
+  const loadEnd=source.indexOf("  function showRealSubpanelUnavailable(",end);
+  assert.ok(start>0&&end>start&&loadEnd>end);
+  const kpis=[{textContent:"R$ 100,00"},{textContent:"42"}];
+  const empties=[{hidden:true},{hidden:true}];
+  const tables={hidden:false,children:["old"],replaceChildren(){this.children=[];}};
+  const heading={hidden:false};
+  const attention={removed:false,remove(){this.removed=true;}};
+  const executive={removed:false,remove(){this.removed=true;}};
+  let destroyed=0,updated="old",apiSawCleared=false;
+  const context=vm.createContext({
+    currentPayload:{meta:{realData:true},kpis:{empenhado:100}},
+    dashboardLoadGeneration:0,tenantId:"paulafreitas",currentView:"contabil-visao-geral",
+    currentSystemId:"contabil",currentYear:2026,URLSearchParams,
+    document:{
+      querySelectorAll(selector){
+        if(selector==="#kpiGrid [data-value]")return kpis;
+        if(selector==="#chartGrid .chart-empty")return empties;
+        throw Error("Unexpected selector: "+selector);
+      },
+      getElementById(id){
+        if(id==="tableGrid")return tables;
+        if(id==="tableSectionHeading")return heading;
+        if(id==="overviewAttention")return attention;
+        if(id==="overviewExecutive")return executive;
+        if(id==="periodo")return {value:"ano"};
+        if(id==="exercicio")return {value:"2026"};
+        return null;
+      }
+    },
+    destroyCharts(){destroyed++;},
+    setLastUpdated:value=>{updated=value;},
+    currentDashboardFilters:()=>({}),
+    setRefreshBusy(){},setDashboardLoading(){},setStatus(){},
+    api:async()=>{
+      apiSawCleared=vm.runInContext("currentPayload===null",context)&&kpis.every(x=>x.textContent==="—")&&empties.every(x=>x.hidden===false)&&tables.children.length===0;
+      throw Error("NETWORK_FAILURE");
+    },
+    markDashboardChartsUnavailable(){},markDashboardCoverageUnavailable(){},
+    console:{warn(){}}
+  });
+  vm.runInContext(source.slice(start,loadEnd),context);
+  await vm.runInContext("loadRealMultiSystemDashboard('contabil-visao-geral')",context);
+  assert.equal(apiSawCleared,true,"stale dashboard was visible during refresh");
+  assert.equal(vm.runInContext("currentPayload",context),null,"stale payload must not be exportable");
+  assert.equal(destroyed,1);
+  assert.equal(updated,null);
+  assert.equal(tables.hidden,true);
+  assert.equal(heading.hidden,true);
+  assert.equal(attention.removed,true);
+  assert.equal(executive.removed,true);
 });
