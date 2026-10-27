@@ -25,6 +25,7 @@ on:
       - 'tests/auth-handoff-timeout.test.cjs'
       - 'tests/live-entrypoint-smoke.test.cjs'
       - 'tests/browser-boot-smoke.test.cjs'
+      - 'tests/authenticated-browser-smoke.test.cjs'
       - 'panel-builder*.js'
       - 'panel-placements.js'
       - 'tests/panel-builder-*.test.cjs'
@@ -57,6 +58,7 @@ on:
       - 'tests/auth-handoff-timeout.test.cjs'
       - 'tests/live-entrypoint-smoke.test.cjs'
       - 'tests/browser-boot-smoke.test.cjs'
+      - 'tests/authenticated-browser-smoke.test.cjs'
       - 'panel-builder*.js'
       - 'panel-placements.js'
       - 'tests/panel-builder-*.test.cjs'
@@ -124,3 +126,4 @@ jobs:
           python3 -m http.server 8765 --bind 127.0.0.1 >/tmp/bi-vella-http.log 2>&1 &
           sleep 1
           node --test tests/browser-boot-smoke.test.cjs
+          node --test tests/authenticated-browser-smoke.test.cjs
