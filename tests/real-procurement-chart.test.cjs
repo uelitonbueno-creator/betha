@@ -351,3 +351,48 @@ test('missing or malformed D1 summary preserves real source coverage and never u
   assert.deepEqual(Array.from(payload.charts['compras-fontes'].datasets[0].data),[2373]);
  }
 });
+
+
+test('inconsistent D1 situation groups are not published as real complete counts',async()=>{
+ const start=worker.indexOf('async function buildProcurementDashboard(');
+ const end=worker.indexOf('async function buildAccountingSampleDashboard(',start);
+ const summaries={
+  'processos-administrativos':{resource:'processos-administrativos',count:4,loaded:4,loadStatus:'complete',groups:{HOMOLOGADO:3,REVOGADO:2}},
+  fornecedores:{resource:'fornecedores',count:1,loadStatus:'complete'}
+ };
+ const fn=vm.runInNewContext(worker.slice(start,end)+';buildProcurementDashboard',{
+  getMultiSystemSummary:async(_env,_tenant,_system,resource)=>summaries[resource],
+  multiSystemSortedEntries:values=>Object.entries(values||{}),
+  multiSystemRealMeta:(_system,_items,extra)=>extra,
+  buildProcurementSampleDashboard:()=>{throw Error('no synthetic fallback')}
+ });
+ const result=await fn({}, {id:'paulafreitas'},new URL('https://example.test/?exercicio=2026'));
+ assert.equal(result.charts['compras-situacao'],undefined);
+ assert.equal(result.tables.some(item=>item.id==='compras-situacao-real'),false);
+ assert.equal(result.meta.situationChartSource,null);
+ assert.equal(result.meta.situationChartError,'D1_GROUPS_COUNT_MISMATCH;R2_UNAVAILABLE');
+ assert.match(result.meta.chartUnavailableReasons['compras-situacao'],/não conferem/);
+});
+
+test('invalid D1 groups can be recovered only from validated R2 checkpoint pages',async()=>{
+ const start=worker.indexOf('async function buildProcurementDashboard(');
+ const end=worker.indexOf('async function buildAccountingSampleDashboard(',start);
+ const summaries={
+  'processos-administrativos':{resource:'processos-administrativos',count:4,loaded:4,pages:1,loadStatus:'complete',groups:{HOMOLOGADO:3,REVOGADO:2}},
+  fornecedores:{resource:'fornecedores',count:1,loadStatus:'complete'}
+ };
+ let reads=0;
+ const fn=vm.runInNewContext(worker.slice(start,end)+';buildProcurementDashboard',{
+  getMultiSystemSummary:async(_env,_tenant,_system,resource)=>summaries[resource],
+  multiSystemSortedEntries:values=>Object.entries(values||{}),
+  multiSystemRealMeta:(_system,_items,extra)=>extra,
+  multiSystemPageObjectKey:()=> 'checkpointed-page',
+  readProcurementSituationCounts:async args=>{reads++;assert.equal(args.tenantId,'paulafreitas');return {status:'complete',groups:{HOMOLOGADO:3,REVOGADO:1}};},
+  buildProcurementSampleDashboard:()=>{throw Error('no synthetic fallback')}
+ });
+ const result=await fn({BI_SYNC_RAW:{}},{id:'paulafreitas'},new URL('https://example.test/'));
+ assert.equal(reads,1);
+ assert.deepEqual(Array.from(result.charts['compras-situacao'].datasets[0].data),[3,1]);
+ assert.equal(result.meta.situationChartSource,'r2-validated-pages');
+ assert.equal(result.meta.situationChartError,null);
+});
