@@ -113,3 +113,28 @@ test("Worker maps a missing initial load to HTTP 409",()=>{
   assert.equal(result.status,409);
   assert.equal(result.body.error,"INITIAL_LOAD_REQUIRED");
 });
+
+test("real dashboard builders fail closed when D1 has no source instead of loading synthetic samples",async()=>{
+  const worker=fs.readFileSync("backend/worker.js","utf8");
+  const cases=[
+    ["buildAccountingDashboard","buildProcurementDashboard","buildAccountingSampleDashboard"],
+    ["buildProcurementDashboard","buildAccountingSampleDashboard","buildProcurementSampleDashboard"],
+    ["buildPayrollDashboard","buildPayrollSampleDashboard","buildPayrollSampleDashboard"]
+  ];
+  for(const [name,next,sampleName] of cases){
+    const start=worker.indexOf("async function "+name+"(");
+    const end=worker.indexOf("async function "+next+"(",start+1);
+    assert.ok(start>=0&&end>start,name+" source range");
+    const context={
+      getMultiSystemSummary:async()=>null,
+      [sampleName]:()=>{throw Error("SYNTHETIC_SAMPLE_FORBIDDEN");},
+      URL
+    };
+    const fn=vm.runInNewContext(worker.slice(start,end)+";"+name,context);
+    await assert.rejects(
+      ()=>fn({}, {id:"paulafreitas",name:"Paula Freitas"},new URL("https://example.test/?exercicio=2026")),
+      error=>error.message==="INITIAL_LOAD_REQUIRED",
+      name+" must report missing real data"
+    );
+  }
+});
