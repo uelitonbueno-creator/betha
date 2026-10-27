@@ -307,3 +307,47 @@ test("fragmented dashboard aggregation never turns null or empty metrics into ze
   assert.equal(another.kpis.total,null,"a later valid fragment cannot restore an invalid total");
   assert.equal(another.charts.monthly.datasets[0].data[0],null);
 });
+
+test("KPI, chart drill-down and detailed currency preserve unavailable values",()=>{
+  const source=fs.readFileSync("app.js","utf8");
+  const extract=(start,end)=>{
+    const a=source.indexOf(start),b=source.indexOf(end,a+start.length);
+    assert.ok(a>=0&&b>a,start+" must exist");
+    return source.slice(a,b);
+  };
+  const ctx=vm.createContext({
+    escapeHtml:value=>String(value),
+    datasetAllowedForKpi:()=>true
+  });
+  vm.runInContext(
+    extract("  function formatValue(","  function destroyCharts(")+
+    extract("  function valueDisplay(","  function sourceOriginHtml(")+
+    extract("  function formatDetailCell(","  function detailPageTable("),ctx
+  );
+  const formatValue=vm.runInContext("formatValue",ctx);
+  const valueDisplay=vm.runInContext("valueDisplay",ctx);
+  const detail=vm.runInContext("formatDetailCell",ctx);
+  for(const invalid of [null,undefined,"","  ",false,NaN,Infinity]){
+    assert.equal(formatValue(invalid,"currency"),"—","KPI currency must not invent zero");
+    assert.equal(formatValue(invalid,"percent"),"—","KPI percent must not invent zero");
+    assert.equal(valueDisplay(invalid,"currency"),"—","chart cell must not invent zero");
+  }
+  for(const invalid of [null,undefined,"","  ",false,NaN]){
+    assert.equal(detail(invalid,"currency"),"—","detail currency must not invent zero");
+  }
+  assert.match(formatValue(0,"currency"),/0,00/,"valid zero remains visible");
+  assert.equal(formatValue(0,"percent"),"0%");
+  assert.match(detail(0,"currency"),/0,00/);
+
+  const chartSeriesTable=vm.runInContext("chartSeriesTable",ctx);
+  const chartDef={title:"Empenhos mensais"};
+  const make=data=>({labels:["Jan","Fev"],datasets:[{label:"Valor",data}],format:"currency"});
+  const incomplete=chartSeriesTable(chartDef,make([100,null]));
+  assert.match(incomplete,/<tfoot>[\\s\\S]*?<th>—<\\/th>/,"incomplete total must be unavailable");
+  assert.doesNotMatch(incomplete,/detail-percent/,"partial series must not imply validated percentages");
+  const complete=chartSeriesTable(chartDef,make([100,0]));
+  assert.match(complete,/<tfoot>[\\s\\S]*?100,00/,"complete total must remain available");
+  assert.match(complete,/detail-percent/,"complete series may show validated percentages");
+  const short=chartSeriesTable(chartDef,make([100]));
+  assert.match(short,/<tfoot>[\\s\\S]*?<th>—<\\/th>/,"missing label must invalidate total");
+});
