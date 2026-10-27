@@ -274,15 +274,16 @@
 
       setItem(KEY_ERROR, code);
 
-      if (
-        error && error.status === 401 &&
-        ["APPLICATION_SESSION_INVALID","APPLICATION_SESSION_EXPIRED","USER_TOKEN_REQUIRED"].includes(code)
-      ) {
+      // A rejected session must never be treated as authenticated merely
+      // because a stale token is still cached in browser storage. The backend
+      // may return PLATFORM_HTTP_401/403 instead of a local session error.
+      if (error && (error.status === 401 || error.status === 403)) {
         clearSessionOnly();
         setItem(KEY_ERROR, code);
         return false;
       }
 
+      // Preserve the existing offline grace period only for transient failures.
       return Boolean(getToken());
     } finally {
       clearTimeout(timer);
