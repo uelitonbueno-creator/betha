@@ -528,13 +528,14 @@
   }
 
   function formatValue(value, format) {
-    if(value===null||value===undefined)return "—";
-    if(format==="percent")return Number(value).toLocaleString("pt-BR",{maximumFractionDigits:2})+"%";
-    if (value === null || value === undefined || Number.isNaN(Number(value))) return "—";
-    if (format === "currency") {
-      return Number(value).toLocaleString("pt-BR", {style:"currency", currency:"BRL"});
-    }
-    return Number(value).toLocaleString("pt-BR");
+    // A ausência de um valor validado não representa zero financeiro.
+    if(value===null||value===undefined||typeof value==="boolean"||
+       (typeof value==="string"&&!value.trim()))return "—";
+    const numeric=Number(value);
+    if(!Number.isFinite(numeric))return "—";
+    if(format==="percent")return numeric.toLocaleString("pt-BR",{maximumFractionDigits:2})+"%";
+    if(format==="currency")return numeric.toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+    return numeric.toLocaleString("pt-BR");
   }
 
   function destroyCharts() {
@@ -4189,13 +4190,16 @@
   }
 
   function valueDisplay(value,format) {
-    if(value===null||value===undefined)return "—";
-    if(format==="percent")return Number(value).toLocaleString("pt-BR",{maximumFractionDigits:2})+"%";
-    if(value===null || value===undefined || value==="") return "—";
-    if(format==="percent") return Number(value).toLocaleString("pt-BR",{maximumFractionDigits:2})+"%";
-    if(format==="currency") return Number(value||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
-    if(format==="percent") return Number(value||0).toLocaleString("pt-BR",{maximumFractionDigits:2})+"%";
-    return Number.isFinite(Number(value)) ? Number(value).toLocaleString("pt-BR") : String(value);
+    if(value===null||value===undefined||typeof value==="boolean"||
+       (typeof value==="string"&&!value.trim()))return "—";
+    const numeric=Number(value);
+    if(format==="currency"||format==="percent"){
+      if(!Number.isFinite(numeric))return "—";
+      return format==="currency"
+        ? numeric.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})
+        : numeric.toLocaleString("pt-BR",{maximumFractionDigits:2})+"%";
+    }
+    return Number.isFinite(numeric)?numeric.toLocaleString("pt-BR"):String(value);
   }
 
   function chartSeriesTable(chartDef,data,kpi=null) {
@@ -4203,12 +4207,27 @@
     const datasets=(data.datasets||[]).filter(ds=>!kpi || datasetAllowedForKpi(kpi,ds));
     if(!datasets.length) return "";
 
-    const totals=datasets.map(ds=>(ds.data||[]).reduce((sum,v)=>sum+(Number(v)||0),0));
-    const grand=totals.reduce((a,b)=>a+b,0);
+    // Não somar séries parciais como se as lacunas fossem zero.
+    const validatedNumber=value=>{
+      if(value===null||value===undefined||typeof value==="boolean"||
+         (typeof value==="string"&&!value.trim()))return null;
+      const n=Number(value);
+      return Number.isFinite(n)?n:null;
+    };
+    const totals=datasets.map(ds=>{
+      if(!Array.isArray(ds.data)||ds.data.length!==data.labels.length)return null;
+      return ds.data.reduce((sum,value)=>{
+        const n=validatedNumber(value);
+        return sum===null||n===null?null:sum+n;
+      },0);
+    });
+    const grand=totals.every(value=>value!==null)?totals.reduce((a,b)=>a+b,0):null;
     const rows=data.labels.map((label,index)=>{
       const cells=datasets.map((ds,di)=>{
         const value=ds.data?.[index]??null;
-        const percent=grand>0&&!data.nonAdditive ? (value/grand)*100 : null;
+        const validValue=validatedNumber(value);
+        const percent=grand!==null&&grand>0&&!data.nonAdditive&&validValue!==null
+          ? (validValue/grand)*100 : null;
         return `<td><strong>${escapeHtml(valueDisplay(value,data.format))}</strong>${percent!==null ? `<small class="detail-percent">${percent.toLocaleString("pt-BR",{maximumFractionDigits:1})}%</small>` : ""}</td>`;
       }).join("");
       return `<tr><td>${escapeHtml(String(label))}</td>${cells}</tr>`;
@@ -4387,13 +4406,17 @@
   }
 
   function formatDetailCell(value,format) {
-    if(value===null||value===undefined||value==="") return "—";
-    if(format==="currency") return Number(value||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
-    if(format==="number") return Number.isFinite(Number(value)) ? Number(value).toLocaleString("pt-BR",{maximumFractionDigits:6}) : String(value);
-    if(format==="boolean") return value===true ? "Sim" : value===false ? "Não" : String(value);
-    if(format==="date") {
+    if(value===null||value===undefined||
+       (typeof value==="string"&&!value.trim()))return "—";
+    if(format==="currency"){
+      if(typeof value==="boolean"||!Number.isFinite(Number(value)))return "—";
+      return Number(value).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+    }
+    if(format==="number")return Number.isFinite(Number(value))?Number(value).toLocaleString("pt-BR",{maximumFractionDigits:6}):String(value);
+    if(format==="boolean")return value===true?"Sim":value===false?"Não":String(value);
+    if(format==="date"){
       const d=new Date(value);
-      return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString("pt-BR");
+      return Number.isNaN(d.getTime())?String(value):d.toLocaleString("pt-BR");
     }
     return String(value);
   }
