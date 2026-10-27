@@ -93,3 +93,48 @@ test("valid server-side session still passes",async()=>{
   assert.equal(await x.validate(),true);
   assert.equal(x.clears(),0);
 });
+
+const workerSource=fs.readFileSync("backend/worker.js","utf8");
+const sessionRoute='    if (url.pathname==="/api/auth/session-check" && request.method==="GET") {';
+const sessionRouteStart=workerSource.indexOf(sessionRoute);
+const sessionRouteEnd=workerSource.indexOf('\n    if (url.pathname==="/api/auth/logout"',sessionRouteStart);
+test("session-check has one reachable route and validates upstream access",async()=>{
+  assert.ok(sessionRouteStart>=0&&sessionRouteEnd>sessionRouteStart);
+  assert.equal(workerSource.split(sessionRoute).length-1,1,
+    "duplicate session-check handlers can silently bypass upstream validation");
+  let calls=0;
+  const handler=vm.runInNewContext(
+    "(async function(request,env,url){"+
+      workerSource.slice(sessionRouteStart,sessionRouteEnd)+"})",
+    {
+      authTrace:async()=>{},
+      getUserToken:async()=>"test-token",
+      getUserAccesses:async(token)=>{calls++;assert.equal(token,"test-token");return [{id:1},{id:2}];},
+      json:(_req,_env,status,body)=>({status,body}),
+      errorResponse:(_req,_env,error)=>({status:error.status||401,error:error.message}),
+      Error,Array
+    }
+  );
+  const result=await handler({method:"GET"},{},{pathname:"/api/auth/session-check"});
+  assert.equal(result.status,200);
+  assert.equal(result.body.sessionValid,true);
+  assert.equal(result.body.accessCount,2);
+  assert.equal(calls,1);
+});
+test("upstream Betha 401 must not become sessionValid true",async()=>{
+  const handler=vm.runInNewContext(
+    "(async function(request,env,url){"+
+      workerSource.slice(sessionRouteStart,sessionRouteEnd)+"})",
+    {
+      authTrace:async()=>{},
+      getUserToken:async()=>"revoked-token",
+      getUserAccesses:async()=>{const error=new Error("PLATFORM_HTTP_401");error.status=401;throw error;},
+      json:(_req,_env,status,body)=>({status,body}),
+      errorResponse:(_req,_env,error)=>({status:error.status||500,error:error.message}),
+      Error,Array
+    }
+  );
+  const result=await handler({method:"GET"},{},{pathname:"/api/auth/session-check"});
+  assert.equal(result.status,401);
+  assert.equal(result.error,"PLATFORM_HTTP_401");
+});
