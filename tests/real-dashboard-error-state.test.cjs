@@ -338,6 +338,10 @@ test("KPI, chart drill-down and detailed currency preserve unavailable values",(
   assert.match(formatValue(0,"currency"),/0,00/,"valid zero remains visible");
   assert.equal(formatValue(0,"percent"),"0%");
   assert.match(detail(0,"currency"),/0,00/);
+  assert.equal(detail(true,"number"),"—","boolean true is not a numeric record");
+  assert.equal(detail(false,"number"),"—","boolean false must not be displayed as zero");
+  assert.equal(detail(0,"number"),"0","validated numeric zero remains visible");
+  assert.equal(detail(12,"number"),"12","validated numeric detail remains visible");
 
   const chartSeriesTable=vm.runInContext("chartSeriesTable",ctx);
   const chartDef={title:"Empenhos mensais"};
