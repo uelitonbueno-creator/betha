@@ -11,6 +11,7 @@
   const DEFAULT_VIEW="visao-geral";
   const ADMIN_VIEWS = new Set(["usuarios-admin","configuracoes-admin"]);
   const REAL_MULTI_SYSTEM_HOME_VIEWS = new Set(["contabil-visao-geral","compras-visao-geral","folha-visao-geral"]);
+  const REAL_MULTI_SYSTEM_IDS = new Set(["contabil","compras","folha"]);
   const bethaApp = document.getElementById("bethaApp");
   const authGate = document.getElementById("authGate");
   const tenantGate = document.getElementById("tenantGate");
@@ -468,7 +469,7 @@
     if(!summary) return;
 
     const realMode=payload?.meta?.realData===true;
-    const sampleMode=payload?.meta?.sampleMode===true || (!realMode&&Boolean(def.localSample));
+    const sampleMode=!REAL_MULTI_SYSTEM_IDS.has(def.system||currentSystemId) && (payload?.meta?.sampleMode===true || (!realMode&&Boolean(def.localSample)));
     if(sampleMode){
       const meta=payload?.meta||{};
       const activeSystem=currentSystemInfo();
@@ -1192,7 +1193,7 @@
     document.title="BI Vella | "+systemName+" / "+(def?.title||"Painel");
     const sampleModeBadge=document.getElementById("sampleModeBadge");
     if(sampleModeBadge){
-      const expectsReal=REAL_MULTI_SYSTEM_HOME_VIEWS.has(view);
+      const expectsReal=REAL_MULTI_SYSTEM_HOME_VIEWS.has(view)||REAL_MULTI_SYSTEM_IDS.has(def?.system||currentSystemId);
       sampleModeBadge.hidden=expectsReal||!def?.localSample;
       const sampleText=sampleModeBadge.querySelector("span");
       if(sampleText&&def?.localSample&&!expectsReal) sampleText.textContent="Amostra de teste · sem consumo da API";
@@ -1366,7 +1367,7 @@
       coverage.className = "integration-coverage";
       kpiGrid.insertAdjacentElement("afterend", coverage);
     }
-    const sampleCoverage=Boolean(def.localSample)&&!REAL_MULTI_SYSTEM_HOME_VIEWS.has(view);
+    const sampleCoverage=Boolean(def.localSample)&&!REAL_MULTI_SYSTEM_IDS.has(def.system||currentSystemId)&&!REAL_MULTI_SYSTEM_HOME_VIEWS.has(view);
     coverage.classList.toggle("is-sample",sampleCoverage);
     coverage.innerHTML = `
       <div class="coverage-title">
@@ -2036,7 +2037,7 @@
 
     const kpis=payload?.kpis||{};
     const warnings=Array.isArray(payload?.meta?.warnings)?payload.meta.warnings:[];
-    const sampleMode=payload?.meta?.realData!==true && (payload?.meta?.sampleMode===true || Boolean(dashboards[currentView]?.localSample));
+    const sampleMode=!REAL_MULTI_SYSTEM_IDS.has(dashboards[currentView]?.system||currentSystemId) && payload?.meta?.realData!==true && (payload?.meta?.sampleMode===true || Boolean(dashboards[currentView]?.localSample));
     const items=[];
 
     if(String(currentSystemId)==="tributos"){
@@ -2417,7 +2418,7 @@
   function syncDashboardDataMode(payload,view=currentView) {
     const def=dashboards[view]||{};
     const realMode=payload?.meta?.realData===true;
-    const sampleMode=payload?.meta?.sampleMode===true || (!realMode&&Boolean(def.localSample));
+    const sampleMode=!REAL_MULTI_SYSTEM_IDS.has(def.system||currentSystemId) && (payload?.meta?.sampleMode===true || (!realMode&&Boolean(def.localSample)));
 
     const badge=document.getElementById("sampleModeBadge");
     if(badge){
@@ -2457,6 +2458,15 @@
   }
 
   function renderPayload(payload) {
+    if(REAL_MULTI_SYSTEM_IDS.has(currentSystemId)&&payload?.meta?.realData!==true){
+      // Defense in depth: reject synthetic/stale snapshots even if a caller bypasses the loader.
+      currentPayload=null;
+      setDashboardLoading(false);
+      markDashboardChartsUnavailable("O retorno não comprova dados reais desta entidade.");
+      markDashboardCoverageUnavailable("Amostras locais e snapshots sem origem real foram bloqueados.");
+      setStatus("error","Dados reais indisponíveis. Nenhuma amostra sintética foi exibida.");
+      return;
+    }
     currentPayload = payload || {};
     setDashboardLoading(false);
     const def = dashboards[currentView];
@@ -3764,6 +3774,7 @@
 
   async function loadLocalSampleDashboard(view) {
     const def=dashboards[view];
+    if(REAL_MULTI_SYSTEM_IDS.has(def?.system||currentSystemId))return showRealSubpanelUnavailable(view);
     const sample=def?.localSample;
     if(!sample) return;
     const generation=++dashboardLoadGeneration;
@@ -3872,14 +3883,21 @@
       console.warn("Falha ao carregar dados reais do sistema:",error);
       setDashboardLoading(false);
       const initialLoadRequired=error.message==="INITIAL_LOAD_REQUIRED";
+      const missingLoadLabels={
+        tributos:"tributária",
+        contabil:"contábil",
+        compras:"de Compras",
+        folha:"de Folha"
+      };
+      const missingLoadLabel=missingLoadLabels[requestedSystem]||"deste sistema";
       const unavailableMessage=initialLoadRequired
-        ? "Nenhuma carga tributária foi encontrada para esta entidade. As cargas dos outros sistemas permanecem separadas."
+        ? "Nenhuma carga "+missingLoadLabel+" foi encontrada para esta entidade. As cargas dos outros sistemas permanecem separadas."
         : "Não foi possível consultar os dados reais. Tente novamente; dados sintéticos não serão exibidos como substituição.";
       markDashboardChartsUnavailable(initialLoadRequired
-        ? "Nenhuma carga tributária salva foi encontrada para esta entidade."
+        ? "Nenhuma carga "+missingLoadLabel+" salva foi encontrada para esta entidade."
         : undefined);
       markDashboardCoverageUnavailable(initialLoadRequired
-        ? "Nenhuma carga tributária salva para esta entidade. As cargas dos outros sistemas não foram alteradas."
+        ? "Nenhuma carga "+missingLoadLabel+" salva para esta entidade. As cargas dos outros sistemas não foram alteradas."
         : "A consulta falhou antes de receber a cobertura das fontes.");
       setStatus("error",unavailableMessage);
     }finally{
@@ -3887,9 +3905,23 @@
     }
   }
 
+  function showRealSubpanelUnavailable(view) {
+    // Never fetch data/samples/*.json for production systems. Keep blank KPIs as em dashes.
+    ++dashboardLoadGeneration;
+    const badge=document.getElementById("sampleModeBadge");
+    if(badge)badge.hidden=true;
+    setRefreshBusy(false);
+    setDashboardLoading(false);
+    markDashboardChartsUnavailable("Este subpainel ainda não possui uma fonte real homologada.");
+    markDashboardCoverageUnavailable("Nenhum dado sintético foi carregado. Use a Visão geral para consultar os indicadores reais disponíveis.");
+    setLastUpdated(null);
+    setStatus("error","Subpainel sem integração real homologada. Nenhuma amostra sintética foi exibida.");
+  }
+
   async function loadDashboardData(view, options = {}) {
     if(view===HOME_VIEW) view=currentSystemInfo()?.homeView||DEFAULT_VIEW;
     if(REAL_MULTI_SYSTEM_HOME_VIEWS.has(view)||view==="visao-geral") return loadRealMultiSystemDashboard(view);
+    if(dashboards[view]?.localSample&&REAL_MULTI_SYSTEM_IDS.has(dashboards[view].system||currentSystemId)) return showRealSubpanelUnavailable(view);
     if(dashboards[view]?.localSample) return loadLocalSampleDashboard(view);
     if(dashboards[view]?.apiSource) return loadApiPanelDashboard(view);
     const generation=++dashboardLoadGeneration;
@@ -4585,7 +4617,7 @@
       const context=exportContextLabel();
       const activeSystem=currentSystemInfo();
       const systemName=String(activeSystem?.name||activeSystem?.label||currentSystemId||"Tributos");
-      const sampleMode=Boolean(dashboards[currentView]?.localSample);
+      const sampleMode=currentPayload?.meta?.sampleMode===true&&currentPayload?.meta?.realData!==true;
       const panelName=String(dashboards[currentView]?.title||"Painel");
 
       const drawHeader=(pageNo)=>{

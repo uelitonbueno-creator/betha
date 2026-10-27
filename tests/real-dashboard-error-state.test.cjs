@@ -169,3 +169,52 @@ test("D1 summary must match its ingestion checkpoint before financial aggregates
   const orphan=await fn({AUTH_DB:fakeDb({...matching,status:null,loaded:null},null)},"paulafreitas","contabil","empenhos");
   assert.equal(orphan,null);
 });
+
+test("production subpanels never read local synthetic files or expose sample badges",async()=>{
+  const source=fs.readFileSync("app.js","utf8");
+  const subpanelStart=source.indexOf("  function showRealSubpanelUnavailable(");
+  const dispatchEnd=source.indexOf("  function setRefreshBusy(",subpanelStart);
+  const sampleStart=source.indexOf("  async function loadLocalSampleDashboard(");
+  const sampleEnd=source.indexOf("  async function loadRealMultiSystemDashboard(",sampleStart);
+  assert.ok(subpanelStart>0&&dispatchEnd>subpanelStart&&sampleStart>0&&sampleEnd>sampleStart);
+  for(const [system,view] of [
+    ["contabil","contabil-despesa"],
+    ["compras","compras-processos"],
+    ["folha","folha-mensal"]
+  ]){
+    const statuses=[],charts=[],coverage=[],loads=[];
+    const badge={hidden:false};
+    const context=vm.createContext({
+      HOME_VIEW:"inicio",DEFAULT_VIEW:"visao-geral",
+      REAL_MULTI_SYSTEM_HOME_VIEWS:new Set(["contabil-visao-geral","compras-visao-geral","folha-visao-geral"]),
+      REAL_MULTI_SYSTEM_IDS:new Set(["contabil","compras","folha"]),
+      dashboards:{[view]:{system,localSample:{file:"data/samples/"+system+"-100.json"}}},
+      currentSystemId:system,currentView:view,dashboardLoadGeneration:0,
+      document:{getElementById:id=>id==="sampleModeBadge"?badge:null},
+      setRefreshBusy:value=>loads.push(["refresh",value]),
+      setDashboardLoading:value=>loads.push(["loading",value]),
+      markDashboardChartsUnavailable:message=>charts.push(message),
+      markDashboardCoverageUnavailable:message=>coverage.push(message),
+      setLastUpdated:value=>loads.push(["updated",value]),
+      setStatus:(type,message)=>statuses.push({type,message}),
+      loadRealMultiSystemDashboard:()=>{throw Error("Unexpected home loader");},
+      loadApiPanelDashboard:()=>{throw Error("Unexpected API loader");},
+      currentSystemInfo:()=>({homeView:"contabil-visao-geral"}),
+      fetch:()=>{throw Error("SYNTHETIC_FETCH_FORBIDDEN");}
+    });
+    vm.runInContext(source.slice(subpanelStart,dispatchEnd),context);
+    await vm.runInContext("loadDashboardData("+JSON.stringify(view)+")",context);
+    assert.equal(badge.hidden,true,system+": sample badge visible");
+    assert.equal(statuses.at(-1).type,"error",system+": no error state");
+    assert.match(statuses.at(-1).message,/Nenhuma amostra sintética/);
+    assert.match(charts.at(-1),/fonte real homologada/);
+    assert.match(coverage.at(-1),/Nenhum dado sintético/);
+    assert.ok(loads.some(item=>item[0]==="loading"&&item[1]===false));
+    // Direct invocation is also guarded against future routing regressions.
+    vm.runInContext(source.slice(sampleStart,sampleEnd),context);
+    await vm.runInContext("loadLocalSampleDashboard("+JSON.stringify(view)+")",context);
+    assert.equal(statuses.length,2,system+": direct sample loader must be blocked");
+  }
+  assert.match(source,/if\(REAL_MULTI_SYSTEM_IDS\.has\(currentSystemId\)&&payload\?\.meta\?\.realData!==true\)/,
+    "renderPayload must reject unverified synthetic or cached payloads");
+});
