@@ -10,6 +10,7 @@
  */
 import { orderedEnabledTenantIds, reconcileArchivedPages } from "./multisystem-recovery.mjs";
 import { advancePayrollProjection, readPayrollProjection } from "./payroll-projection.mjs";
+import { readProcurementSituationCounts } from "./procurement-situation.mjs";
 const BI_BASE_DEFAULT = "https://tributos.suite.betha.cloud";
 const AUTH_BASE = "https://plataforma-autorizacoes.betha.cloud";
 const PAGE_MAPPING_BASE = "https://autorizacoes.suite.betha.cloud/dados/v1";
@@ -7218,7 +7219,14 @@ async function buildProcurementDashboard(env,tenant,url){
   const processSummary=await getMultiSystemSummary(env,tenant.id,"compras","processos-administrativos");
   if(!processSummary||Number(processSummary.count)<=0)return buildProcurementSampleDashboard(env,tenant,url);
   const supplierSummary=await getMultiSystemSummary(env,tenant.id,"compras","fornecedores");
-  const situations=multiSystemSortedEntries(processSummary.groups,12);
+  const persistedSituations=multiSystemSortedEntries(processSummary.groups,12);
+  // Older D1 summaries omit situation groups despite complete R2 source pages.
+  // Read only the checkpointed pages; never include orphaned duplicate R2 pages.
+  const recoveredSituations=persistedSituations.length?null:await readProcurementSituationCounts({
+    bucket:env.BI_SYNC_RAW,tenantId:tenant.id,summary:processSummary,
+    pageKey:page=>multiSystemPageObjectKey(tenant.id,"compras","processos-administrativos",page)
+  });
+  const situations=persistedSituations.length?persistedSituations:multiSystemSortedEntries(recoveredSituations?.groups,12);
   const monthlyKeys=Object.keys(processSummary.monthly||{});
   const validMonthlyKeys=monthlyKeys.filter(key=>/^\d{4}-(0[1-9]|1[0-2])$/.test(key));
   const invalidMonthlyKeys=monthlyKeys.length-validMonthlyKeys.length;
@@ -7281,9 +7289,12 @@ async function buildProcurementDashboard(env,tenant,url){
       periodScope:"historical",
       periodFilterApplied:false,
       unsupportedFilters:ignoredFilters,
+      situationChartSource:persistedSituations.length?"d1-summary":recoveredSituations?.status==="complete"?"r2-validated-pages":null,
+      situationChartError:recoveredSituations?.status==="unavailable"?recoveredSituations.reason:null,
       monthlySeriesStatus:validMonthlyKeys.length?"available":invalidMonthlyKeys?"unavailable-invalid-month-keys":"unavailable-no-validated-dates",
       invalidMonthlyKeyCount:invalidMonthlyKeys,
       chartUnavailableReasons:{
+        ...(!situations.length?{"compras-situacao":"Não foi possível validar todas as páginas R2 do checkpoint para agrupar processos por situação."}:{}),
         "compras-mensal":invalidMonthlyKeys?"O resumo contém "+invalidMonthlyKeys+" chaves que não são competências válidas; valores estimados e homologados não foram validados.":"Não há série mensal financeira validada para os processos importados.",
         "compras-modalidade":"A origem possui formaContratacao, mas o resumo persistido não possui classificação por modalidade validada. Não equiparar os dois campos sem conferência.",
         "compras-secretaria":"Não existem valores homologados e agrupamento por secretaria validados no resumo D1."
