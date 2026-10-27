@@ -3842,13 +3842,13 @@
     currentPayload=null;
     destroyCharts();
     document.querySelectorAll("#kpiGrid [data-value]").forEach(value=>{value.textContent="—";});
-    document.querySelectorAll("#chartGrid .chart-empty").forEach(empty=>{empty.hidden=false;});
+    document.querySelectorAll("#dashboardView [data-chart] .chart-empty").forEach(empty=>{empty.hidden=false;});
     const tables=document.getElementById("tableGrid");
     if(tables){tables.replaceChildren();tables.hidden=true;}
     const heading=document.getElementById("tableSectionHeading");
     if(heading)heading.hidden=true;
-    document.getElementById("overviewAttention")?.remove();
-    document.getElementById("overviewExecutive")?.remove();
+    // The executive section owns the primary chart card; removing it would erase the chart.
+    document.getElementById("overviewAttention")?.replaceChildren();
     setLastUpdated(null);
   }
 
@@ -4076,7 +4076,7 @@
   }
 
   function markDashboardChartsUnavailable(detailMessage) {
-    document.querySelectorAll("#dashboardView #chartGrid .chart-empty").forEach(empty=>{
+    document.querySelectorAll("#dashboardView [data-chart] .chart-empty").forEach(empty=>{
       const title=empty.querySelector("strong");
       const detail=empty.querySelector("span");
       if(title) title.textContent="Dados indisponíveis";
