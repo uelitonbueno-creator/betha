@@ -83,3 +83,36 @@ test("load status never invents zero success when source details are absent",()=
   }}),/Carga concluída: 2 de 2 fontes carregadas com sucesso/);
   assert.doesNotMatch(app,/job\.completed\+' de '\+job\.total\+' fontes concluídas/);
 });
+
+test("public sync status reports successes separately from processed terminal errors",()=>{
+  const worker=fs.readFileSync(path.join(__dirname,"../backend/worker.js"),"utf8");
+  const start=worker.indexOf("function publicSyncJob(job){");
+  const end=worker.indexOf("\nfunction syncErrorCode(",start);
+  assert.ok(start>=0 && end>start,"public sync serializer exists");
+  const publicSyncJob=new Function(worker.slice(start,end)+";return publicSyncJob;")();
+  const serialized=publicSyncJob({state:"running",completed:3,total:4,sources:{
+    a:{complete:true},b:{complete:true},c:{error:"BETHA_HTTP_401"},d:{complete:false}
+  }});
+  assert.equal(serialized.completed,3,"legacy processed count remains backwards compatible");
+  assert.equal(serialized.successfulSources,2);
+  assert.equal(serialized.failedSources,1);
+  assert.equal(serialized.pendingSources,1);
+  assert.equal(Object.hasOwn(serialized,"sources"),false,"private source entries must not leak");
+  const missing=publicSyncJob({state:"running",completed:43,total:44});
+  assert.equal(missing.successfulSources,null,"missing detail is not zero successes");
+  assert.equal(missing.failedSources,null);
+  assert.equal(missing.pendingSources,null);
+});
+
+test("public aggregate counts are used only when valid and consistent",()=>{
+  const start=app.indexOf("  function syncSourceProgress(job) {");
+  const end=app.indexOf("  async function loadSyntheticHome()",start);
+  const {syncSourceProgress,syncSourceStatus}=new Function(app.slice(start,end)+";return {syncSourceProgress,syncSourceStatus};")();
+  const aggregate={state:"running",total:44,completed:43,successfulSources:39,failedSources:4,pendingSources:1};
+  assert.deepEqual(syncSourceProgress(aggregate),{succeeded:39,failed:4,pending:1,total:44});
+  assert.match(syncSourceStatus(aggregate),/39 de 44 fontes carregadas com sucesso/);
+  assert.match(syncSourceStatus(aggregate),/4 com erro/);
+  assert.match(syncSourceStatus(aggregate),/1 pendente/);
+  assert.equal(syncSourceProgress({...aggregate,successfulSources:null}),null);
+  assert.equal(syncSourceProgress({...aggregate,pendingSources:0}),null);
+});
