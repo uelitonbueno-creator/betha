@@ -81,3 +81,35 @@ test("production same-origin frontend scripts load as JavaScript",async()=>{
       "Worker-proxied "+path+" must be valid JavaScript");
   }
 });
+
+
+// Exercise the *published* OAuth landing in an actual browser, not just fetch
+// and JavaScript syntax. This is anonymous and never handles Betha credentials.
+// It catches a blank page caused by script startup, HTML proxy, or asset loading.
+test("production Worker OAuth landing shows usable anonymous login in Chromium", {timeout:75000}, () => {
+  const {spawnSync}=require("node:child_process");
+  let chrome="";
+  for(const candidate of ["google-chrome","google-chrome-stable","chromium","chromium-browser"]){
+    const found=spawnSync("which",[candidate],{encoding:"utf8"});
+    if(found.status===0){chrome=found.stdout.trim();break;}
+  }
+  assert.ok(chrome,"Chrome/Chromium required for production browser smoke");
+  const run=spawnSync(chrome,[
+    "--headless=new","--no-sandbox","--disable-gpu",
+    "--disable-dev-shm-usage","--no-first-run",
+    "--no-default-browser-check","--virtual-time-budget=24000",
+    "--dump-dom",WORKER+"/"
+  ],{encoding:"utf8",timeout:65000,maxBuffer:16*1024*1024});
+  assert.equal(run.status,0,"Chromium failed: "+String(run.stderr).slice(-1000));
+  const html=String(run.stdout||"");
+  assert.ok(html.includes("BI Vella"),"Worker landing did not render BI Vella");
+  const gate=html.match(/<div id="authGate"[^>]*>/);
+  assert.ok(gate,"Worker login gate is missing");
+  assert.ok(!/\\bhidden(?:\\s|>|=)/.test(gate[0]),
+    "Worker login gate remained hidden (possible blank screen)");
+  const login=html.match(/<a id="loginButton"[^>]*>/);
+  assert.ok(login,"Worker login button is missing");
+  assert.ok(login[0].includes(WORKER+"/api/auth/login"),
+    "Worker login button points to the wrong origin");
+  assert.ok(html.includes('id="bethaApp"'),"Worker app shell is missing");
+});
