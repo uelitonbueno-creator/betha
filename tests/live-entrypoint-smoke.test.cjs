@@ -38,3 +38,21 @@ test("production tenant API does not expose tenants anonymously",async()=>{
   const response=await read(WORKER+"/api/me/tenants",{headers:{Origin:ORIGIN}});
   assert.ok([401,403].includes(response.status),"Unexpected anonymous tenant status "+response.status);
 });
+
+// Read-only production check: the public login route must reach Betha OAuth.
+// Never follow the redirect or capture a user credential in CI logs.
+test("production Betha login route redirects to configured OAuth provider",async()=>{
+  const response=await read(WORKER+"/api/auth/login",{redirect:"manual"});
+  assert.equal(response.status,302,"OAuth login must redirect, not render an error page");
+  const location=response.headers.get("location");
+  assert.ok(location,"OAuth redirect Location missing");
+  const authorize=new URL(location);
+  assert.equal(authorize.origin,"https://plataforma-oauth.betha.cloud","unexpected OAuth provider");
+  assert.equal(authorize.pathname,"/auth/oauth2/authorize");
+  assert.equal(authorize.searchParams.get("response_type"),"code");
+  assert.ok(authorize.searchParams.get("client_id"),"OAuth client ID missing");
+  assert.ok(authorize.searchParams.get("state"),"OAuth state missing");
+  const callback=new URL(authorize.searchParams.get("redirect_uri"));
+  assert.equal(callback.origin,WORKER,"OAuth callback origin mismatch");
+  assert.equal(callback.pathname,"/api/auth/callback");
+});
