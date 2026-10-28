@@ -202,9 +202,9 @@ test('verified Worker cookie opens Contabilidade despite stale browser Session t
     assert.ok(app,'application element missing');
     assert.ok(auth?.[0].includes(' hidden'),'login gate must remain hidden with verified cookie');
     assert.ok(tenant?.[0].includes(' hidden'),'tenant gate must close after authorized tenant');
-    assert.ok(!/style="[^"]*display:\\s*none/.test(app[0]),'application remains hidden');
+    assert.ok(!/style="[^"]*display:\s*none/.test(app[0]),'application remains hidden');
     assert.ok(mock.authAudit.tenantChecks>=1,'tenant authorization must use cookie without stale Session header');
-    const diagnostics=html.match(/<pre id="biBootErrors"[^>]*>([^<]*)<\\/pre>/);
+    const diagnostics=html.match(/<pre id="biBootErrors"[^>]*>([^<]*)<\/pre>/);
     assert.ok(diagnostics,'browser diagnostics missing');
     assert.deepEqual(JSON.parse(diagnostics[1]||'[]'),[],'uncaught JavaScript errors');
   } finally {
