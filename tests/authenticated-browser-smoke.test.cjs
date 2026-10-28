@@ -16,15 +16,34 @@ function respond(res, body, type='text/plain', status=200) {
 }
 function json(res, data, status=200) { respond(res, JSON.stringify(data), 'application/json', status); }
 
-function mockServer({realAuth=false}={}) {
+function mockServer({realAuth=false,realAuthSuccess=false}={}) {
+  const authAudit = {exchanges:0, sessionChecks:0, tenantChecks:0};
   const server = http.createServer(async (req,res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     try {
       if (url.pathname === '/api/me/tenants') {
+        if (realAuthSuccess) {
+          if (req.headers.authorization !== 'Session test-only-session') return json(res,{error:'USER_TOKEN_REQUIRED'},401);
+          authAudit.tenantChecks++;
+        }
         return json(res, {tenants:[{
           id:'paulafreitas', name:'Paula Freitas', databaseId:'test-database', entityId:'test-entity',
           admin:true, technical:true, allowedViews:['contabil-visao-geral','contabil-empenhos','compras-visao-geral','compras-processos']
         }]});
+      }
+      if (realAuthSuccess && url.pathname === '/api/auth/session-exchange') {
+        let body='';
+        for await (const chunk of req) body+=chunk;
+        if (req.method!=='POST' || JSON.parse(body).handoff!=='test-only-opaque-handoff') {
+          return json(res,{error:'AUTH_HANDOFF_INVALID'},400);
+        }
+        authAudit.exchanges++;
+        return json(res,{session:'test-only-session',expires_in:3600});
+      }
+      if (realAuthSuccess && url.pathname === '/api/auth/session-check') {
+        if (req.headers.authorization!=='Session test-only-session') return json(res,{error:'USER_TOKEN_REQUIRED'},401);
+        authAudit.sessionChecks++;
+        return json(res,{sessionValid:true,accessCount:1});
       }
       if (realAuth && url.pathname === '/api/auth/session-check') {
         return json(res, {error:'USER_TOKEN_REQUIRED'}, 401);
@@ -33,7 +52,7 @@ function mockServer({realAuth=false}={}) {
         return json(res, {ok:true, tenant:'paulafreitas', period:{ano:2026}, kpis:{}, charts:{}, tables:[], meta:{source:'TEST_FIXTURE_ONLY'}});
       }
       if (url.pathname === '/auth/auth.js') {
-        if (realAuth) {
+        if (realAuth || realAuthSuccess) {
           return respond(res, await fs.readFile(path.join(ROOT,'auth/auth.js'),'utf8'), 'application/javascript');
         }
         return respond(res, 'window.BIAuth={ready:Promise.resolve(true),isAuthenticated:()=>true,getToken:()=>"test-only-session",getError:()=>"",clear:()=>{},logout:()=>{}};', 'application/javascript');
@@ -62,6 +81,7 @@ function mockServer({realAuth=false}={}) {
       return respond(res,'Not found','text/plain',404);
     }
   });
+  server.authAudit=authAudit;
   return server;
 }
 
@@ -119,6 +139,37 @@ test('failed Betha OAuth callback shows a useful login error instead of a blank 
     const diagnostics=html.match(/<pre id="biBootErrors"[^>]*>([^<]*)<\/pre>/);
     assert.ok(diagnostics,'browser diagnostics missing');
     assert.deepEqual(JSON.parse(diagnostics[1] || '[]'),[],'uncaught JavaScript errors');
+  } finally {
+    await new Promise(resolve=>mock.close(resolve));
+  }
+});
+
+// This checks the real frontend OAuth handoff path, not a real Betha session.
+// All tokens and tenant data here are isolated test fixtures.
+test('successful OAuth handoff opens Contabilidade and Compras using real auth.js (mock backend only)', {timeout:100000}, async () => {
+  assert.ok(CHROME,'Chrome/Chromium is required for successful OAuth handoff smoke');
+  const mock=mockServer({realAuthSuccess:true});
+  await new Promise(resolve=>mock.listen(0,'127.0.0.1',resolve));
+  try {
+    for (const [system,view] of [['contabil','contabil-visao-geral'],['compras','compras-visao-geral']]) {
+      const url='http://127.0.0.1:'+mock.address().port+'/?sistema='+system+'&view='+view+'&auth_handoff=test-only-opaque-handoff';
+      const html=await runChrome(url);
+      const app=html.match(/<bth-app id="bethaApp"[^>]*>/);
+      const auth=html.match(/<div id="authGate"[^>]*>/);
+      const tenant=html.match(/<div id="tenantGate"[^>]*>/);
+      assert.ok(app,system+': app element missing');
+      assert.ok(auth?.[0].includes(' hidden'),system+': login gate not hidden after session exchange');
+      assert.ok(tenant?.[0].includes(' hidden'),system+': tenant gate not hidden after authorization');
+      assert.ok(!/style="[^"]*display:\\s*none/.test(app[0]),system+': application still hidden');
+      assert.ok(html.includes('Paula Freitas'),system+': authorized tenant not selected');
+      assert.ok(!html.includes('auth_handoff=test-only-opaque-handoff'),system+': OAuth callback leaked into URL');
+      const diagnostics=html.match(/<pre id="biBootErrors"[^>]*>([^<]*)<\\/pre>/);
+      assert.ok(diagnostics,system+': browser diagnostics missing');
+      assert.deepEqual(JSON.parse(diagnostics[1]||'[]'),[],system+': uncaught JavaScript errors');
+    }
+    assert.ok(mock.authAudit.exchanges>=2,'handoff exchange must occur for both systems');
+    assert.ok(mock.authAudit.sessionChecks>=2,'session must be validated after exchange');
+    assert.ok(mock.authAudit.tenantChecks>=2,'tenant API must authorize the exchanged session');
   } finally {
     await new Promise(resolve=>mock.close(resolve));
   }
