@@ -94,6 +94,36 @@ test("valid server-side session still passes",async()=>{
   assert.equal(x.clears(),0);
 });
 
+test("verified Worker cookie discards stale browser token before tenant requests",async()=>{
+  let token="stale-browser-session";
+  let clears=0;
+  let networkChecks=0;
+  const validate=vm.runInNewContext(
+    "let cookieAuthenticated=false;const serverAuth={authenticated:true};"+
+      source.slice(validateStart,validateEnd)+";validate",
+    {
+      getToken:()=>token,
+      clearSessionOnly:()=>{clears++;token="";},
+      removeItem:()=>{},
+      fetch:async()=>{networkChecks++;throw new Error("unnecessary session-check");},
+      KEY_ERROR:"betha_bi_auth_error",
+      Error
+    }
+  );
+  assert.equal(await validate(),true);
+  assert.equal(clears,1,"stale browser token must be removed when HttpOnly cookie is authoritative");
+  assert.equal(token,"","app.js must not send Authorization: Session with a stale token");
+  assert.equal(networkChecks,0,"verified Worker cookie does not need an extra session-check");
+});
+
+test("cross-origin bearer session remains available without Worker cookie",async()=>{
+  const x=makeSessionCheck(200);
+  assert.equal(await x.validate(),true);
+  assert.equal(x.token(),"stale-session","GitHub Pages bearer flow must remain intact");
+  assert.equal(x.clears(),0);
+  assert.equal(x.sent().options.headers.Authorization,"Session stale-session");
+});
+
 const workerSource=fs.readFileSync("backend/worker.js","utf8");
 const sessionRoute='    if (url.pathname==="/api/auth/session-check" && request.method==="GET") {';
 const sessionRouteStart=workerSource.indexOf(sessionRoute);
