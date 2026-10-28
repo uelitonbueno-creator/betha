@@ -1184,7 +1184,17 @@ function syncInitialPageSize(resource){
 async function syncScope(tenant){return 'bi-sync:v1:'+await sha256Hex(JSON.stringify([tenant.id,tenant.entityId,tenant.databaseId,tenant.userAccess,tenant.accessToken]));}
 async function syncConfig(env,tenant){return await env.BI_SESSIONS.get(await syncScope(tenant)+':config','json')||{enabled:false,intervalMinutes:60};}
 async function syncJob(env,tenant,id){if(!/^[a-f0-9-]{36}$/i.test(id||''))throw new Error('DASHBOARD_CURSOR_INVALID');return env.BI_SESSIONS.get(await syncScope(tenant)+':job:'+id,'json');}
-function publicSyncJob(job){if(!job)return null;const {id,state,startedAt,finishedAt,completed,total,rows,failures}=job;return {id,state,startedAt,finishedAt,completed,total,rows,failures};}
+function publicSyncJob(job){
+ if(!job)return null;
+ const {id,state,startedAt,finishedAt,completed,total,rows,failures}=job;
+ const sources=job.sources&&typeof job.sources==="object"?Object.values(job.sources):null;
+ const successfulSources=sources?sources.filter(entry=>entry?.complete===true&&!entry.error).length:null;
+ const failedSources=sources?sources.filter(entry=>Boolean(entry?.error)).length:null;
+ const pendingSources=sources?Math.max(0,(Number.isInteger(Number(total))&&Number(total)>=sources.length?Number(total):sources.length)-successfulSources-failedSources):null;
+ // Preserve legacy "completed" (processed including terminal errors) for old clients.
+ // Only expose aggregate success/error/pending counts, never source credentials.
+ return {id,state,startedAt,finishedAt,completed,total,rows,failures,successfulSources,failedSources,pendingSources};
+}
 
 function syncErrorCode(error){
  return String(error&&error.message||'SOURCE_UNAVAILABLE');
