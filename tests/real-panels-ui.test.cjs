@@ -96,3 +96,200 @@ test('provenance fallback recovers only the same tenant and entity after credent
  await assert.rejects(()=>fn(env,{id:'paulafreitas'},new URL('https://example.test/'),{context:{entity:'1158',database:'656'}}),/INITIAL_LOAD_REQUIRED/);
  db.close();
 });
+
+test('payroll competence coverage flags future months and rejects invalid dates',()=>{
+ const source=fs.readFileSync('backend/worker.js','utf8');
+ const start=source.indexOf('async function buildPayrollDashboard(');
+ const end=source.indexOf('async function buildPayrollSampleDashboard(',start);
+ assert.ok(start>=0&&end>start,'real payroll dashboard builder exists');
+ const builder=source.slice(start,end);
+ assert.match(builder,/competenceCoverage,/);
+ assert.match(builder,/sourceCompleteness:"not-verified"/);
+ const match=builder.match(/futureCompetence:([^\n]+),\n\s+sourceCompleteness:"not-verified"/);
+ assert.ok(match,'future competence expression exists');
+ const evaluate=competence=>vm.runInNewContext(match[1],{row:{competence}});
+ assert.equal(evaluate('9999-12'),true);
+ assert.equal(evaluate('2000-01'),false);
+ assert.equal(evaluate('2026-13'),false);
+ assert.equal(evaluate('invalid'),false);
+});
+
+
+test('real chart accepts legitimate zero but rejects null, undefined and NaN',()=>{
+ const start=app.indexOf('      const hasData=chartData &&');
+ const end=app.indexOf(';\n      if (hasData)',start);
+ assert.ok(start>=0&&end>start,'chart data detector exists');
+ const expression=app.slice(start+'      const hasData='.length,end);
+ const hasData=(data)=>Boolean(vm.runInNewContext(expression,{chartData:data,chartDef:{apiPanel:false}}));
+ for(const value of [0,'0',12.5])assert.equal(hasData({labels:['Jan'],datasets:[{data:[value]}]}),true);
+ for(const value of [null,undefined,NaN,Infinity,'', '   ',false])assert.equal(hasData({labels:['Jan'],datasets:[{data:[value]}]}),false);
+});
+
+test('real dashboard refresh errors take precedence over missing indicators',()=>{
+ const start=app.indexOf('  function renderChartEmptyState(');
+ const end=app.indexOf('  function summaryCellDisplay(',start);
+ assert.ok(start>=0&&end>start,'chart empty state renderer exists');
+ const strong={textContent:''},span={textContent:''};
+ const empty={hidden:true,querySelector:selector=>selector==='strong'?strong:span};
+ const card={querySelector:()=>empty};
+ const context={document:{querySelector:()=>card},cssEscape:x=>x,
+   chartSourceState:()=>({kind:'loaded',detail:'loaded'}),displayChartDefinition:x=>x,
+   friendlySourceErrorDetail:()=> 'HTTP 500',hasRecentLoadActivity:()=>false};
+ const render=vm.runInNewContext(app.slice(start,end)+';renderChartEmptyState',context);
+ render({id:'receita-mensal',source:'contabil',apiPanel:false},{meta:{realData:true,refreshError:'HTTP 500'},charts:{}});
+ assert.equal(strong.textContent,'Resumo não atualizado');
+ assert.equal(span.textContent,'HTTP 500');
+ render({id:'receita-mensal',source:'contabil',apiPanel:false},{meta:{realData:true},charts:{}});
+ assert.equal(strong.textContent,'Indisponível — aguardando validação');
+});
+
+test('ingestion completion is not indicator validation',()=>{
+ const start=app.indexOf('  function realSourceValidationStatus(');
+ const end=app.indexOf('  function renderSourceProvenance(',start);
+ assert.ok(start>=0&&end>start,'source validation status helper exists');
+ const status=vm.runInNewContext(app.slice(start,end)+';realSourceValidationStatus');
+ const complete=status({realSources:[{status:'complete'}],unavailableMetrics:['pago','arrecadado']});
+ assert.equal(complete.ingestion,'CONCLUÍDA (ingestão)');
+ assert.equal(complete.indicators,'PARCIAL (2 indisponíveis)');
+ const partial=status({realSources:[{status:'partial'}]});
+ assert.equal(partial.ingestion,'PARCIAL (ingestão)');
+ assert.equal(partial.indicators,'NÃO COMPROVADA');
+ const noEvidence=status({realSources:[{status:'complete'}]});
+ assert.equal(noEvidence.indicators,'NÃO COMPROVADA');
+ const sourceUI=app.slice(end,app.indexOf('  function formatValue(',end));
+ assert.match(sourceUI,/validationStatus=realSourceValidationStatus/);
+ assert.match(sourceUI,/escapeHtml\(validationStatus.ingestion\)/);
+ assert.match(sourceUI,/escapeHtml\(validationStatus.indicators\)/);
+});
+
+test('accounting monthly table uses only validated D1 summary months and obeys filters',async()=>{
+  const worker=fs.readFileSync('backend/worker.js','utf8');
+  const helperStart=worker.indexOf('function multiSystemMonthlyEntries(');
+  const helperEnd=worker.indexOf('function multiSystemRealMeta(',helperStart);
+  const start=worker.indexOf('async function buildAccountingDashboard(');
+  const end=worker.indexOf('async function buildProcurementDashboard(',start);
+  assert.ok(helperStart>=0&&helperEnd>helperStart&&start>=0&&end>start);
+  const fixtures={
+    empenhos:{resource:'empenhos',count:5,loadStatus:'complete',groups:{},monthly:{'2026-01':10,'2026-02':20,'2026-13':900,'bad-key':500,'2026-03':null,'2026-04':'7'}},
+    'movimentacoes-receitas':{resource:'movimentacoes-receitas',count:7,loadStatus:'complete'},
+    'movimentacoes-despesas':{resource:'movimentacoes-despesas',count:10,loadStatus:'complete'},
+    credores:{resource:'credores',count:3,loadStatus:'complete'}
+  };
+  const fn=vm.runInNewContext(worker.slice(helperStart,helperEnd)+'\n'+worker.slice(start,end)+'\n;buildAccountingDashboard',{
+    getMultiSystemSummary:async(_env,tenant,system,resource)=>{
+      assert.equal(tenant,'paulafreitas');assert.equal(system,'contabil');return fixtures[resource];
+    },
+    multiSystemSortedEntries:()=>[],
+    multiSystemRealMeta:(_system,_items,extra)=>extra,
+    buildAccountingSampleDashboard:()=>{throw Error('real data must not fall back to sample')}
+  });
+  const valid=await fn({}, {id:'paulafreitas',name:'Paula Freitas'},new URL('https://test.local/?periodo=ano&exercicio=2026'));
+  const table=valid.tables.find(item=>item.id==='contabil-empenhos-mensais-reais');
+  assert.ok(table);
+  assert.equal(table.totalRows,2);
+  assert.deepEqual(Array.from(table.rows,row=>row.values[0]),[10,20]);
+  assert.deepEqual(Array.from(valid.charts['execucao-mensal'].datasets[0].data),[10,20]);
+  assert.equal(valid.kpis.empenhado,30);
+  const otherYear=await fn({}, {id:'paulafreitas'},new URL('https://test.local/?periodo=ano&exercicio=2025'));
+  assert.equal(otherYear.kpis.empenhado,null);
+  assert.equal(otherYear.tables.some(item=>item.id==='contabil-empenhos-mensais-reais'),false);
+  const unsupported=await fn({}, {id:'paulafreitas'},new URL('https://test.local/?periodo=ano&exercicio=2026&unidade=123'));
+  assert.equal(unsupported.kpis.empenhado,null);
+  assert.equal(unsupported.tables.some(item=>item.id==='contabil-empenhos-mensais-reais'),false);
+});
+
+test('real accounting coverage, monthly series and creditor tables remain visible and exportable',()=>{
+  const ui=fs.readFileSync('app.js','utf8');
+  const render=ui.slice(ui.indexOf('function renderSummaryTables('),ui.indexOf('function renderPayload('));
+  assert.match(render,/configured\.slice\(0,3\)/);
+  const start=ui.indexOf('function dashboardExportRows(');
+  const end=ui.indexOf('function exportDashboardDelimited(',start);
+  assert.ok(start>=0&&end>start);
+  const tables=['Cobertura da Contabilidade','Empenhos por competência','Empenhado por credor']
+    .map((title,i)=>({title,columns:[{id:'valor',label:'Valor',format:'number'}],rows:[{label:'Item '+i,values:[i+1]}]}));
+  const exportFn=vm.runInNewContext(ui.slice(start,end)+';dashboardExportRows',{
+    dashboards:{'contabil-visao-geral':{kpis:[],charts:[]}},
+    currentView:'contabil-visao-geral',
+    currentPayload:{tables,meta:{realData:true,sampleMode:true}},
+    currentSystemId:'contabil',
+    summaryCellDisplay:value=>String(value)
+  });
+  const exported=exportFn();
+  assert.equal(exported.length,3);
+  assert.deepEqual(Array.from(exported,row=>row.item),tables.map(t=>t.title));
+  assert.ok(exported.every(row=>row.fonte==='BETHA · contabil'));
+});
+
+
+test('unavailable real charts explain the missing aggregation without invented values',()=>{
+ const worker=fs.readFileSync('backend/worker.js','utf8');
+ const accounting=worker.slice(worker.indexOf('async function buildAccountingDashboard('),worker.indexOf('async function buildProcurementDashboard('));
+ const procurement=worker.slice(worker.indexOf('async function buildProcurementDashboard('),worker.indexOf('async function buildAccountingSampleDashboard('));
+ const payroll=worker.slice(worker.indexOf('async function buildPayrollDashboard('),worker.indexOf('async function buildPayrollSampleDashboard('));
+ for(const [body,ids] of [[accounting,['despesa-funcao','receita-mensal']],[procurement,['compras-mensal','compras-modalidade','compras-secretaria']],[payroll,['folha-secretaria','folha-vinculo']]]){
+   assert.ok(body.includes('chartUnavailableReasons:{'));
+   for(const id of ids)assert.ok(body.includes('"'+id+'":'),'missing reason for '+id);
+ }
+ const start=app.indexOf('  function renderChartEmptyState(');
+ const end=app.indexOf('  function summaryCellDisplay(',start);
+ const title={textContent:''},detail={textContent:''};
+ const empty={hidden:true,querySelector:key=>key==='strong'?title:detail};
+ const render=vm.runInNewContext(app.slice(start,end)+';renderChartEmptyState',{
+   document:{querySelector:()=>({querySelector:()=>empty})},
+   cssEscape:x=>x,chartSourceState:()=>({kind:'loaded',detail:''}),
+   displayChartDefinition:x=>x,hasRecentLoadActivity:()=>false,
+   friendlySourceErrorDetail:x=>x
+ });
+ const message='Resumo D1 sem agregação mensal validada.';
+ render({id:'receita-mensal',source:'contabil',apiPanel:false},{
+   meta:{realData:true,chartUnavailableReasons:{'receita-mensal':message}},
+   charts:{}
+ });
+ assert.equal(title.textContent,'Indisponível — aguardando validação');
+ assert.equal(detail.textContent,message);
+ assert.equal(empty.hidden,false);
+});
+
+test('real system homes never switch to synthetic fallback after an API response',()=>{
+ const start=app.indexOf('  async function loadRealMultiSystemDashboard(');
+ const end=app.indexOf('  async function loadDashboardData(',start);
+ const body=app.slice(start,end);
+ assert.ok(start>=0&&end>start);
+ assert.doesNotMatch(body,/return loadLocalSampleDashboard\(view\)/);
+ assert.match(body,/payload\?\.meta\?\.realData!==true/);
+ assert.match(body,/markDashboardChartsUnavailable/);
+ assert.match(body,/Nenhuma amostra sintética foi exibida/);
+});
+
+
+test('real fragment metadata never converts unknown source rows or totals to zero',()=>{
+ const start=app.indexOf('  function mergeDashboardPart(');
+ const end=app.indexOf('\n  function ',start+10);
+ assert.ok(start>=0&&end>start);
+ const merge=vm.runInNewContext(app.slice(start,end)+';mergeDashboardPart');
+ const target={meta:{warnings:[]}};
+ merge(target,{meta:{
+   sourceRows:{empenhos:null,processos:5,zero:0,invalid:false},
+   sourceTotals:{empenhos:undefined,processos:7,zero:0,invalid:'  '}
+ }});
+ for(const key of ['empenhos','invalid']){
+   assert.equal(target.meta.sourceRows[key],null);
+   assert.equal(target.meta.sourceTotals[key],null);
+ }
+ assert.equal(target.meta.sourceRows.processos,5);
+ assert.equal(target.meta.sourceTotals.processos,7);
+ assert.equal(target.meta.sourceRows.zero,0);
+ assert.equal(target.meta.sourceTotals.zero,0);
+ merge(target,{meta:{
+   sourceRows:{empenhos:10,processos:3,zero:0,invalid:12},
+   sourceTotals:{empenhos:15,processos:4,zero:0,invalid:13}
+ }});
+ for(const key of ['empenhos','invalid']){
+   assert.equal(target.meta.sourceRows[key],null);
+   assert.equal(target.meta.sourceTotals[key],null);
+ }
+ assert.equal(target.meta.sourceRows.processos,8);
+ assert.equal(target.meta.sourceTotals.processos,11);
+ assert.equal(target.meta.sourceRows.zero,0);
+ assert.equal(target.meta.sourceTotals.zero,0);
+});

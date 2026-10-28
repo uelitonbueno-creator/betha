@@ -144,29 +144,42 @@
     clearLegacy();
   }
 
-  async function exchangeHandoff(handoff) {
+  async function exchangeHandoff(handoff, timeoutMs=12000) {
     const base = backendBase();
     if (!base) throw new Error("BACKEND_NOT_CONFIGURED");
 
-    const response = await fetch(base + "/api/auth/session-exchange", {
-      method: "POST",
-      headers: {
-        "Accept": "application/json",
-        "Content-Type": "application/json"
-      },
-      credentials: "omit",
-      body: JSON.stringify({handoff})
-    });
+    // A entrega OAuth não pode manter a tela inicial bloqueada sem limite.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(base + "/api/auth/session-exchange", {
+        method: "POST",
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json"
+        },
+        credentials: "omit",
+        signal: controller.signal,
+        body: JSON.stringify({handoff})
+      });
 
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.session) {
-      const error = new Error(payload.error || ("HTTP_" + response.status));
-      error.status = response.status;
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload.session) {
+        const error = new Error(payload.error || ("HTTP_" + response.status));
+        error.status = response.status;
+        throw error;
+      }
+
+      saveSession(payload.session, payload.expires_in);
+      return true;
+    } catch (error) {
+      if (error && error.name === "AbortError") {
+        throw new Error("AUTH_HANDOFF_TIMEOUT");
+      }
       throw error;
+    } finally {
+      clearTimeout(timer);
     }
-
-    saveSession(payload.session, payload.expires_in);
-    return true;
   }
 
   async function handleCallback() {
@@ -214,6 +227,11 @@
 
   async function validate() {
     if (serverAuth && serverAuth.authenticated === true) {
+      // A sessão HttpOnly do Worker já foi verificada. Um token antigo no
+      // armazenamento do navegador pode enviar Authorization: Session inválido
+      // e prevalecer sobre o cookie no backend, bloqueando /api/me/tenants.
+      // Remova somente a sessão do navegador; nunca toque no cookie do Worker.
+      clearSessionOnly();
       cookieAuthenticated = true;
       removeItem(KEY_ERROR);
       return true;
@@ -261,15 +279,16 @@
 
       setItem(KEY_ERROR, code);
 
-      if (
-        error && error.status === 401 &&
-        ["APPLICATION_SESSION_INVALID","APPLICATION_SESSION_EXPIRED","USER_TOKEN_REQUIRED"].includes(code)
-      ) {
+      // A rejected session must never be treated as authenticated merely
+      // because a stale token is still cached in browser storage. The backend
+      // may return PLATFORM_HTTP_401/403 instead of a local session error.
+      if (error && (error.status === 401 || error.status === 403)) {
         clearSessionOnly();
         setItem(KEY_ERROR, code);
         return false;
       }
 
+      // Preserve the existing offline grace period only for transient failures.
       return Boolean(getToken());
     } finally {
       clearTimeout(timer);
@@ -296,7 +315,10 @@
   }
 
   const ready = (async () => {
-    await handleCallback();
+    const callbackHandled = await handleCallback();
+    // A callback error must not be overwritten by the anonymous session-check
+    // (USER_TOKEN_REQUIRED). Keep the real OAuth failure visible for diagnosis.
+    if (callbackHandled && getError() && !getToken()) return false;
     const valid = await validate();
 
     if (!valid && serverAuth && serverAuth.reason && !getError()) {

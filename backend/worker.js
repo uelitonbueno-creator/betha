@@ -10,6 +10,7 @@
  */
 import { orderedEnabledTenantIds, reconcileArchivedPages } from "./multisystem-recovery.mjs";
 import { advancePayrollProjection, readPayrollProjection } from "./payroll-projection.mjs";
+import { readProcurementSituationCounts } from "./procurement-situation.mjs";
 const BI_BASE_DEFAULT = "https://tributos.suite.betha.cloud";
 const AUTH_BASE = "https://plataforma-autorizacoes.betha.cloud";
 const PAGE_MAPPING_BASE = "https://autorizacoes.suite.betha.cloud/dados/v1";
@@ -1183,7 +1184,17 @@ function syncInitialPageSize(resource){
 async function syncScope(tenant){return 'bi-sync:v1:'+await sha256Hex(JSON.stringify([tenant.id,tenant.entityId,tenant.databaseId,tenant.userAccess,tenant.accessToken]));}
 async function syncConfig(env,tenant){return await env.BI_SESSIONS.get(await syncScope(tenant)+':config','json')||{enabled:false,intervalMinutes:60};}
 async function syncJob(env,tenant,id){if(!/^[a-f0-9-]{36}$/i.test(id||''))throw new Error('DASHBOARD_CURSOR_INVALID');return env.BI_SESSIONS.get(await syncScope(tenant)+':job:'+id,'json');}
-function publicSyncJob(job){if(!job)return null;const {id,state,startedAt,finishedAt,completed,total,rows,failures}=job;return {id,state,startedAt,finishedAt,completed,total,rows,failures};}
+function publicSyncJob(job){
+ if(!job)return null;
+ const {id,state,startedAt,finishedAt,completed,total,rows,failures}=job;
+ const sources=job.sources&&typeof job.sources==="object"?Object.values(job.sources):null;
+ const successfulSources=sources?sources.filter(entry=>entry?.complete===true&&!entry.error).length:null;
+ const failedSources=sources?sources.filter(entry=>Boolean(entry?.error)).length:null;
+ const pendingSources=sources?Math.max(0,(Number.isInteger(Number(total))&&Number(total)>=sources.length?Number(total):sources.length)-successfulSources-failedSources):null;
+ // Preserve legacy "completed" (processed including terminal errors) for old clients.
+ // Only expose aggregate success/error/pending counts, never source credentials.
+ return {id,state,startedAt,finishedAt,completed,total,rows,failures,successfulSources,failedSources,pendingSources};
+}
 
 function syncErrorCode(error){
  return String(error&&error.message||'SOURCE_UNAVAILABLE');
@@ -6370,17 +6381,21 @@ function multiSystemMapAdd(target,key,amount=1,maxKeys=160){
 }
 
 function multiSystemMonthKey(value){
-  if(!value)return null;
-  const text=String(value);
-  const direct=text.match(/^(\d{4})-(\d{2})/);
-  if(direct)return direct[1]+"-"+direct[2];
-  const br=text.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-  if(br)return br[3]+"-"+br[2];
+  if(value===null||value===undefined||value==="")return null;
+  const text=String(value).trim();
+  const iso=text.match(/^(\d{4})-(\d{2})(?:-(\d{2})(?:[T\s].*)?)?$/);
+  const br=text.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s.*)?$/);
+  if(iso||br){
+    const year=Number(iso?iso[1]:br[3]);
+    const month=Number(iso?iso[2]:br[2]);
+    const day=iso?Number(iso[3]||1):Number(br[1]);
+    if(year<1000||month<1||month>12||day<1||day>new Date(Date.UTC(year,month,0)).getUTCDate())return null;
+    return String(year)+"-"+String(month).padStart(2,"0");
+  }
   const date=new Date(text);
   if(Number.isNaN(date.getTime()))return null;
-  return date.getFullYear()+"-"+String(date.getMonth()+1).padStart(2,"0");
+  return date.getUTCFullYear()+"-"+String(date.getUTCMonth()+1).padStart(2,"0");
 }
-
 function emptyMultiSystemSummary(system,resource){
   return {
     version:1,
@@ -6416,19 +6431,24 @@ async function updateMultiSystemSummary(env,tenant,system,source,pageNo,rows){
     summary.count=(Number(summary.count)||0)+1;
 
     if(system==="contabil"&&source.resource==="empenhos"){
-      const value=Number(multiSystemSimpleValue(row.valor));
+      const rawValue=multiSystemSimpleValue(row.valor);
+      const value=rawValue===null||rawValue===""||typeof rawValue==="boolean"?null:Number(rawValue);
       if(Number.isFinite(value))summary.totalValue=(Number(summary.totalValue)||0)+value;
       const month=multiSystemMonthKey(multiSystemSimpleValue(row.data));
-      if(month)multiSystemMapAdd(summary.monthly,month,Number.isFinite(value)?value:0,180);
+      if(month&&Number.isFinite(value))multiSystemMapAdd(summary.monthly,month,value,180);
       const creditor=multiSystemSimpleValue(row.credor);
-      if(creditor!==null)multiSystemMapAdd(summary.groups,creditor,Number.isFinite(value)?value:0,160);
+      if(creditor!==null&&Number.isFinite(value))multiSystemMapAdd(summary.groups,creditor,value,160);
     }else if(system==="compras"&&source.resource==="processos-administrativos"){
       const situation=multiSystemSimpleValue(row.situacao);
       const hiring=multiSystemSimpleValue(row.formaContratacao);
-      const object=multiSystemSimpleValue(row.objeto);
+      // Only an explicit, validated process date may contribute to a monthly series.
+      // Legacy object descriptions in persisted summaries are not monthly data.
+      const processDate=multiSystemSimpleValue(row.data);
       if(situation!==null)multiSystemMapAdd(summary.groups,situation,1,80);
       if(hiring!==null)multiSystemMapAdd(summary.secondaryGroups,hiring,1,80);
-      if(object!==null)multiSystemMapAdd(summary.monthly,object,1,120);
+      const month=typeof processDate==="string"&&/^(?:\d{4}-(?:0[1-9]|1[0-2])-\d{2}(?:T.*)?|(?:0[1-9]|[12]\d|3[01])\/(?:0[1-9]|1[0-2])\/\d{4})$/.test(processDate.trim())
+        ?multiSystemMonthKey(processDate.trim()):null;
+      if(month)multiSystemMapAdd(summary.monthly,month,1,120);
     }else if(system==="compras"&&source.resource==="fornecedores"){
       const name=multiSystemSimpleValue(row.nome??row.razaoSocial??row.nomeFantasia);
       if(name!==null)multiSystemMapAdd(summary.groups,name,1,160);
@@ -6454,19 +6474,44 @@ async function getMultiSystemSummary(env,tenantId,system,resource){
   const row=await env.AUTH_DB.prepare(
     "SELECT s.summary_json,s.updated_at,l.status,l.loaded,l.pages,l.http_status,l.error,l.fields_json FROM bi_multisystem_summaries s LEFT JOIN bi_multisystem_loads l ON l.tenant_id=s.tenant_id AND l.system=s.system AND l.resource=s.resource WHERE s.tenant_id=?1 AND s.system=?2 AND s.resource=?3 LIMIT 1"
   ).bind(String(tenantId),system,resource).first();
-  if(!row)return null;
-  try{
-    const summary=JSON.parse(String(row.summary_json||"null"));
-    return summary&&typeof summary==="object"?{
-      ...summary,
-      loadStatus:row.status||null,
-      loaded:Number(row.loaded)||0,
-      pages:Number(row.pages)||0,
-      httpStatus:row.http_status||null,
-      error:row.error||null,
-      fieldsProfile:parseMultiSystemFieldProfile(row.fields_json)
-    }:null;
-  }catch{return null;}
+  if(row){
+    try{
+      const summary=JSON.parse(String(row.summary_json||"null"));
+      // Only trust aggregated charts when the persisted summary matches its load checkpoint.
+      // An orphan or stale summary must never be presented as complete real data.
+      if(summary&&typeof summary==="object"&&!Array.isArray(summary)&&
+          row.status&&typeof row.loaded==="number"&&Number.isSafeInteger(row.loaded)&&row.loaded>=0&&
+          typeof summary.count==="number"&&Number.isSafeInteger(summary.count)&&summary.count===row.loaded){
+        return {
+          ...summary,
+          loadStatus:row.status||null,
+          loaded:Number(row.loaded)||0,
+          pages:Number(row.pages)||0,
+          httpStatus:row.http_status||null,
+          error:row.error||null,
+          fieldsProfile:parseMultiSystemFieldProfile(row.fields_json)
+        };
+      }
+    }catch{}
+  }
+  // Missing or malformed aggregate does not erase a real ingestion checkpoint.
+  // Show read-only source coverage instead of replacing real data with a sample.
+  const load=await env.AUTH_DB.prepare(
+    "SELECT status,loaded,pages,http_status,error,fields_json,updated_at FROM bi_multisystem_loads WHERE tenant_id=?1 AND system=?2 AND resource=?3 LIMIT 1"
+  ).bind(String(tenantId),system,resource).first();
+  if(!load||!(Number(load.loaded)>0))return null;
+  return {
+    ...emptyMultiSystemSummary(system,resource),
+    count:Number(load.loaded),
+    loaded:Number(load.loaded),
+    pages:Number(load.pages)||0,
+    loadStatus:load.status||"partial",
+    httpStatus:load.http_status||null,
+    error:load.error||null,
+    fieldsProfile:parseMultiSystemFieldProfile(load.fields_json),
+    updatedAt:load.updated_at||null,
+    summaryMissing:true
+  };
 }
 
 function multiSystemResourcePrefix(tenantId,system,resource){
@@ -7016,15 +7061,17 @@ function multiSystemSampleMeta(system,sample,rows) {
 
 function multiSystemSortedEntries(values,limit=12){
   return Object.entries(values&&typeof values==="object"?values:{})
-    .map(([label,value])=>[String(label),Number(value)||0])
+    .filter(([,value])=>typeof value==="number"&&Number.isFinite(value))
+    .map(([label,value])=>[String(label),value])
     .sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"pt-BR"))
     .slice(0,Math.max(1,Number(limit)||12));
 }
 
 function multiSystemMonthlyEntries(summary,periodo,exercicio){
   const entries=Object.entries(summary?.monthly||{})
-    .filter(([key])=>/^\d{4}-\d{2}$/.test(String(key)))
-    .map(([key,value])=>[String(key),Number(value)||0])
+    .filter(([key,value])=>/^\d{4}-(0[1-9]|1[0-2])$/.test(String(key))&&
+      typeof value==="number"&&Number.isFinite(value))
+    .map(([key,value])=>[String(key),value])
     .sort((a,b)=>a[0].localeCompare(b[0]));
 
   if(periodo==="todos")return entries;
@@ -7055,7 +7102,14 @@ function multiSystemRealMeta(system,summaries,extra={}){
   const list=(summaries||[]).filter(Boolean);
   const loaded=list.reduce((sum,item)=>sum+(Number(item.loaded)||Number(item.count)||0),0);
   const pages=list.reduce((sum,item)=>sum+(Number(item.pages)||0),0);
-  const complete=list.length>0&&list.every(item=>item.loadStatus==="complete");
+  const expectedResources=(typeof MULTISYSTEM_BOOTSTRAP_SOURCES!=="undefined"&&Array.isArray(MULTISYSTEM_BOOTSTRAP_SOURCES[system]))
+    ?MULTISYSTEM_BOOTSTRAP_SOURCES[system].map(source=>String(source.resource)):[];
+  const missingResources=expectedResources.filter(resource=>!list.some(item=>item.resource===resource));
+  const missingSummaries=list.filter(item=>item.summaryMissing===true).map(item=>item.resource);
+  const completeWithoutSummaryCheck=expectedResources.length>0
+    ?expectedResources.every(resource=>list.some(item=>item.resource===resource&&item.loadStatus==="complete"))
+    :list.length>0&&list.every(item=>item.loadStatus==="complete");
+  const complete=completeWithoutSummaryCheck&&!missingSummaries.length;
   const errors=list.filter(item=>item.error).map(item=>({source:item.resource,error:item.error}));
   const updatedAt=list.map(item=>item.updatedAt).filter(Boolean).sort().at(-1)||new Date().toISOString();
   return {
@@ -7064,7 +7118,7 @@ function multiSystemRealMeta(system,summaries,extra={}){
     sampleMode:false,
     generatedAt:updatedAt,
     updatedAt,
-    warning:complete?null:"DADOS REAIS DA BETHA · carga incremental em andamento.",
+    warning:complete?null:errors.length?"DADOS REAIS DA BETHA · fontes com falha de ingestão.":missingResources.length?"DADOS REAIS DA BETHA · fontes obrigatórias ausentes.":missingSummaries.length?"DADOS REAIS DA BETHA · resumo agregado ausente; contagens reais preservadas, indicadores aguardam validação.":"DADOS REAIS DA BETHA · carga incremental em andamento.",
     sourceRows:{[system]:loaded},
     sourceTotals:{[system]:loaded},
     sourceAudit:{
@@ -7072,6 +7126,9 @@ function multiSystemRealMeta(system,summaries,extra={}){
         loaded,
         reportedTotal:null,
         complete,
+        missingResources,
+        missingSummaries,
+        fieldCoverageVerified:false,
         pages,
         error:errors.length?errors.map(item=>item.error).join("; "):null,
         errorStatus:null,
@@ -7079,13 +7136,14 @@ function multiSystemRealMeta(system,summaries,extra={}){
       }
     },
     warnings:errors,
-    realSources:list.map(item=>({
+    realSources:[...list.map(item=>({
       resource:item.resource,
       loaded:Number(item.loaded)||0,
       pages:Number(item.pages)||0,
       status:item.loadStatus||"partial",
+      summaryAvailable:item.summaryMissing!==true,
       fields:item.fieldsProfile?.selected||[]
-    })),
+    })),...missingResources.map(resource=>({resource,loaded:0,pages:0,status:"missing",fields:[]}))],
     ...extra
   };
 }
@@ -7093,7 +7151,7 @@ function multiSystemRealMeta(system,summaries,extra={}){
 async function buildAccountingDashboard(env,tenant,url){
   const summaries=await Promise.all(["empenhos","movimentacoes-receitas","movimentacoes-despesas","credores"].map(resource=>getMultiSystemSummary(env,tenant.id,"contabil",resource)));
   const available=summaries.filter(item=>item&&Number(item.count)>0);
-  if(!available.length)return buildAccountingSampleDashboard(env,tenant,url);
+  if(!available.length)throw new Error("INITIAL_LOAD_REQUIRED");
   const summary=summaries[0]||{monthly:{},groups:{},loadStatus:"partial"};
   const creditorSummary=summaries[3];
 
@@ -7101,16 +7159,18 @@ async function buildAccountingDashboard(env,tenant,url){
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
   const monthly=multiSystemMonthlyEntries(summary,periodo,exercicio);
   const hasPeriodData=monthly.length>0;
+  // Additional dimensions cannot be applied to persisted monthly aggregates.
+  const unsupportedFilters=[...new Set([...url.searchParams.keys()].filter(key=>!["tenant","periodo","exercicio"].includes(key)))];
   const inProgress=summary.loadStatus!=="complete";
-  const empenhado=hasPeriodData
+  const empenhado=hasPeriodData&&!unsupportedFilters.length
     ? monthly.reduce((sum,[,value])=>sum+Number(value||0),0)
-    : (inProgress?null:0);
+    : null;
   const creditors=multiSystemSortedEntries(summary.groups,12);
   const charts={
     "execucao-mensal":{
       format:"currency",
-      labels:monthly.map(([key])=>multiSystemMonthLabel(key)),
-      datasets:[{label:"Empenhado",data:monthly.map(([,value])=>value)}]
+      labels:unsupportedFilters.length?[]:monthly.map(([key])=>multiSystemMonthLabel(key)),
+      datasets:[{label:"Empenhado",data:unsupportedFilters.length?[]:monthly.map(([,value])=>value)}]
     }
   };
   const tables=creditors.length?[{
@@ -7141,42 +7201,97 @@ async function buildAccountingDashboard(env,tenant,url){
       subtitle:"Contagens de todo o histórico importado; valores financeiros seguem o período selecionado.",
       groupLabel:"Fonte",columns:[{id:"registros",label:"Registros importados",format:"number"}],
       rows:available.map(item=>({label:item.resource,values:[Number(item.count)]})),totalRows:available.length
-    },...tables],
+    },...(!unsupportedFilters.length&&monthly.length?[{
+      id:"contabil-empenhos-mensais-reais",
+      title:"Empenhos por competência",
+      subtitle:"Série real do resumo persistido de empenhos. Apenas valores numéricos e competências válidas no período selecionado; não representa liquidação nem pagamento.",
+      groupLabel:"Competência",
+      columns:[{id:"empenhado",label:"Empenhado",format:"currency"}],
+      rows:monthly.map(([key,value])=>({label:multiSystemMonthLabel(key),values:[value]})),
+      totalRows:monthly.length
+    }]:[]),...tables],
     meta:multiSystemRealMeta("contabil",available,{
-      periodDataAvailable:hasPeriodData,
-      unavailableMetrics:["liquidado","pago","arrecadado"],
-      note:inProgress
-        ?"Empenhos reais em carga. Liquidação, pagamento e receita permanecem indisponíveis até as respectivas fontes serem autorizadas/carregadas."
-        :"Cobertura real das quatro fontes. Valores de receitas, liquidação e pagamentos aguardam validação dos campos financeiros. Credores e contagens de cobertura representam todo o histórico importado."
+      periodDataAvailable:hasPeriodData&&!unsupportedFilters.length,
+      periodScope:"mixed",
+      periodFilterApplied:unsupportedFilters.length===0,
+      unsupportedFilters,
+      unavailableMetrics:["liquidado","pago","arrecadado",...(unsupportedFilters.length?["empenhado"]:[])],
+      chartUnavailableReasons:{
+        "despesa-funcao":"As movimentações de despesas foram importadas, mas não existe agregação validada por função no resumo D1. A contagem de registros não comprova os valores por função.",
+        "receita-mensal":"A fonte de movimentações de receitas foi importada, porém o agregador persistido não produz série mensal de valorArrecadado/dataMovimentacao. Não é seguro inferir a receita a partir das contagens."
+      },
+      note:unsupportedFilters.length
+        ?"Filtros adicionais não suportados: empenhado e execução mensal indisponíveis para evitar resultados sem o recorte solicitado. Credores e contagens são históricos."
+        :inProgress
+          ?"Empenhos reais em carga. Liquidação, pagamento e receita permanecem indisponíveis até validação das fontes."
+          :"Cobertura real das quatro fontes. Valores de receitas, liquidação e pagamentos aguardam validação dos campos financeiros. Credores e contagens de cobertura representam todo o histórico importado."
     })
   };
 }
 
 async function buildProcurementDashboard(env,tenant,url){
   const processSummary=await getMultiSystemSummary(env,tenant.id,"compras","processos-administrativos");
-  if(!processSummary||Number(processSummary.count)<=0)return buildProcurementSampleDashboard(env,tenant,url);
+  if(!processSummary||Number(processSummary.count)<=0)throw new Error("INITIAL_LOAD_REQUIRED");
   const supplierSummary=await getMultiSystemSummary(env,tenant.id,"compras","fornecedores");
-  const hiring=multiSystemSortedEntries(processSummary.secondaryGroups,12);
-  const situations=multiSystemSortedEntries(processSummary.groups,12);
+  // A chart is complete only if every persisted D1 group is a valid count and
+  // the sum exactly matches the source checkpoint. Never present partial groups.
+  const persistedSituationEntries=multiSystemSortedEntries(processSummary.groups,250);
+  const expectedSituationCount=Number(processSummary.count);
+  const persistedSituationMismatch=Object.keys(processSummary.groups||{}).length>0 && (
+    !Number.isSafeInteger(expectedSituationCount) ||
+    persistedSituationEntries.length!==Object.keys(processSummary.groups).length ||
+    persistedSituationEntries.some(([,value])=>!Number.isSafeInteger(value)||value<0) ||
+    persistedSituationEntries.reduce((sum,[,value])=>sum+value,0)!==expectedSituationCount
+  );
+  const persistedSituations=persistedSituationMismatch?[]:persistedSituationEntries;
+  // Older D1 summaries omit situation groups despite complete R2 source pages.
+  // Read only the checkpointed pages; never include orphaned duplicate R2 pages.
+  const recoveredSituations=persistedSituations.length?null:!env.BI_SYNC_RAW
+    ?{status:"unavailable",reason:"R2_UNAVAILABLE",groups:{}}
+    :await readProcurementSituationCounts({
+      bucket:env.BI_SYNC_RAW,tenantId:tenant.id,summary:processSummary,
+      pageKey:page=>multiSystemPageObjectKey(tenant.id,"compras","processos-administrativos",page)
+    });
+  const situations=persistedSituations.length?persistedSituations:multiSystemSortedEntries(recoveredSituations?.groups,12);
+  const monthlyKeys=Object.keys(processSummary.monthly||{});
+  const validMonthlyKeys=monthlyKeys.filter(key=>/^\d{4}-(0[1-9]|1[0-2])$/.test(key));
+  const invalidMonthlyKeys=monthlyKeys.length-validMonthlyKeys.length;
+  const ignoredFilters=[...new Set([...url.searchParams.keys()].filter(key=>key!=="tenant"))];
 
-  const charts={};
-  if(hiring.length){
-    charts["compras-modalidade"]={
+  const sourceCoverage=[
+    {label:"Processos administrativos",count:Number(processSummary.count)},
+    ...(supplierSummary&&Number(supplierSummary.count)>0
+      ?[{label:"Fornecedores",count:Number(supplierSummary.count)}]
+      :[])
+  ];
+  const charts={
+    "compras-fontes":{
       format:"number",
-      labels:hiring.map(([label])=>label),
-      datasets:[{label:"Processos",data:hiring.map(([,value])=>value)}]
-    };
+      labels:sourceCoverage.map(item=>item.label),
+      datasets:[{label:"Registros importados por fonte (histórico)",data:sourceCoverage.map(item=>item.count)}]
+    }
+  };
+  if(situations.length){
+    charts["compras-situacao"]={format:"number",labels:situations.map(([label])=>label),datasets:[{label:"Processos (histórico importado)",data:situations.map(([,value])=>value)}]};
   }
 
-  const tables=situations.length?[{
+  const tables=[{
+    id:"compras-cobertura-real",
+    title:"Cobertura real por fonte",
+    subtitle:"Contagens históricas de fontes distintas; não representam valores financeiros e não aplicam filtro de exercício.",
+    groupLabel:"Fonte",
+    columns:[{id:"registros",label:"Registros importados",format:"number"}],
+    rows:sourceCoverage.map(item=>({label:item.label,values:[item.count]})),
+    totalRows:sourceCoverage.length
+  },...(situations.length?[{
     id:"compras-situacao-real",
     title:"Processos por situação",
-    subtitle:"Distribuição dos processos administrativos carregados.",
+    subtitle:"Histórico completo importado; filtros solicitados não aplicados.",
     groupLabel:"Situação",
     columns:[{id:"processos",label:"Processos",format:"number"}],
     rows:situations.map(([label,value])=>({label,values:[value]})),
     totalRows:situations.length
-  }]:[];
+  }]:[])];
 
   return {
     view:"compras-visao-geral",
@@ -7197,7 +7312,24 @@ async function buildProcurementDashboard(env,tenant,url){
     tables,
     meta:multiSystemRealMeta("compras",[processSummary,supplierSummary].filter(Boolean),{
       unavailableMetrics:["estimado","homologado","economia"],
-      note:"Dados reais dos processos administrativos. Valores financeiros serão habilitados quando a API disponibilizar campos compatíveis."
+      periodScope:"historical",
+      periodFilterApplied:false,
+      unsupportedFilters:ignoredFilters,
+      situationChartSource:persistedSituations.length?"d1-summary":recoveredSituations?.status==="complete"?"r2-validated-pages":null,
+      situationChartError:recoveredSituations?.status==="unavailable"
+        ?(persistedSituationMismatch?"D1_GROUPS_COUNT_MISMATCH;":"")+recoveredSituations.reason
+        :null,
+      monthlySeriesStatus:validMonthlyKeys.length?"available":invalidMonthlyKeys?"unavailable-invalid-month-keys":"unavailable-no-validated-dates",
+      invalidMonthlyKeyCount:invalidMonthlyKeys,
+      chartUnavailableReasons:{
+        ...(!situations.length?{"compras-situacao":persistedSituationMismatch
+          ?"As situações persistidas no D1 não conferem com o total importado e a recuperação R2 não foi validada."
+          :"Não foi possível validar todas as páginas R2 do checkpoint para agrupar processos por situação."}:{}),
+        "compras-mensal":invalidMonthlyKeys?"O resumo contém "+invalidMonthlyKeys+" chaves que não são competências válidas; valores estimados e homologados não foram validados.":"Não há série mensal financeira validada para os processos importados.",
+        "compras-modalidade":"A origem possui formaContratacao, mas o resumo persistido não possui classificação por modalidade validada. Não equiparar os dois campos sem conferência.",
+        "compras-secretaria":"Não existem valores homologados e agrupamento por secretaria validados no resumo D1."
+      },
+      note:"Histórico completo importado: filtros solicitados não são aplicados nesta visão. Valores financeiros aguardam validação de campos."+ (invalidMonthlyKeys?" Série mensal indisponível: "+invalidMonthlyKeys+" chaves legadas não representam competências válidas.":"")
     })
   };
 }
@@ -7279,6 +7411,7 @@ async function buildProcurementSampleDashboard(env,tenant,url) {
       "contratos-ativos":rows.filter(row=>row&&row.contratoAtivo===true).length
     },
     charts:{
+      "compras-situacao":sampleGroupChart(rows,"status","","Processos","number",{agg:"count"}),
       "compras-mensal":sampleMonthlyChart(rows,[
         {field:"valorEstimado",label:"Estimado"},
         {field:"valorHomologado",label:"Homologado"}
@@ -7299,14 +7432,23 @@ async function buildPayrollDashboard(env,tenant,url) {
     getMultiSystemSummary(env,tenant.id,"folha","remuneracoes")
   ]);
   const available=[matriculas,funcionarios,remuneracoes].filter(item=>item&&Number(item.count)>0);
-  if(!available.length)return buildPayrollSampleDashboard(env,tenant,url);
+  if(!available.length)throw new Error("INITIAL_LOAD_REQUIRED");
   const periodo=url.searchParams.get("periodo")||"ano";
   const exercicio=Number(url.searchParams.get("exercicio")||new Date().getFullYear());
   const keys=periodo==="todos"?null:new Set(multiSystemMonthlyEntries({monthly:Object.fromEntries(Array.from({length:24},(_,i)=>{const date=new Date(exercicio-1,0+i,1);return [date.getFullYear()+"-"+String(date.getMonth()+1).padStart(2,"0"),1];}))},periodo,exercicio).map(([key])=>key));
   const finance=await readPayrollProjection(env.AUTH_DB,String(tenant.id),keys);
   const unsupportedFilters=[...url.searchParams].filter(([key,value])=>value&&!["periodo","exercicio","tenant"].includes(key)).map(([key])=>key);
-  const ready=Boolean(finance&&!finance.state.error&&!unsupportedFilters.length);
+  const ready=Boolean(finance&&finance.state.status==="complete"&&!finance.state.error&&!unsupportedFilters.length);
   const consolidation={totalRecords:Number(remuneracoes?.count)||0,unsupportedFilters,complete:ready&&finance.state.status==="complete",pagesProcessed:Number(finance?.state?.next_page)||0,rowsProcessed:Number(finance?.state?.rows_seen)||0,recordsInPeriod:finance?.records||0,uniqueRemunerations:finance?.uniqueRemunerations||0,duplicateRows:finance?.duplicateRows||0,unknownCompetence:finance?.unknownCompetence||0,error:finance?.state?.error||null,updatedAt:finance?.state?.updated_at||null};
+  const competenceCoverage=(finance?.rows||[]).map(row=>({
+    competence:String(row.competence),
+    records:Number(row.records)||0,
+    grossFieldRecords:Number(row.gross_count)||0,
+    netFieldRecords:Number(row.net_count)||0,
+    discountFieldRecords:Number(row.discount_count)||0,
+    futureCompetence:/^\d{4}-(0[1-9]|1[0-2])$/.test(String(row.competence)) && String(row.competence)>new Date().toISOString().slice(0,7),
+    sourceCompleteness:"not-verified"
+  }));
   return {
     view:"folha-visao-geral",
     tenant:{id:tenant.id,name:tenant.name},
@@ -7347,6 +7489,11 @@ async function buildPayrollDashboard(env,tenant,url) {
       dataMode:consolidation.complete?"real":"real-partial",
       warning:consolidation.complete?null:"CONSOLIDAÇÃO FINANCEIRA PARCIAL — valores restritos às remunerações já processadas.",
       financialConsolidation:consolidation,
+      competenceCoverage,
+      chartUnavailableReasons:{
+        "folha-secretaria":"As remunerações foram consolidadas por competência, mas não existe associação validada de valores às secretarias/organogramas.",
+        "folha-vinculo":"As matrículas foram importadas, mas não existe contagem deduplicada e validada de servidores por vínculo."
+      },
       unavailableMetrics:["servidores","encargos","ativos","afastados",...(!ready||finance.gross===null?["bruto"]:[]),...(!ready||finance.net===null?["liquido"]:[]),...(!ready||finance.discount===null?["descontos"]:[])],
       note:"Soma das remunerações importadas por competência, incluindo todos os processamentos; não equivale à folha oficial. "+(consolidation.complete?"Consolidação do arquivo concluída.":"CONSOLIDAÇÃO PARCIAL: "+consolidation.rowsProcessed+" registros processados.")+" Servidores únicos e encargos permanecem indisponíveis."
     })
@@ -10892,9 +11039,14 @@ export default {
       try {
         const userToken=await getUserToken(request,env);
         if (!userToken) throw new Error("USER_TOKEN_REQUIRED");
+        // A locally decodable session is not proof that the upstream Betha
+        // token is still valid. This also avoids opening an empty dashboard
+        // with a revoked or expired account session.
+        const accesses=await getUserAccesses(userToken);
         return json(request,env,200,{
           ok:true,
-          sessionValid:true
+          sessionValid:true,
+          accessCount:Array.isArray(accesses)?accesses.length:0
         });
       } catch(error) {
         return errorResponse(request,env,error);
@@ -11202,23 +11354,6 @@ export default {
       } catch(error) {
         console.error("auth exchange",error);
         return json(request,env,500,{error:"AUTH_EXCHANGE_INTERNAL_ERROR"});
-      }
-    }
-
-    if (url.pathname==="/api/auth/session-check" && request.method==="GET") {
-      try {
-        const userToken=await getUserToken(request,env);
-        if (!userToken) throw new Error("USER_TOKEN_REQUIRED");
-
-        // Valida também se o token Betha continua aceito, sem retornar dados pessoais.
-        const accesses=await getUserAccesses(userToken);
-        return json(request,env,200,{
-          ok:true,
-          sessionValid:true,
-          accessCount:Array.isArray(accesses)?accesses.length:0
-        });
-      } catch(error) {
-        return errorResponse(request,env,error);
       }
     }
 

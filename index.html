@@ -24,6 +24,24 @@
   <link rel="stylesheet" href="panel-builder.css?v=20261010-kpi-1">
 </head>
 <body>
+  <script id="bi-vella-startup-guard">
+  (() => {
+    window.setTimeout(() => {
+      const app=document.getElementById("bethaApp");
+      const auth=document.getElementById("authGate");
+      const tenant=document.getElementById("tenantGate");
+      if (!app || !auth || !tenant || !auth.hidden || !tenant.hidden) return;
+      if (getComputedStyle(app).display!=="none") return;
+      auth.hidden=false;
+      const note=auth.querySelector(".auth-access-note");
+      if (note) note.textContent="A inicialização está demorando. Você pode tentar entrar novamente com sua conta Betha.";
+      const login=document.getElementById("loginButton");
+      const base=String(window.BI_CONFIG?.BACKEND_URL||"").replace(/\/$/,"");
+      if (login && base) login.href=base+"/api/auth/login";
+      console.warn("[BI Vella] Inicialização incompleta; acesso ao login de recuperação exibido.");
+    }, 16000);
+  })();
+  </script>
   <script>
     (() => {
       const clean = new URL(location.href);
@@ -801,10 +819,10 @@
   <script src="config.js?v=20261007-vella-redesign1"></script>
   <script src="auth/auth.js?v=20261002-kvsession1"></script>
   <script src="dashboard-catalog.js?v=20261007-bi-vella-home1"></script>
-  <script src="system-catalog.js?v=20261007-vella-redesign13"></script>
+  <script src="system-catalog.js?v=20261025-bi-vella-real-panels-pr88"></script>
   <div id="uiToast" class="ui-toast" role="status" aria-live="polite" aria-atomic="true"></div>
   <script src="api-panel-catalog.js?v=20261006-chart-visible9"></script>
-  <script src="app.js?v=20261016-financial-projection-3"></script>
+  <script src="app.js?v=20261026-boot-guard-1"></script>
   <script src="global-search.js?v=20261007-local-search1"></script>
   <script src="panel-builder-core.js?v=20261009-1"></script>
   <script src="panel-builder-samples.js?v=20261009-suggestions-1"></script>

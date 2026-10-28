@@ -11,6 +11,7 @@
   const DEFAULT_VIEW="visao-geral";
   const ADMIN_VIEWS = new Set(["usuarios-admin","configuracoes-admin"]);
   const REAL_MULTI_SYSTEM_HOME_VIEWS = new Set(["contabil-visao-geral","compras-visao-geral","folha-visao-geral"]);
+  const REAL_MULTI_SYSTEM_IDS = new Set(["contabil","compras","folha"]);
   const bethaApp = document.getElementById("bethaApp");
   const authGate = document.getElementById("authGate");
   const tenantGate = document.getElementById("tenantGate");
@@ -21,6 +22,40 @@
   const settingsUtilityMenu = document.getElementById("settingsUtilityMenu");
   const authRequired = cfg.AUTH_REQUIRED !== false;
 
+  async function waitForBethaAppRegistration(timeoutMs=4000) {
+    const registry=window.customElements;
+    if (!registry || typeof registry.whenDefined!=="function") return false;
+    if (typeof registry.get==="function" && registry.get("bth-app")) return true;
+    let timer;
+    try {
+      return await Promise.race([
+        Promise.resolve().then(()=>registry.whenDefined("bth-app")).then(()=>true,()=>false),
+        new Promise(resolve=>{ timer=setTimeout(()=>resolve(false),timeoutMs); })
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  function authGateFailureMessage(code) {
+    const reason=String(code || "");
+    // An anonymous first visit is expected, not a failed login.
+    if (!reason || reason==="USER_TOKEN_REQUIRED" || reason==="HTTP_401") return "";
+    const messages={
+      AUTH_HANDOFF_TIMEOUT:"O retorno do login Betha excedeu o tempo limite. Tente novamente.",
+      AUTH_HANDOFF_INVALID:"O retorno do login Betha não pôde ser validado. Entre novamente.",
+      AUTH_CALLBACK_FAILED:"O retorno do login Betha falhou. Tente novamente.",
+      AUTH_HANDOFF_MISSING:"O retorno do login Betha não trouxe uma sessão válida. Entre novamente.",
+      AUTH_VALIDATION_TIMEOUT:"A validação da sessão Betha excedeu o tempo limite. Tente novamente.",
+      APPLICATION_SESSION_EXPIRED:"Sua sessão Betha expirou. Entre novamente.",
+      PLATFORM_HTTP_401:"A sessão Betha foi recusada. Entre novamente.",
+      PLATFORM_HTTP_403:"Seu usuário Betha não tem autorização suficiente para abrir o BI.",
+      BACKEND_NOT_CONFIGURED:"O serviço do BI não está configurado. Contate o suporte."
+    };
+    // Never reflect arbitrary backend messages or tokens into the login screen.
+    return messages[reason] || "Não foi possível validar a sessão Betha. Tente entrar novamente.";
+  }
+
   if (authRequired && window.BIAuth && BIAuth.ready) {
     try { await BIAuth.ready; } catch {}
   }
@@ -30,8 +65,10 @@
     authGate.hidden = false;
 
     const button = document.getElementById("loginButton");
-    // Erros de autenticação permanecem disponíveis internamente no BIAuth,
-    // mas não são exibidos na tela inicial para manter a entrada limpa.
+    // Exibe apenas mensagens seguras e úteis; não reflete detalhes brutos da API.
+    const authNotice=authGate?.querySelector(".auth-access-note");
+    const authMessage=authGateFailureMessage(window.BIAuth?.getError?.());
+    if (authNotice && authMessage) authNotice.textContent=authMessage;
 
     // O login Betha usa navegação HTML nativa. Assim ele continua funcionando
     // mesmo se algum módulo JavaScript falhar ou estiver com cache antigo.
@@ -53,10 +90,12 @@
   // confirmar que a entidade solicitada pertence ao usuário.
   bethaApp.style.display = authRequired ? "none" : "";
   if (tenantGate) tenantGate.hidden = true;
-  // O componente Betha é registrado de forma assíncrona pelo loader.
-  // Aguarda o upgrade antes de chamar métodos como setMenuAtivo().
-  if (window.customElements && customElements.whenDefined) {
-    try { await customElements.whenDefined("bth-app"); } catch {}
+  // O loader Betha é externo. Falhas de CDN não podem bloquear o BI indefinidamente.
+  // O contexto da prefeitura continua oculto até /api/me/tenants validar a sessão.
+  const componentRegistered=await waitForBethaAppRegistration();
+  if (!componentRegistered) {
+    console.warn("[BI Vella] Componente Betha indisponível; iniciando navegação de contingência.");
+    document.documentElement.dataset.bethaComponentStatus="fallback";
   }
 
   const query = Object.fromEntries(new URLSearchParams(location.search).entries());
@@ -433,6 +472,16 @@
     return source.startsWith("base:") ? "DADOS" : "BI";
   }
 
+  // Ingestion completeness is not proof that all dashboard indicators are valid.
+  function realSourceValidationStatus(meta={}) {
+    const sources=Array.isArray(meta.realSources)?meta.realSources:[];
+    const unavailable=Array.isArray(meta.unavailableMetrics)?[...new Set(meta.unavailableMetrics)]:[];
+    const ingestion=sources.length===0?"NÃO COMPROVADA":
+      sources.every(item=>item.status==="complete")?"CONCLUÍDA (ingestão)":"PARCIAL (ingestão)";
+    const indicators=unavailable.length?"PARCIAL ("+unavailable.length+" indisponíveis)":"NÃO COMPROVADA";
+    return {ingestion,indicators};
+  }
+
   function renderSourceProvenance(payload,view=currentView) {
     const def=dashboards[view]||{};
     const title=document.getElementById("sourceDisclosureTitle");
@@ -441,7 +490,7 @@
     if(!summary) return;
 
     const realMode=payload?.meta?.realData===true;
-    const sampleMode=payload?.meta?.sampleMode===true || (!realMode&&Boolean(def.localSample));
+    const sampleMode=!REAL_MULTI_SYSTEM_IDS.has(def.system||currentSystemId) && (payload?.meta?.sampleMode===true || (!realMode&&Boolean(def.localSample)));
     if(sampleMode){
       const meta=payload?.meta||{};
       const activeSystem=currentSystemInfo();
@@ -465,10 +514,21 @@
     if(realMode){
       const activeSystem=currentSystemInfo();
       const realSources=Array.isArray(payload?.meta?.realSources)?payload.meta.realSources:[];
+      const historical=payload?.meta?.periodScope==="historical"&&payload?.meta?.periodFilterApplied===false;
+      const ignoredFilters=Array.isArray(payload?.meta?.unsupportedFilters)?payload.meta.unsupportedFilters:[];
+      const validationStatus=realSourceValidationStatus(payload?.meta);
       if(title) title.textContent="Fontes reais desta visão";
-      if(description) description.textContent="Dados carregados das APIs Betha, armazenados no BI Vella e consolidados em segundo plano.";
+      if(description) description.textContent=historical
+        ? "Dados reais do histórico importado. Filtros selecionados não aplicados a esta visão."
+        : ignoredFilters.length
+          ? "Alguns filtros não são suportados nesta visão. Indicadores incompatíveis ficam indisponíveis; consulte o escopo das fontes."
+          : "Dados carregados das APIs Betha, armazenados no BI Vella e consolidados em segundo plano.";
       summary.innerHTML=[
         '<span class="source-chip"><strong>BETHA</strong> · '+escapeHtml(activeSystem?.name||currentSystemId)+'</span>',
+        '<span class="source-chip"><strong>CARGA</strong> · '+escapeHtml(validationStatus.ingestion)+'</span>',
+        '<span class="source-chip"><strong>INDICADORES</strong> · '+escapeHtml(validationStatus.indicators)+'</span>',
+        historical?'<span class="source-chip"><strong>PERÍODO</strong> · HISTÓRICO COMPLETO — filtro não aplicado</span>':"",
+        ignoredFilters.length?'<span class="source-chip"><strong>FILTROS IGNORADOS</strong> · '+escapeHtml(ignoredFilters.join(", "))+'</span>':"",
         ...realSources.map(item=>
           '<span class="source-chip"><strong>'+escapeHtml(item.resource||"Fonte")+'</strong> · '+
           Number(item.loaded||0).toLocaleString("pt-BR")+' registros · '+escapeHtml(String(item.status||"parcial"))+'</span>'
@@ -489,13 +549,14 @@
   }
 
   function formatValue(value, format) {
-    if(value===null||value===undefined)return "—";
-    if(format==="percent")return Number(value).toLocaleString("pt-BR",{maximumFractionDigits:2})+"%";
-    if (value === null || value === undefined || Number.isNaN(Number(value))) return "—";
-    if (format === "currency") {
-      return Number(value).toLocaleString("pt-BR", {style:"currency", currency:"BRL"});
-    }
-    return Number(value).toLocaleString("pt-BR");
+    // A ausência de um valor validado não representa zero financeiro.
+    if(value===null||value===undefined||typeof value==="boolean"||
+       (typeof value==="string"&&!value.trim()))return "—";
+    const numeric=Number(value);
+    if(!Number.isFinite(numeric))return "—";
+    if(format==="percent")return numeric.toLocaleString("pt-BR",{maximumFractionDigits:2})+"%";
+    if(format==="currency")return numeric.toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+    return numeric.toLocaleString("pt-BR");
   }
 
   function destroyCharts() {
@@ -1154,7 +1215,7 @@
     document.title="BI Vella | "+systemName+" / "+(def?.title||"Painel");
     const sampleModeBadge=document.getElementById("sampleModeBadge");
     if(sampleModeBadge){
-      const expectsReal=REAL_MULTI_SYSTEM_HOME_VIEWS.has(view);
+      const expectsReal=REAL_MULTI_SYSTEM_HOME_VIEWS.has(view)||REAL_MULTI_SYSTEM_IDS.has(def?.system||currentSystemId);
       sampleModeBadge.hidden=expectsReal||!def?.localSample;
       const sampleText=sampleModeBadge.querySelector("span");
       if(sampleText&&def?.localSample&&!expectsReal) sampleText.textContent="Amostra de teste · sem consumo da API";
@@ -1328,7 +1389,7 @@
       coverage.className = "integration-coverage";
       kpiGrid.insertAdjacentElement("afterend", coverage);
     }
-    const sampleCoverage=Boolean(def.localSample)&&!REAL_MULTI_SYSTEM_HOME_VIEWS.has(view);
+    const sampleCoverage=Boolean(def.localSample)&&!REAL_MULTI_SYSTEM_IDS.has(def.system||currentSystemId)&&!REAL_MULTI_SYSTEM_HOME_VIEWS.has(view);
     coverage.classList.toggle("is-sample",sampleCoverage);
     coverage.innerHTML = `
       <div class="coverage-title">
@@ -1685,6 +1746,40 @@
   function homeCardHtml(card) {
     return '<button type="button" class="home-summary-card" data-home-panel="'+escapeHtml(card.panelView||card.view)+'" data-home-source="'+escapeHtml(card.id)+'"><span class="home-card-name">'+escapeHtml(card.label)+'</span><strong data-home-count>—</strong><span class="home-card-state" data-home-state>Consultando registros…</span><span class="home-card-action">VER PAINEL <i class="mdi mdi-chevron-right"></i></span></button>';
   }
+  // "job.completed" includes terminal errors; never present it as successful loads.
+  // Unknown per-source details remain unavailable rather than becoming a zero.
+  function syncSourceProgress(job) {
+    if (!job) return null;
+    if (!job.sources || typeof job.sources !== "object") {
+      // The public Worker API deliberately omits individual source details.
+      // Trust only explicit, internally consistent aggregate counts.
+      const {successfulSources:succeeded,failedSources:failed,pendingSources:pending,total}=job;
+      if (![succeeded,failed,pending,total].every(value=>Number.isInteger(value) && value>=0)
+          || succeeded+failed+pending!==total) return null;
+      return {succeeded,failed,pending,total};
+    }
+    const entries=Object.values(job.sources);
+    const succeeded=entries.filter(entry=>entry?.complete===true && !entry.error).length;
+    const failed=entries.filter(entry=>Boolean(entry?.error)).length;
+    const reportedTotal=job.total == null ? NaN : Number(job.total);
+    const total=Number.isInteger(reportedTotal) && reportedTotal>=entries.length ? reportedTotal : entries.length;
+    return {succeeded,failed,pending:Math.max(0,total-succeeded-failed),total};
+  }
+  function syncSourceStatus(job) {
+    if (!job) return "Carga inicial ainda não executada";
+    const progress=syncSourceProgress(job);
+    if (!progress) return job.state==="running"
+      ? "Carga em segundo plano: progresso por fonte indisponível"
+      : "Carga finalizada: confirmação individual das fontes indisponível";
+    const summary=progress.succeeded+" de "+progress.total+" fontes carregadas com sucesso"
+      +(progress.failed?" · "+progress.failed+" com erro":"")
+      +(progress.pending?" · "+progress.pending+" pendente(s)":"");
+    if (job.state==="running") return "Carga em segundo plano: "+summary;
+    return progress.failed || progress.pending
+      ? "Carga finalizada com pendências: "+summary
+      : "Carga concluída: "+summary;
+  }
+
   async function loadSyntheticHome() {
     const generation=++syntheticHomeGeneration;
     ++dashboardLoadGeneration;
@@ -1723,7 +1818,7 @@
         }
       }));
       if(active()) status.textContent=groups.length?"Resumos atualizados"+(unavailable?" · "+unavailable+" fonte(s) indisponível(is)":"")+". Clique em um cartão para explorar.":"Nenhuma fonte liberada para este acesso.";
-      if(active()&&backgroundJob){status.textContent='Carga completa em segundo plano: '+backgroundJob.completed+' de '+backgroundJob.total+' fontes concluídas. Os totais são atualizados automaticamente.';setTimeout(()=>{if(active())loadSyntheticHome();},15000);}
+      if(active()&&backgroundJob){status.textContent=syncSourceStatus(backgroundJob)+'. Os totais são atualizados automaticamente.';setTimeout(()=>{if(active())loadSyntheticHome();},15000);}
 
     } catch(error) {if(active())status.textContent="Não foi possível carregar os resumos: "+error.message;}
     finally {if(active())button.disabled=false;}
@@ -1998,7 +2093,7 @@
 
     const kpis=payload?.kpis||{};
     const warnings=Array.isArray(payload?.meta?.warnings)?payload.meta.warnings:[];
-    const sampleMode=payload?.meta?.realData!==true && (payload?.meta?.sampleMode===true || Boolean(dashboards[currentView]?.localSample));
+    const sampleMode=!REAL_MULTI_SYSTEM_IDS.has(dashboards[currentView]?.system||currentSystemId) && payload?.meta?.realData!==true && (payload?.meta?.sampleMode===true || Boolean(dashboards[currentView]?.localSample));
     const items=[];
 
     if(String(currentSystemId)==="tributos"){
@@ -2250,13 +2345,16 @@
     if(chartDef.apiPanel&&data){empty.querySelector("strong").textContent=data.status==="unavailable"?"Indicador indisponível":data.status==="missing-fields"?"Campos necessários não informados":"Sem registros neste recorte";empty.querySelector("span").textContent=data.note||"Confira os filtros selecionados.";empty.hidden=false;return;}
     const title=empty.querySelector("strong");
     const detail=empty.querySelector("span");
-    const hasSeries=Boolean(data&&Array.isArray(data.labels)&&data.labels.length&&Array.isArray(data.datasets)&&data.datasets.some(ds=>Array.isArray(ds.data)&&ds.data.length));
-    if(payload?.meta?.realData===true&&!data){
-      title.textContent="Indicador em preparação";
-      detail.textContent=payload?.meta?.note||"Os dados reais já estão conectados, mas os campos necessários para este indicador ainda não foram consolidados.";
-    } else if(payload?.meta?.refreshError&&!hasSeries){
+    const hasSeries=Boolean(data&&Array.isArray(data.labels)&&data.labels.length&&Array.isArray(data.datasets)&&data.datasets.some(ds=>Array.isArray(ds.data)&&ds.data.some(v=>(typeof v==="number"&&Number.isFinite(v))||(typeof v==="string"&&v.trim()!==""&&Number.isFinite(Number(v))))));
+    if(payload?.meta?.refreshError&&!hasSeries){
       title.textContent="Resumo não atualizado";
       detail.textContent=friendlySourceErrorDetail(payload.meta.refreshError);
+    } else if(payload?.meta?.chartUnavailableReasons?.[chartDef.id]&&!hasSeries){
+      title.textContent="Indisponível — aguardando validação";
+      detail.textContent=String(payload.meta.chartUnavailableReasons[chartDef.id]);
+    } else if(payload?.meta?.realData===true&&!data){
+      title.textContent="Indisponível — aguardando validação";
+      detail.textContent=payload?.meta?.note||"A fonte foi importada, mas os campos necessários para este indicador ainda não foram validados.";
     } else if(state.kind==="error"){
       title.textContent=/temporária|temporário|normalizar/i.test(state.detail)
         ? "Fonte temporariamente indisponível"
@@ -2335,7 +2433,7 @@
 
     const configured=Array.isArray(payload?.tables)?payload.tables.filter(Boolean):[];
     if(configured.length){
-      for(const table of configured.slice(0,2)){
+      for(const table of configured.slice(0,3)){
         if(appendSummaryTableCard(host,table)) rendered++;
       }
       syncVisibility();
@@ -2376,7 +2474,7 @@
   function syncDashboardDataMode(payload,view=currentView) {
     const def=dashboards[view]||{};
     const realMode=payload?.meta?.realData===true;
-    const sampleMode=payload?.meta?.sampleMode===true || (!realMode&&Boolean(def.localSample));
+    const sampleMode=!REAL_MULTI_SYSTEM_IDS.has(def.system||currentSystemId) && (payload?.meta?.sampleMode===true || (!realMode&&Boolean(def.localSample)));
 
     const badge=document.getElementById("sampleModeBadge");
     if(badge){
@@ -2416,6 +2514,15 @@
   }
 
   function renderPayload(payload) {
+    if(REAL_MULTI_SYSTEM_IDS.has(currentSystemId)&&payload?.meta?.realData!==true){
+      // Defense in depth: reject synthetic/stale snapshots even if a caller bypasses the loader.
+      currentPayload=null;
+      setDashboardLoading(false);
+      markDashboardChartsUnavailable("O retorno não comprova dados reais desta entidade.");
+      markDashboardCoverageUnavailable("Amostras locais e snapshots sem origem real foram bloqueados.");
+      setStatus("error","Dados reais indisponíveis. Nenhuma amostra sintética foi exibida.");
+      return;
+    }
     currentPayload = payload || {};
     setDashboardLoading(false);
     const def = dashboards[currentView];
@@ -2438,7 +2545,9 @@
     for (const chartDef of dashboardCharts()) {
       const chartData=charts[displayChartDefinition(chartDef).id];
       const hasData=chartData && Array.isArray(chartData.labels) && chartData.labels.length &&
-        Array.isArray(chartData.datasets) && chartData.datasets.some(ds=>Array.isArray(ds.data) && ds.data.some(v=>v!==null&&Number(v)!==0||chartDef.apiPanel&&v!==null));
+        Array.isArray(chartData.datasets) && chartData.datasets.some(ds=>Array.isArray(ds.data) &&
+          ds.data.some(v=>(typeof v==="number"&&Number.isFinite(v))||
+            (typeof v==="string"&&v.trim()!==""&&Number.isFinite(Number(v)))));
       if (hasData) renderChartData(chartDef,chartData);
       else renderChartEmptyState(chartDef,payload);
     }
@@ -2966,7 +3075,11 @@
       if (!response.ok) {
         const error = new Error(body.error || ("HTTP " + response.status));
         error.status = response.status;
-        if (isAuthenticationFailure(error)) showAuthenticationRequired();
+        // HTTP 401 também pode vir de um recurso sem permissão, enquanto a
+        // sessão Betha continua válida. Não esconda o BI sem revalidá-la.
+        if (isAuthenticationFailure(error) && await sessionInvalidAfterApiFailure()) {
+          showAuthenticationRequired();
+        }
         throw error;
       }
       return body;
@@ -2991,6 +3104,35 @@
     ].includes(error?.message);
   }
 
+  let sessionRecheckPending = null;
+  function sessionInvalidAfterApiFailure() {
+    if (sessionRecheckPending) return sessionRecheckPending;
+    sessionRecheckPending = (async () => {
+      const base = String(cfg.BACKEND_URL || "").replace(/\/$/, "");
+      if (!base) return false;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 6000);
+      try {
+        const headers = {Accept:"application/json"};
+        const token = window.BIAuth?.getToken?.();
+        if (token) headers.Authorization = "Session " + token;
+        const response = await fetch(base + "/api/auth/session-check", {
+          headers, credentials:"include", signal:controller.signal
+        });
+        if (response.status === 401 || response.status === 403) return true;
+        if (!response.ok) return false;
+        const body = await response.json().catch(() => ({}));
+        return body.sessionValid === false;
+      } catch {
+        // Falha de rede não comprova expiração de sessão.
+        return false;
+      } finally {
+        clearTimeout(timer);
+      }
+    })().finally(() => { sessionRecheckPending = null; });
+    return sessionRecheckPending;
+  }
+
   function showAuthenticationRequired() {
     window.BIAuth?.clear?.();
     const note = document.querySelector("#authGate .auth-access-note");
@@ -3011,10 +3153,18 @@
 
     // Na Visão Geral fragmentada, cada lote representa uma parcela do total.
     for (const [key,value] of Object.entries(part.kpis || {})) {
-      if (value === null || value === undefined) continue;
+      // Um lote sem métrica validada invalida o total, não representa zero.
+      if (value === null || value === undefined || typeof value === "boolean" ||
+          (typeof value === "string" && !value.trim())) {
+        target.kpis[key]=null;
+        continue;
+      }
+      if (target.kpis[key] === null) continue;
       const n=Number(value);
       if (Number.isFinite(n)) {
-        target.kpis[key]=(Number(target.kpis[key])||0)+n;
+        const previous=target.kpis[key];
+        const prior=previous===undefined ? 0 : Number(previous);
+        target.kpis[key]=Number.isFinite(prior) ? prior+n : null;
       } else {
         target.kpis[key]=value;
       }
@@ -3038,8 +3188,16 @@
           }
           const max=Math.max(existingDs.data?.length||0,ds.data?.length||0);
           const summed=[];
+          const numeric=value=>{
+            if(value===null||value===undefined||typeof value==="boolean"||
+               (typeof value==="string"&&!value.trim()))return null;
+            const parsed=Number(value);
+            return Number.isFinite(parsed)?parsed:null;
+          };
           for(let i=0;i<max;i++){
-            summed[i]=(Number(existingDs.data?.[i])||0)+(Number(ds.data?.[i])||0);
+            const left=numeric(existingDs.data?.[i]);
+            const right=numeric(ds.data?.[i]);
+            summed[i]=left===null||right===null?null:left+right;
           }
           existingDs.data=summed;
         }
@@ -3061,11 +3219,25 @@
     target.meta.generatedAt = meta.generatedAt || target.meta.generatedAt;
     target.meta.warnings = [...(target.meta.warnings || []), ...(meta.warnings || [])];
 
-    for(const [key,value] of Object.entries(meta.sourceRows||{})){
-      target.meta.sourceRows[key]=(Number(target.meta.sourceRows[key])||0)+(Number(value)||0);
-    }
-    for(const [key,value] of Object.entries(meta.sourceTotals||{})){
-      target.meta.sourceTotals[key]=(Number(target.meta.sourceTotals[key])||0)+(Number(value)||0);
+    // Missing, blank, boolean and non-finite source metadata is unknown, never zero.
+    // This matters when several real API fragments are consolidated.
+    const fragmentNumber=value=>{
+      if(value===null||value===undefined||typeof value==="boolean"||
+         (typeof value==="string"&&!value.trim()))return null;
+      const parsed=Number(value);
+      return Number.isFinite(parsed)?parsed:null;
+    };
+    target.meta.sourceRows=target.meta.sourceRows||{};
+    target.meta.sourceTotals=target.meta.sourceTotals||{};
+    target.meta.sourceAudit=target.meta.sourceAudit||{};
+    for(const [field,values] of [["sourceRows",meta.sourceRows],["sourceTotals",meta.sourceTotals]]){
+      const destination=target.meta[field];
+      for(const [key,value] of Object.entries(values||{})){
+        const previous=Object.prototype.hasOwnProperty.call(destination,key)
+          ? fragmentNumber(destination[key]) : 0;
+        const incoming=fragmentNumber(value);
+        destination[key]=previous===null||incoming===null?null:previous+incoming;
+      }
     }
 
     for(const [key,audit] of Object.entries(meta.sourceAudit||{})){
@@ -3721,6 +3893,7 @@
 
   async function loadLocalSampleDashboard(view) {
     const def=dashboards[view];
+    if(REAL_MULTI_SYSTEM_IDS.has(def?.system||currentSystemId))return showRealSubpanelUnavailable(view);
     const sample=def?.localSample;
     if(!sample) return;
     const generation=++dashboardLoadGeneration;
@@ -3783,17 +3956,32 @@
     }
   }
 
+  function clearRealDashboardSnapshot() {
+    // A failed refresh must not leave old figures visible or exportable as the current filter/tenant.
+    currentPayload=null;
+    destroyCharts();
+    document.querySelectorAll("#kpiGrid [data-value]").forEach(value=>{value.textContent="—";});
+    document.querySelectorAll("#dashboardView [data-chart] .chart-empty").forEach(empty=>{empty.hidden=false;});
+    const tables=document.getElementById("tableGrid");
+    if(tables){tables.replaceChildren();tables.hidden=true;}
+    const heading=document.getElementById("tableSectionHeading");
+    if(heading)heading.hidden=true;
+    // The executive section owns the primary chart card; removing it would erase the chart.
+    document.getElementById("overviewAttention")?.replaceChildren();
+    setLastUpdated(null);
+  }
+
   async function loadRealMultiSystemDashboard(view) {
     const generation=++dashboardLoadGeneration;
     const requestedTenant=tenantId;
     const requestedSystem=currentSystemId;
     const active=()=>generation===dashboardLoadGeneration&&currentView===view&&tenantId===requestedTenant&&currentSystemId===requestedSystem;
 
+    clearRealDashboardSnapshot();
     setRefreshBusy(true);
     setDashboardLoading(true);
     setStatus("waiting","Carregando dados reais da Betha...");
 
-    let fallback=false;
     try{
       const params=new URLSearchParams({
         periodo:document.getElementById("periodo")?.value||"ano",
@@ -3806,7 +3994,11 @@
       if(!active())return;
 
       if(payload?.meta?.realData!==true){
-        fallback=true;
+        // Real system homes must never silently switch to the local synthetic dataset.
+        setDashboardLoading(false);
+        markDashboardChartsUnavailable("Não há agregados reais validados para esta entidade.");
+        markDashboardCoverageUnavailable("O backend não retornou dados reais persistidos; a amostra local foi bloqueada.");
+        setStatus("error","Dados reais indisponíveis para esta entidade. Nenhuma amostra sintética foi exibida.");
       }else{
         renderPayload(payload);
         const allAudits=Object.values(payload?.meta?.sourceAudit||{});
@@ -3826,29 +4018,46 @@
       console.warn("Falha ao carregar dados reais do sistema:",error);
       setDashboardLoading(false);
       const initialLoadRequired=error.message==="INITIAL_LOAD_REQUIRED";
+      const missingLoadLabels={
+        tributos:"tributária",
+        contabil:"contábil",
+        compras:"de Compras",
+        folha:"de Folha"
+      };
+      const missingLoadLabel=missingLoadLabels[requestedSystem]||"deste sistema";
       const unavailableMessage=initialLoadRequired
-        ? "Nenhuma carga tributária foi encontrada para esta entidade. As cargas dos outros sistemas permanecem separadas."
+        ? "Nenhuma carga "+missingLoadLabel+" foi encontrada para esta entidade. As cargas dos outros sistemas permanecem separadas."
         : "Não foi possível consultar os dados reais. Tente novamente; dados sintéticos não serão exibidos como substituição.";
       markDashboardChartsUnavailable(initialLoadRequired
-        ? "Nenhuma carga tributária salva foi encontrada para esta entidade."
+        ? "Nenhuma carga "+missingLoadLabel+" salva foi encontrada para esta entidade."
         : undefined);
       markDashboardCoverageUnavailable(initialLoadRequired
-        ? "Nenhuma carga tributária salva para esta entidade. As cargas dos outros sistemas não foram alteradas."
+        ? "Nenhuma carga "+missingLoadLabel+" salva para esta entidade. As cargas dos outros sistemas não foram alteradas."
         : "A consulta falhou antes de receber a cobertura das fontes.");
       setStatus("error",unavailableMessage);
     }finally{
-      if(active()&&!fallback)setRefreshBusy(false);
+      if(active())setRefreshBusy(false);
     }
+  }
 
-    if(fallback&&active()){
-      setRefreshBusy(false);
-      return loadLocalSampleDashboard(view);
-    }
+  function showRealSubpanelUnavailable(view) {
+    // Never fetch data/samples/*.json for production systems. Keep blank KPIs as em dashes.
+    ++dashboardLoadGeneration;
+    clearRealDashboardSnapshot();
+    const badge=document.getElementById("sampleModeBadge");
+    if(badge)badge.hidden=true;
+    setRefreshBusy(false);
+    setDashboardLoading(false);
+    markDashboardChartsUnavailable("Este subpainel ainda não possui uma fonte real homologada.");
+    markDashboardCoverageUnavailable("Nenhum dado sintético foi carregado. Use a Visão geral para consultar os indicadores reais disponíveis.");
+    setLastUpdated(null);
+    setStatus("error","Subpainel sem integração real homologada. Nenhuma amostra sintética foi exibida.");
   }
 
   async function loadDashboardData(view, options = {}) {
     if(view===HOME_VIEW) view=currentSystemInfo()?.homeView||DEFAULT_VIEW;
     if(REAL_MULTI_SYSTEM_HOME_VIEWS.has(view)||view==="visao-geral") return loadRealMultiSystemDashboard(view);
+    if(dashboards[view]?.localSample&&REAL_MULTI_SYSTEM_IDS.has(dashboards[view].system||currentSystemId)) return showRealSubpanelUnavailable(view);
     if(dashboards[view]?.localSample) return loadLocalSampleDashboard(view);
     if(dashboards[view]?.apiSource) return loadApiPanelDashboard(view);
     const generation=++dashboardLoadGeneration;
@@ -3986,7 +4195,7 @@
   }
 
   function markDashboardChartsUnavailable(detailMessage) {
-    document.querySelectorAll("#dashboardView #chartGrid .chart-empty").forEach(empty=>{
+    document.querySelectorAll("#dashboardView [data-chart] .chart-empty").forEach(empty=>{
       const title=empty.querySelector("strong");
       const detail=empty.querySelector("span");
       if(title) title.textContent="Dados indisponíveis";
@@ -4083,13 +4292,16 @@
   }
 
   function valueDisplay(value,format) {
-    if(value===null||value===undefined)return "—";
-    if(format==="percent")return Number(value).toLocaleString("pt-BR",{maximumFractionDigits:2})+"%";
-    if(value===null || value===undefined || value==="") return "—";
-    if(format==="percent") return Number(value).toLocaleString("pt-BR",{maximumFractionDigits:2})+"%";
-    if(format==="currency") return Number(value||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
-    if(format==="percent") return Number(value||0).toLocaleString("pt-BR",{maximumFractionDigits:2})+"%";
-    return Number.isFinite(Number(value)) ? Number(value).toLocaleString("pt-BR") : String(value);
+    if(value===null||value===undefined||typeof value==="boolean"||
+       (typeof value==="string"&&!value.trim()))return "—";
+    const numeric=Number(value);
+    if(format==="currency"||format==="percent"){
+      if(!Number.isFinite(numeric))return "—";
+      return format==="currency"
+        ? numeric.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})
+        : numeric.toLocaleString("pt-BR",{maximumFractionDigits:2})+"%";
+    }
+    return Number.isFinite(numeric)?numeric.toLocaleString("pt-BR"):String(value);
   }
 
   function chartSeriesTable(chartDef,data,kpi=null) {
@@ -4097,12 +4309,27 @@
     const datasets=(data.datasets||[]).filter(ds=>!kpi || datasetAllowedForKpi(kpi,ds));
     if(!datasets.length) return "";
 
-    const totals=datasets.map(ds=>(ds.data||[]).reduce((sum,v)=>sum+(Number(v)||0),0));
-    const grand=totals.reduce((a,b)=>a+b,0);
+    // Não somar séries parciais como se as lacunas fossem zero.
+    const validatedNumber=value=>{
+      if(value===null||value===undefined||typeof value==="boolean"||
+         (typeof value==="string"&&!value.trim()))return null;
+      const n=Number(value);
+      return Number.isFinite(n)?n:null;
+    };
+    const totals=datasets.map(ds=>{
+      if(!Array.isArray(ds.data)||ds.data.length!==data.labels.length)return null;
+      return ds.data.reduce((sum,value)=>{
+        const n=validatedNumber(value);
+        return sum===null||n===null?null:sum+n;
+      },0);
+    });
+    const grand=totals.every(value=>value!==null)?totals.reduce((a,b)=>a+b,0):null;
     const rows=data.labels.map((label,index)=>{
       const cells=datasets.map((ds,di)=>{
         const value=ds.data?.[index]??null;
-        const percent=grand>0&&!data.nonAdditive ? (value/grand)*100 : null;
+        const validValue=validatedNumber(value);
+        const percent=grand!==null&&grand>0&&!data.nonAdditive&&validValue!==null
+          ? (validValue/grand)*100 : null;
         return `<td><strong>${escapeHtml(valueDisplay(value,data.format))}</strong>${percent!==null ? `<small class="detail-percent">${percent.toLocaleString("pt-BR",{maximumFractionDigits:1})}%</small>` : ""}</td>`;
       }).join("");
       return `<tr><td>${escapeHtml(String(label))}</td>${cells}</tr>`;
@@ -4281,13 +4508,21 @@
   }
 
   function formatDetailCell(value,format) {
-    if(value===null||value===undefined||value==="") return "—";
-    if(format==="currency") return Number(value||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
-    if(format==="number") return Number.isFinite(Number(value)) ? Number(value).toLocaleString("pt-BR",{maximumFractionDigits:6}) : String(value);
-    if(format==="boolean") return value===true ? "Sim" : value===false ? "Não" : String(value);
-    if(format==="date") {
+    if(value===null||value===undefined||
+       (typeof value==="string"&&!value.trim()))return "—";
+    if(format==="currency"){
+      if(typeof value==="boolean"||!Number.isFinite(Number(value)))return "—";
+      return Number(value).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+    }
+    if(format==="number"){
+      // A boolean is not a validated numeric detail (Number(false) would invent 0).
+      if(typeof value==="boolean")return "—";
+      return Number.isFinite(Number(value))?Number(value).toLocaleString("pt-BR",{maximumFractionDigits:6}):String(value);
+    }
+    if(format==="boolean")return value===true?"Sim":value===false?"Não":String(value);
+    if(format==="date"){
       const d=new Date(value);
-      return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleString("pt-BR");
+      return Number.isNaN(d.getTime())?String(value):d.toLocaleString("pt-BR");
     }
     return String(value);
   }
@@ -4417,7 +4652,7 @@
             serie:column.label||column.id||"Valor",
             categoria:row.label??"",
             valor:summaryCellDisplay(row.values?.[index],column.format||"number"),
-            fonte:currentPayload?.meta?.sampleMode===true?"AMOSTRA LOCAL":currentPayload?.meta?.realData===true?"BETHA":"Painel"
+            fonte:currentPayload?.meta?.realData===true?"BETHA · "+currentSystemId:currentPayload?.meta?.sampleMode===true?"AMOSTRA LOCAL":"Painel"
           });
         });
       }
@@ -4544,7 +4779,7 @@
       const context=exportContextLabel();
       const activeSystem=currentSystemInfo();
       const systemName=String(activeSystem?.name||activeSystem?.label||currentSystemId||"Tributos");
-      const sampleMode=Boolean(dashboards[currentView]?.localSample);
+      const sampleMode=currentPayload?.meta?.sampleMode===true&&currentPayload?.meta?.realData!==true;
       const panelName=String(dashboards[currentView]?.title||"Painel");
 
       const drawHeader=(pageNo)=>{
@@ -6285,7 +6520,11 @@
       const payload=await api(path,{method,...(method==='PUT'?{headers:{'Content-Type':'application/json'},body:JSON.stringify({intervalMinutes:Number(document.getElementById('entitySyncInterval').value)})}:{})});
       if(method!=='PUT')document.getElementById('entitySyncInterval').value=String(payload.config?.intervalMinutes??60);
       const job=payload.job;
-      status.textContent=method==='PUT'?'Frequência salva.':!job?'Carga inicial ainda não executada.':job.state==='running'?'Carga em segundo plano: '+job.completed+' de '+job.total+' fontes concluídas · '+Number(job.rows).toLocaleString('pt-BR')+' registros.':(job.failures?.length?'Carga concluída com '+job.failures.length+' fonte(s) indisponível(is): '+job.failures.map(f=>f.source).join(', '):'Todos os painéis atualizados')+' · '+new Date(job.finishedAt).toLocaleString('pt-BR')+'.';
+      const rowCount=job?.rows != null && Number.isFinite(Number(job.rows))
+        ? ' · '+Number(job.rows).toLocaleString('pt-BR')+' registros' : '';
+      const finishedAt=job?.state!=='running' && job?.finishedAt && !Number.isNaN(Date.parse(job.finishedAt))
+        ? ' · '+new Date(job.finishedAt).toLocaleString('pt-BR') : '';
+      status.textContent=method==='PUT'?'Frequência salva.':syncSourceStatus(job)+rowCount+finishedAt+'.';
       start.disabled=job?.state==='running';
       if(job?.state==='running'&&currentView==='configuracoes-admin')entitySyncTimer=setTimeout(()=>entitySyncAction(),15000);
     }catch(error){status.textContent='Carga: '+error.message;start.disabled=false;}
