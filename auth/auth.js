@@ -227,6 +227,11 @@
 
   async function validate() {
     if (serverAuth && serverAuth.authenticated === true) {
+      // A sessão HttpOnly do Worker já foi verificada. Um token antigo no
+      // armazenamento do navegador pode enviar Authorization: Session inválido
+      // e prevalecer sobre o cookie no backend, bloqueando /api/me/tenants.
+      // Remova somente a sessão do navegador; nunca toque no cookie do Worker.
+      clearSessionOnly();
       cookieAuthenticated = true;
       removeItem(KEY_ERROR);
       return true;
