@@ -16,12 +16,19 @@ function respond(res, body, type='text/plain', status=200) {
 }
 function json(res, data, status=200) { respond(res, JSON.stringify(data), 'application/json', status); }
 
-function mockServer({realAuth=false,realAuthSuccess=false}={}) {
+function mockServer({realAuth=false,realAuthSuccess=false,cookieAuth=false}={}) {
   const authAudit = {exchanges:0, sessionChecks:0, tenantChecks:0};
   const server = http.createServer(async (req,res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     try {
       if (url.pathname === '/api/me/tenants') {
+        if (cookieAuth) {
+          // A verified HttpOnly cookie must not be shadowed by a stale browser token.
+          if (!String(req.headers.cookie||'').includes('test-bi-sid=valid') || req.headers.authorization) {
+            return json(res,{error:'STALE_AUTHORIZATION_HEADER'},401);
+          }
+          authAudit.tenantChecks++;
+        }
         if (realAuthSuccess) {
           if (req.headers.authorization !== 'Session test-only-session') return json(res,{error:'USER_TOKEN_REQUIRED'},401);
           authAudit.tenantChecks++;
@@ -52,7 +59,7 @@ function mockServer({realAuth=false,realAuthSuccess=false}={}) {
         return json(res, {ok:true, tenant:'paulafreitas', period:{ano:2026}, kpis:{}, charts:{}, tables:[], meta:{source:'TEST_FIXTURE_ONLY'}});
       }
       if (url.pathname === '/auth/auth.js') {
-        if (realAuth || realAuthSuccess) {
+        if (realAuth || realAuthSuccess || cookieAuth) {
           return respond(res, await fs.readFile(path.join(ROOT,'auth/auth.js'),'utf8'), 'application/javascript');
         }
         return respond(res, 'window.BIAuth={ready:Promise.resolve(true),isAuthenticated:()=>true,getToken:()=>"test-only-session",getError:()=>"",clear:()=>{},logout:()=>{}};', 'application/javascript');
@@ -69,6 +76,12 @@ function mockServer({realAuth=false,realAuthSuccess=false}={}) {
         html = html.replace(/<link[^>]+href="https:\/\/[^\"]+"[^>]*>/g, '');
         html = html.replace('</head>', "<script>window.__biBootErrors=[];window.addEventListener('error',e=>window.__biBootErrors.push(e.message));window.addEventListener('unhandledrejection',e=>window.__biBootErrors.push(String(e.reason)));</script></head>");
         html=html.replace('</body>', '<pre id="biBootErrors" hidden></pre><script>setInterval(()=>{document.getElementById("biBootErrors").textContent=JSON.stringify(window.__biBootErrors)},100)</script></body>');
+        if (cookieAuth) {
+          html=html.replace('</head>', '<script>window.__BI_SERVER_AUTH={authenticated:true,reason:"",kind:"user-session"};localStorage.setItem("betha_bi_session","stale-browser-session");localStorage.setItem("betha_bi_session_expires",String(Date.now()+3600000));</script></head>');
+          res.writeHead(200,{'Content-Type':'text/html','Cache-Control':'no-store','Set-Cookie':'test-bi-sid=valid; Path=/; HttpOnly; SameSite=Lax'});
+          res.end(html);
+          return;
+        }
         return respond(res, html, 'text/html');
       }
       const name = decodeURIComponent(url.pathname).replace(/^\/+/, '');
@@ -170,6 +183,30 @@ test('successful OAuth handoff opens Contabilidade and Compras using real auth.j
     assert.ok(mock.authAudit.exchanges>=2,'handoff exchange must occur for both systems');
     assert.ok(mock.authAudit.sessionChecks>=2,'session must be validated after exchange');
     assert.ok(mock.authAudit.tenantChecks>=2,'tenant API must authorize the exchanged session');
+  } finally {
+    await new Promise(resolve=>mock.close(resolve));
+  }
+});
+
+// The Worker serves the frontend on the same origin after Betha OAuth.
+// A previously cached browser session must never override the verified cookie.
+test('verified Worker cookie opens Contabilidade despite stale browser Session token', {timeout:100000}, async () => {
+  assert.ok(CHROME,'Chrome/Chromium is required for cookie priority smoke');
+  const mock=mockServer({cookieAuth:true});
+  await new Promise(resolve=>mock.listen(0,'127.0.0.1',resolve));
+  try {
+    const html=await runChrome('http://127.0.0.1:'+mock.address().port+'/?sistema=contabil&view=contabil-visao-geral');
+    const app=html.match(/<bth-app id="bethaApp"[^>]*>/);
+    const auth=html.match(/<div id="authGate"[^>]*>/);
+    const tenant=html.match(/<div id="tenantGate"[^>]*>/);
+    assert.ok(app,'application element missing');
+    assert.ok(auth?.[0].includes(' hidden'),'login gate must remain hidden with verified cookie');
+    assert.ok(tenant?.[0].includes(' hidden'),'tenant gate must close after authorized tenant');
+    assert.ok(!/style="[^"]*display:\\s*none/.test(app[0]),'application remains hidden');
+    assert.ok(mock.authAudit.tenantChecks>=1,'tenant authorization must use cookie without stale Session header');
+    const diagnostics=html.match(/<pre id="biBootErrors"[^>]*>([^<]*)<\\/pre>/);
+    assert.ok(diagnostics,'browser diagnostics missing');
+    assert.deepEqual(JSON.parse(diagnostics[1]||'[]'),[],'uncaught JavaScript errors');
   } finally {
     await new Promise(resolve=>mock.close(resolve));
   }
