@@ -105,7 +105,7 @@ test("production Worker OAuth landing shows usable anonymous login in Chromium",
   assert.ok(html.includes("BI Vella"),"Worker landing did not render BI Vella");
   const gate=html.match(/<div id="authGate"[^>]*>/);
   assert.ok(gate,"Worker login gate is missing");
-  assert.ok(!/\\bhidden(?:\\s|>|=)/.test(gate[0]),
+  assert.ok(!gate[0].includes(" hidden"),
     "Worker login gate remained hidden (possible blank screen)");
   const login=html.match(/<a id="loginButton"[^>]*>/);
   assert.ok(login,"Worker login button is missing");
