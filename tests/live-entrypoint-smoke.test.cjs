@@ -56,3 +56,28 @@ test("production Betha login route redirects to configured OAuth provider",async
   assert.equal(callback.origin,WORKER,"OAuth callback origin mismatch");
   assert.equal(callback.pathname,"/api/auth/callback");
 });
+
+// The OAuth callback redirects to the Worker origin, NOT to GitHub Pages.
+// A healthy /api/health is insufficient if this same-origin HTML proxy fails.
+test("production OAuth landing serves the same-origin application shell",async()=>{
+  const response=await read(WORKER+"/",{headers:{Accept:"text/html"}});
+  assert.equal(response.status,200,"Worker OAuth landing HTML HTTP status");
+  assert.equal(response.headers.get("x-bi-front-proxy"),"cloudflare-worker",
+    "OAuth landing must be served by the Worker frontend proxy");
+  const html=await response.text();
+  for(const marker of ['id="bethaApp"','id="authGate"','window.__BI_SERVER_AUTH=','src="auth/auth.js','src="app.js']) {
+    assert.ok(html.includes(marker),"Worker OAuth landing missing "+marker);
+  }
+  assert.match(html,/window\.__BI_SERVER_AUTH=\{"authenticated":false/,
+    "anonymous Worker landing must not claim an authenticated session");
+});
+test("production same-origin frontend scripts load as JavaScript",async()=>{
+  for(const path of ["/auth/auth.js","/app.js"]) {
+    const response=await read(WORKER+path);
+    assert.equal(response.status,200,"Worker-proxied "+path+" HTTP status");
+    const source=await response.text();
+    assert.ok(source.length>1000,"Worker-proxied "+path+" unexpectedly short");
+    assert.doesNotThrow(()=>new vm.Script(source,{filename:path}),
+      "Worker-proxied "+path+" must be valid JavaScript");
+  }
+});
