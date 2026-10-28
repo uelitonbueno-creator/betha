@@ -3075,7 +3075,11 @@
       if (!response.ok) {
         const error = new Error(body.error || ("HTTP " + response.status));
         error.status = response.status;
-        if (isAuthenticationFailure(error)) showAuthenticationRequired();
+        // HTTP 401 também pode vir de um recurso sem permissão, enquanto a
+        // sessão Betha continua válida. Não esconda o BI sem revalidá-la.
+        if (isAuthenticationFailure(error) && await sessionInvalidAfterApiFailure()) {
+          showAuthenticationRequired();
+        }
         throw error;
       }
       return body;
@@ -3098,6 +3102,35 @@
       "APPLICATION_SESSION_EXPIRED",
       "PLATFORM_HTTP_401"
     ].includes(error?.message);
+  }
+
+  let sessionRecheckPending = null;
+  function sessionInvalidAfterApiFailure() {
+    if (sessionRecheckPending) return sessionRecheckPending;
+    sessionRecheckPending = (async () => {
+      const base = String(cfg.BACKEND_URL || "").replace(/\/$/, "");
+      if (!base) return false;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 6000);
+      try {
+        const headers = {Accept:"application/json"};
+        const token = window.BIAuth?.getToken?.();
+        if (token) headers.Authorization = "Session " + token;
+        const response = await fetch(base + "/api/auth/session-check", {
+          headers, credentials:"include", signal:controller.signal
+        });
+        if (response.status === 401 || response.status === 403) return true;
+        if (!response.ok) return false;
+        const body = await response.json().catch(() => ({}));
+        return body.sessionValid === false;
+      } catch {
+        // Falha de rede não comprova expiração de sessão.
+        return false;
+      } finally {
+        clearTimeout(timer);
+      }
+    })().finally(() => { sessionRecheckPending = null; });
+    return sessionRecheckPending;
   }
 
   function showAuthenticationRequired() {

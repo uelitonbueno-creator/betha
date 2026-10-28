@@ -355,3 +355,51 @@ test("KPI, chart drill-down and detailed currency preserve unavailable values",(
   const short=chartSeriesTable(chartDef,make([100]));
   assert.match(short,/<tfoot>[\s\S]*?<th>—<\/th>/,"missing label must invalidate total");
 });
+
+
+test("dashboard resource 401 preserves the BI when Betha session is valid, but expired session shows login", async () => {
+  const source=fs.readFileSync("app.js","utf8");
+  const start=source.indexOf("  const dashboardResponseDiagnostics=new Map();");
+  const end=source.indexOf("  function mergeDashboardPart(",start);
+  assert.ok(start>=0&&end>start,"real API and session recheck handlers exist");
+
+  for (const scenario of [
+    {name:"resource 401, valid login",dashboardStatus:401,sessionStatus:200,sessionValid:true,logout:false,probe:true},
+    {name:"resource 401, expired login",dashboardStatus:401,sessionStatus:401,sessionValid:false,logout:true,probe:true},
+    {name:"resource 401, transient validation error",dashboardStatus:401,sessionStatus:503,sessionValid:false,logout:false,probe:true},
+    {name:"resource 403, no session recheck",dashboardStatus:403,sessionStatus:200,sessionValid:true,logout:false,probe:false}
+  ]) {
+    let cleared=0,probes=0;
+    const gate={hidden:true};
+    const app={style:{display:""}};
+    const BIAuth={getToken:()=>"test-only-session",clear:()=>{cleared++;}};
+    const context=vm.createContext({
+      cfg:{BACKEND_URL:"https://api.example.test",AUTH_REQUIRED:true},
+      window:{BIAuth},BIAuth,
+      tenantId:"paulafreitas",currentView:"contabil-visao-geral",
+      authGate:gate,bethaApp:app,
+      document:{querySelector:()=>({textContent:""}),getElementById:()=>({href:""})},
+      AbortController,setTimeout,clearTimeout,Map,Date,
+      fetch:async(url,options)=>{
+        if(String(url).endsWith("/api/auth/session-check")){
+          probes++;
+          assert.equal(options.credentials,"include",scenario.name);
+          assert.equal(options.headers.Authorization,"Session test-only-session",scenario.name);
+          return {status:scenario.sessionStatus,ok:scenario.sessionStatus===200,json:async()=>({sessionValid:scenario.sessionValid})};
+        }
+        assert.match(String(url),/\/api\/dashboard\//,scenario.name);
+        return {status:scenario.dashboardStatus,ok:false,json:async()=>({error:"RESOURCE_ACCESS_DENIED"})};
+      }
+    });
+    vm.runInContext(source.slice(start,end),context);
+    await assert.rejects(
+      vm.runInContext("api('/api/dashboard/contabil-visao-geral')",context),
+      /RESOURCE_ACCESS_DENIED/,
+      scenario.name
+    );
+    assert.equal(probes,scenario.probe?1:0,scenario.name+": revalidation count");
+    assert.equal(cleared,scenario.logout?1:0,scenario.name+": token cleared");
+    assert.equal(gate.hidden,!scenario.logout,scenario.name+": login gate");
+    assert.equal(app.style.display,scenario.logout?"none":"",scenario.name+": app visibility");
+  }
+});
