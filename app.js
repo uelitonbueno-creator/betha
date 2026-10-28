@@ -1746,6 +1746,32 @@
   function homeCardHtml(card) {
     return '<button type="button" class="home-summary-card" data-home-panel="'+escapeHtml(card.panelView||card.view)+'" data-home-source="'+escapeHtml(card.id)+'"><span class="home-card-name">'+escapeHtml(card.label)+'</span><strong data-home-count>—</strong><span class="home-card-state" data-home-state>Consultando registros…</span><span class="home-card-action">VER PAINEL <i class="mdi mdi-chevron-right"></i></span></button>';
   }
+  // "job.completed" includes terminal errors; never present it as successful loads.
+  // Unknown per-source details remain unavailable rather than becoming a zero.
+  function syncSourceProgress(job) {
+    if (!job || !job.sources || typeof job.sources !== "object") return null;
+    const entries=Object.values(job.sources);
+    const succeeded=entries.filter(entry=>entry?.complete===true && !entry.error).length;
+    const failed=entries.filter(entry=>Boolean(entry?.error)).length;
+    const reportedTotal=job.total == null ? NaN : Number(job.total);
+    const total=Number.isInteger(reportedTotal) && reportedTotal>=entries.length ? reportedTotal : entries.length;
+    return {succeeded,failed,pending:Math.max(0,total-succeeded-failed),total};
+  }
+  function syncSourceStatus(job) {
+    if (!job) return "Carga inicial ainda não executada";
+    const progress=syncSourceProgress(job);
+    if (!progress) return job.state==="running"
+      ? "Carga em segundo plano: progresso por fonte indisponível"
+      : "Carga finalizada: confirmação individual das fontes indisponível";
+    const summary=progress.succeeded+" de "+progress.total+" fontes carregadas com sucesso"
+      +(progress.failed?" · "+progress.failed+" com erro":"")
+      +(progress.pending?" · "+progress.pending+" pendente(s)":"");
+    if (job.state==="running") return "Carga em segundo plano: "+summary;
+    return progress.failed || progress.pending
+      ? "Carga finalizada com pendências: "+summary
+      : "Carga concluída: "+summary;
+  }
+
   async function loadSyntheticHome() {
     const generation=++syntheticHomeGeneration;
     ++dashboardLoadGeneration;
@@ -1784,7 +1810,7 @@
         }
       }));
       if(active()) status.textContent=groups.length?"Resumos atualizados"+(unavailable?" · "+unavailable+" fonte(s) indisponível(is)":"")+". Clique em um cartão para explorar.":"Nenhuma fonte liberada para este acesso.";
-      if(active()&&backgroundJob){status.textContent='Carga completa em segundo plano: '+backgroundJob.completed+' de '+backgroundJob.total+' fontes concluídas. Os totais são atualizados automaticamente.';setTimeout(()=>{if(active())loadSyntheticHome();},15000);}
+      if(active()&&backgroundJob){status.textContent=syncSourceStatus(backgroundJob)+'. Os totais são atualizados automaticamente.';setTimeout(()=>{if(active())loadSyntheticHome();},15000);}
 
     } catch(error) {if(active())status.textContent="Não foi possível carregar os resumos: "+error.message;}
     finally {if(active())button.disabled=false;}
@@ -6453,7 +6479,11 @@
       const payload=await api(path,{method,...(method==='PUT'?{headers:{'Content-Type':'application/json'},body:JSON.stringify({intervalMinutes:Number(document.getElementById('entitySyncInterval').value)})}:{})});
       if(method!=='PUT')document.getElementById('entitySyncInterval').value=String(payload.config?.intervalMinutes??60);
       const job=payload.job;
-      status.textContent=method==='PUT'?'Frequência salva.':!job?'Carga inicial ainda não executada.':job.state==='running'?'Carga em segundo plano: '+job.completed+' de '+job.total+' fontes concluídas · '+Number(job.rows).toLocaleString('pt-BR')+' registros.':(job.failures?.length?'Carga concluída com '+job.failures.length+' fonte(s) indisponível(is): '+job.failures.map(f=>f.source).join(', '):'Todos os painéis atualizados')+' · '+new Date(job.finishedAt).toLocaleString('pt-BR')+'.';
+      const rowCount=job?.rows != null && Number.isFinite(Number(job.rows))
+        ? ' · '+Number(job.rows).toLocaleString('pt-BR')+' registros' : '';
+      const finishedAt=job?.state!=='running' && job?.finishedAt && !Number.isNaN(Date.parse(job.finishedAt))
+        ? ' · '+new Date(job.finishedAt).toLocaleString('pt-BR') : '';
+      status.textContent=method==='PUT'?'Frequência salva.':syncSourceStatus(job)+rowCount+finishedAt+'.';
       start.disabled=job?.state==='running';
       if(job?.state==='running'&&currentView==='configuracoes-admin')entitySyncTimer=setTimeout(()=>entitySyncAction(),15000);
     }catch(error){status.textContent='Carga: '+error.message;start.disabled=false;}
