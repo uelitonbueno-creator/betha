@@ -160,10 +160,10 @@ test('successful OAuth handoff opens Contabilidade and Compras using real auth.j
       assert.ok(app,system+': app element missing');
       assert.ok(auth?.[0].includes(' hidden'),system+': login gate not hidden after session exchange');
       assert.ok(tenant?.[0].includes(' hidden'),system+': tenant gate not hidden after authorization');
-      assert.ok(!/style="[^"]*display:\\s*none/.test(app[0]),system+': application still hidden');
+      assert.ok(!/style="[^"]*display:\s*none/.test(app[0]),system+': application still hidden');
       assert.ok(html.includes('Paula Freitas'),system+': authorized tenant not selected');
       assert.ok(!html.includes('auth_handoff=test-only-opaque-handoff'),system+': OAuth callback leaked into URL');
-      const diagnostics=html.match(/<pre id="biBootErrors"[^>]*>([^<]*)<\\/pre>/);
+      const diagnostics=html.match(/<pre id="biBootErrors"[^>]*>([^<]*)<\/pre>/);
       assert.ok(diagnostics,system+': browser diagnostics missing');
       assert.deepEqual(JSON.parse(diagnostics[1]||'[]'),[],system+': uncaught JavaScript errors');
     }
