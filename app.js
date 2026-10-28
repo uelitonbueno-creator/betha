@@ -1749,7 +1749,15 @@
   // "job.completed" includes terminal errors; never present it as successful loads.
   // Unknown per-source details remain unavailable rather than becoming a zero.
   function syncSourceProgress(job) {
-    if (!job || !job.sources || typeof job.sources !== "object") return null;
+    if (!job) return null;
+    if (!job.sources || typeof job.sources !== "object") {
+      // The public Worker API deliberately omits individual source details.
+      // Trust only explicit, internally consistent aggregate counts.
+      const {successfulSources:succeeded,failedSources:failed,pendingSources:pending,total}=job;
+      if (![succeeded,failed,pending,total].every(value=>Number.isInteger(value) && value>=0)
+          || succeeded+failed+pending!==total) return null;
+      return {succeeded,failed,pending,total};
+    }
     const entries=Object.values(job.sources);
     const succeeded=entries.filter(entry=>entry?.complete===true && !entry.error).length;
     const failed=entries.filter(entry=>Boolean(entry?.error)).length;
