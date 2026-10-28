@@ -50,3 +50,36 @@ test("real multi-system dashboards never display synthetic sample banner",()=>{
     }
   }
 });
+
+test("load status distinguishes successful sources, failures and pending work",()=>{
+  const start=app.indexOf("  function syncSourceProgress(job) {");
+  const end=app.indexOf("  async function loadSyntheticHome()",start);
+  assert.ok(start>=0 && end>start,"source-level status helpers exist");
+  const {syncSourceProgress,syncSourceStatus}=new Function(app.slice(start,end)+";return {syncSourceProgress,syncSourceStatus};")();
+  const job={state:"running",completed:3,total:4,rows:120,sources:{
+    empenhos:{complete:true,error:null},
+    processos:{complete:true,error:null},
+    pagamentos:{complete:false,error:"BETHA_HTTP_401"},
+    debitos:{complete:false,error:null}
+  }};
+  assert.deepEqual(syncSourceProgress(job),{succeeded:2,failed:1,pending:1,total:4});
+  assert.match(syncSourceStatus(job),/2 de 4 fontes carregadas com sucesso/);
+  assert.match(syncSourceStatus(job),/1 com erro/);
+  assert.match(syncSourceStatus(job),/1 pendente/);
+  assert.doesNotMatch(syncSourceStatus(job),/3 de 4 fontes concluídas/);
+  assert.match(app,/status\.textContent=syncSourceStatus\(backgroundJob\)/,"home uses honest source status");
+  assert.match(app,/syncSourceStatus\(job\)\+rowCount\+finishedAt/,"admin uses honest source status");
+});
+
+test("load status never invents zero success when source details are absent",()=>{
+  const start=app.indexOf("  function syncSourceProgress(job) {");
+  const end=app.indexOf("  async function loadSyntheticHome()",start);
+  const {syncSourceProgress,syncSourceStatus}=new Function(app.slice(start,end)+";return {syncSourceProgress,syncSourceStatus};")();
+  assert.equal(syncSourceProgress({state:"running",completed:43,total:44}),null);
+  assert.match(syncSourceStatus({state:"running",completed:43,total:44}),/progresso por fonte indisponível/);
+  assert.match(syncSourceStatus({state:"completed",total:44}),/confirmação individual das fontes indisponível/);
+  assert.match(syncSourceStatus({state:"completed",total:2,sources:{
+    a:{complete:true},b:{complete:true}
+  }}),/Carga concluída: 2 de 2 fontes carregadas com sucesso/);
+  assert.doesNotMatch(app,/job\.completed\+' de '\+job\.total\+' fontes concluídas/);
+});
